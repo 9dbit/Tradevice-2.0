@@ -8,6 +8,8 @@
   let approvalMode = 'manual';
   let approvalUnlocked = Boolean(sessionStorage.getItem('tradeviceApprovalKey'));
 
+  function haptic(pattern=10){ try{ if(typeof navigator.vibrate==='function') navigator.vibrate(pattern); }catch{} }
+  function pressFx(button){ if(!button)return; button.classList.add('pressed'); setTimeout(()=>button.classList.remove('pressed'),110); }
   function setText(id,v){ const el=$(id); if(el) el.textContent=v; }
   function currentKey(){ return sessionStorage.getItem('tradeviceApprovalKey') || ''; }
   function stateLabel(plan){ return plan.execution?.lifecycle || plan.status || 'CANDIDATE'; }
@@ -58,7 +60,7 @@
       <div class="priceGrid"><div class="price"><div class="k">Entry Price</div><div class="v">${num(p.entry)}</div></div><div class="price"><div class="k">TP Price</div><div class="v green">${num(p.take_profit)}</div></div><div class="price"><div class="k">SL Price</div><div class="v red">${num(p.stop_loss)}</div></div></div>
       <div class="metrics"><div class="metric"><div class="k">Lot Size</div><div class="v">${typeof pv.lot==='number'?pv.lot.toFixed(2):'0.01'}</div></div><div class="metric"><div class="k">R:R</div><div class="v">${typeof pv.rr==='number'?`1:${pv.rr.toFixed(2)}`:'—'}</div></div><div class="metric"><div class="k">TP (Pips | $)</div><div class="v green">${tpText}</div></div><div class="metric"><div class="k">SL (Pips | $)</div><div class="v red">${slText}</div></div></div>
       <div class="planStory"><span class="storyLabel">Thesis</span><p>${esc(p.thesis||'No thesis supplied.')}</p><small>${esc(p.invalidation?`Invalidation: ${p.invalidation}`:'')}${low?' · Below AI auto threshold':''}</small></div>
-      <div class="planActions">${manualAction?`<button class="approve" data-action="approve" data-plan="${esc(p.plan_id)}">✓ &nbsp; Approve</button><button class="reject" data-action="reject" data-plan="${esc(p.plan_id)}">✕ &nbsp; Reject</button>`:`<div class="planMessage">${approvalMode==='ai'?'AI Auto review controls activation':esc((state+execution).replaceAll('_',' '))}</div>`}</div>
+      <div class="planActions">${manualAction?`<button class="reject" data-action="reject" data-plan="${esc(p.plan_id)}">✕ &nbsp; Reject</button><button class="approve" data-action="approve" data-plan="${esc(p.plan_id)}">✓ &nbsp; Approve</button>`:`<div class="planMessage">${approvalMode==='ai'?'AI Auto review controls activation':esc((state+execution).replaceAll('_',' '))}</div>`}</div>
     </article>`;
   }
 
@@ -70,7 +72,7 @@
       <div class="priceGrid"><div class="price"><div class="k">Entry Price</div><div class="v">—</div></div><div class="price"><div class="k">TP Price</div><div class="v">—</div></div><div class="price"><div class="k">SL Price</div><div class="v">—</div></div></div>
       <div class="metrics"><div class="metric"><div class="k">Lot Size</div><div class="v">0.01</div></div><div class="metric"><div class="k">R:R</div><div class="v">—</div></div><div class="metric"><div class="k">TP (Pips | $)</div><div class="v">—</div></div><div class="metric"><div class="k">SL (Pips | $)</div><div class="v">—</div></div></div>
       <div class="planStory"><span class="storyLabel">Thesis</span><p>${rank===0?'Waiting for the next qualified XAUUSD setup.':'Candidate slot reserved for the next Astra scenario.'}</p></div>
-      <div class="planActions"><button class="approve" disabled>✓ &nbsp; Approve</button><button class="reject" disabled>✕ &nbsp; Reject</button></div>
+      <div class="planActions"><button class="reject" disabled>✕ &nbsp; Reject</button><button class="approve" disabled>✓ &nbsp; Approve</button></div>
     </article>`;
   }
 
@@ -109,8 +111,8 @@
   }
 
   function bind(){
-    $('unlockBtn')?.addEventListener('click',ensureApprovalKey); $('manualMode')?.addEventListener('click',()=>setApprovalMode('manual')); $('aiMode')?.addEventListener('click',()=>setApprovalMode('ai'));
-    $('planGrid')?.addEventListener('click',e=>{ const b=e.target.closest('button[data-action]'); if(b) planAction(b.dataset.plan,b.dataset.action); });
+    $('unlockBtn')?.addEventListener('click',e=>{haptic(8);pressFx(e.currentTarget);ensureApprovalKey();}); $('manualMode')?.addEventListener('click',e=>{haptic(8);pressFx(e.currentTarget);setApprovalMode('manual');}); $('aiMode')?.addEventListener('click',e=>{haptic(8);pressFx(e.currentTarget);setApprovalMode('ai');});
+    $('planGrid')?.addEventListener('click',e=>{ const b=e.target.closest('button[data-action]'); if(b){ haptic(b.dataset.action==='approve'?12:[8,24,8]); pressFx(b); planAction(b.dataset.plan,b.dataset.action); } });
     document.querySelectorAll('.charttools button[data-tf]').forEach(b=>b.addEventListener('click',()=>{document.querySelectorAll('.charttools button').forEach(x=>x.classList.toggle('active',x===b));const f=$('marketChart');if(!f)return;const u=new URL(f.src);u.searchParams.set('interval',b.dataset.tf);f.src=u.toString();}));
     renderUnlock();
   }
