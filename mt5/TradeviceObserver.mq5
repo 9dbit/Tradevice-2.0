@@ -1,5 +1,5 @@
 #property strict
-#property version   "0.10"
+#property version   "0.20"
 #property description "Tradevice 2.0 observer bridge. Sends market snapshots only; no order execution."
 
 input string ApiBase = "https://tradevice-api-production.up.railway.app";
@@ -22,6 +22,7 @@ string IsoUtc(datetime t)
 string RatesJson(string symbol, ENUM_TIMEFRAMES timeframe, int count)
 {
    MqlRates rates[];
+   ArraySetAsSeries(rates, false);
    int copied = CopyRates(symbol, timeframe, 1, count, rates);
    if(copied <= 0) return "[]";
 
@@ -30,8 +31,8 @@ string RatesJson(string symbol, ENUM_TIMEFRAMES timeframe, int count)
    {
       if(i > 0) out += ",";
       out += StringFormat(
-         "{\"timestamp\":\"%I64d\",\"open\":%.8f,\"high\":%.8f,\"low\":%.8f,\"close\":%.8f,\"tick_volume\":%I64d}",
-         (long)rates[i].time,
+         "{\"timestamp\":\"%s\",\"open\":%.8f,\"high\":%.8f,\"low\":%.8f,\"close\":%.8f,\"tick_volume\":%I64d}",
+         IsoUtc(rates[i].time),
          rates[i].open,
          rates[i].high,
          rates[i].low,
@@ -60,7 +61,7 @@ bool SendSnapshot()
    string m15 = RatesJson(TradeSymbol, PERIOD_M15, M15Bars);
 
    string payload = StringFormat(
-      "{\"symbol\":\"%s\",\"timeframe\":\"M1\",\"timestamp\":\"%s\",\"bid\":%.8f,\"ask\":%.8f,\"spread_points\":%.2f,\"candles\":%s,\"account\":{\"balance\":%.2f,\"equity\":%.2f,\"margin_free\":%.2f},\"features\":{\"point_size\":%.8f,\"m5_candles\":%s,\"m15_candles\":%s}}",
+      "{\"symbol\":\"%s\",\"timeframe\":\"M1\",\"timestamp\":\"%s\",\"bid\":%.8f,\"ask\":%.8f,\"spread_points\":%.2f,\"candles\":%s,\"account\":{\"balance\":%.2f,\"equity\":%.2f,\"margin_free\":%.2f,\"positions_total\":%d,\"orders_total\":%d},\"features\":{\"bridge_version\":\"0.20\",\"terminal_build\":%d,\"terminal_connected\":%s,\"point_size\":%.8f,\"m5_candles\":%s,\"m15_candles\":%s}}",
       TradeSymbol,
       IsoUtc(TimeGMT()),
       tick.bid,
@@ -70,6 +71,10 @@ bool SendSnapshot()
       AccountInfoDouble(ACCOUNT_BALANCE),
       AccountInfoDouble(ACCOUNT_EQUITY),
       AccountInfoDouble(ACCOUNT_MARGIN_FREE),
+      PositionsTotal(),
+      OrdersTotal(),
+      (int)TerminalInfoInteger(TERMINAL_BUILD),
+      TerminalInfoInteger(TERMINAL_CONNECTED) ? "true" : "false",
       point,
       m5,
       m15
@@ -116,7 +121,7 @@ int OnInit()
 
    EventSetTimer(1);
    lastM1Bar = iTime(TradeSymbol, PERIOD_M1, 0);
-   Print("Tradevice Observer started for ", TradeSymbol, ". Execution is disabled by design.");
+   Print("Tradevice Observer v0.20 started for ", TradeSymbol, ". Execution is disabled by design.");
    return INIT_SUCCEEDED;
 }
 
