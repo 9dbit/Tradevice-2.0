@@ -10,6 +10,7 @@ import { evaluateShadowSnapshot } from './shadow-simulator.js';
 import { aiWorkerEnabled, runAiDecision } from './ai-worker.js';
 import { activatePlanCandidate, rejectPlanCandidate } from './plan-service.js';
 import { mergeBrokerState, brokerStateView, brokerPerformance } from './broker-state.js';
+import { buildOrderPreview } from './order-preview.js';
 
 const app = express();
 const port = Number(process.env.PORT || 3000);
@@ -243,6 +244,17 @@ app.get('/api/v1/broker/performance', async (req, res, next) => {
     const period = String(req.query.period || 'D').toUpperCase();
     const offset = Number(process.env.TRADEVICE_TIMEZONE_OFFSET_MINUTES || 420);
     res.json(brokerPerformance(state, period, offset));
+  } catch (err) { next(err); }
+});
+
+app.get('/api/v1/order-preview', async (_req, res, next) => {
+  try {
+    const [decisions, snapshot, brokerState] = await Promise.all([
+      getRecentDecisions(100),
+      getLatestSnapshot(process.env.TRADEVICE_SYMBOL || 'XAUUSD'),
+      getRuntimeSetting('broker_state', null)
+    ]);
+    res.json({ generated_at: new Date().toISOString(), ...buildOrderPreview(decisions, snapshot, brokerState) });
   } catch (err) { next(err); }
 });
 
