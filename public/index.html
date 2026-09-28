@@ -7,6 +7,7 @@
 <title>Tradevice 2.0 · XAUUSD AI Trading Desk</title>
 <link rel="stylesheet" href="/offering-v2.css?v=5" />
 <link rel="stylesheet" href="/premium-v6.css?v=1" />
+<link rel="stylesheet" href="/premium-v7.css?v=1" />
 </head>
 <body>
 <div class="app"><main class="shell">
@@ -15,7 +16,16 @@
   <div class="topActions"><span class="statusDot" id="servicePill">● CONNECTING</span><a class="iconBtn" href="/workflow/" aria-label="System">⚙</a></div>
 </header>
 <section class="walletCard">
-  <div class="walletMain"><div class="walletEyebrow">Trading wallet</div><div class="walletValue" id="walletEquity">$—</div><div class="walletSub"><span id="walletFloating">Floating $—</span><span class="walletMode">SHADOW</span></div></div>
+  <div class="walletMain">
+    <div class="walletEyebrow">Trading wallet</div>
+    <div class="walletValue" id="walletEquity">$—</div>
+    <div class="walletSub"><span id="walletFloating">Floating $—</span><span class="walletMode">SHADOW</span></div>
+    <div class="walletProfitRow">
+      <div class="walletProfitMeta"><div class="walletProfitLabel" id="walletProfitLabel">Daily Tradevice P/L</div><div class="walletProfitValue" id="walletProfit">+$0.00</div><div class="walletProfitDetail" id="walletProfitDetail">0 closed · 0W/0L</div></div>
+      <div class="periodSwitch" aria-label="Profit period"><button class="active" data-profit-period="D">D</button><button data-profit-period="W">W</button><button data-profit-period="M">M</button></div>
+    </div>
+    <div class="walletActions"><a class="walletAction deposit" href="https://my.exness.com/accounts/sign-in/?lng=id" target="_blank" rel="noopener noreferrer" aria-label="Deposit via Exness Personal Area"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M11 5h2v6h4l-5 5-5-5h4zM5 18h14v2H5z"/></svg><span>Deposit</span></a><a class="walletAction withdraw" href="https://my.exness.com/accounts/sign-in/?lng=id" target="_blank" rel="noopener noreferrer" aria-label="Withdraw via Exness Personal Area"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M11 19h2v-6h4l-5-5-5 5h4zM5 4h14v2H5z"/></svg><span>Withdraw</span></a></div>
+  </div>
   <div class="walletGrid"><div><span>Balance</span><strong id="walletBalance">$—</strong></div><div><span>Free Margin</span><strong id="walletFreeMargin">$—</strong></div><div><span>Positions</span><strong id="walletPositions">0</strong></div><div><span>Orders</span><strong id="walletOrders">0</strong></div></div>
 </section>
 <section class="controlRow">
@@ -49,6 +59,7 @@
 </nav>
 <footer><span>Tradevice 2.0 · Shadow mode</span><span>Live execution locked</span></footer>
 <script src="/premium-v6.js?v=1"></script>
+<script src="/premium-v7.js?v=1"></script>
 </main></div>
 </body>
 </html>
