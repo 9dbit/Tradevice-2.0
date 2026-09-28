@@ -7,6 +7,7 @@ import {
   performanceSummary,
   saveDecision
 } from './store.js';
+import { validateTradeIntent } from './risk.js';
 
 const ShadowDecisionSchema = z.object({
   trade_id: z.string().min(3),
@@ -66,14 +67,29 @@ function buildServer() {
   server.registerTool(
     'submit_shadow_decision',
     {
-      description: 'Journal an AI trade decision in SHADOW mode only. This tool cannot place an MT5 order.',
+      description: 'Journal an AI trade decision in SHADOW mode only. A deterministic risk governor reviews the intent. This tool cannot place an MT5 order.',
       inputSchema: ShadowDecisionSchema
     },
     async input => {
       const decision = ShadowDecisionSchema.parse(input);
-      const saved = await saveDecision({ ...decision, mode: 'shadow' });
+      const snapshot = await getLatestSnapshot('XAUUSD');
+      const risk = validateTradeIntent(decision, snapshot);
+      const saved = await saveDecision({
+        ...decision,
+        mode: 'shadow',
+        context: { ...decision.context, risk_review: risk }
+      });
       return {
-        content: [{ type: 'text', text: JSON.stringify({ accepted: true, execution_enabled: false, decision: saved }) }]
+        content: [{
+          type: 'text',
+          text: JSON.stringify({
+            accepted: true,
+            execution_enabled: false,
+            risk_approved: risk.approved,
+            risk_reasons: risk.reasons,
+            decision: saved
+          })
+        }]
       };
     }
   );
