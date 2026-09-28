@@ -57,6 +57,9 @@ export function storeDriver() {
   return pool ? 'postgres' : 'memory';
 }
 
+// Internal database access for the separate demo audit journal. Never exposed over HTTP.
+export function getDatabasePool() { return pool; }
+
 export async function saveSnapshot(snapshot) {
   if (!pool) {
     memory.snapshots.unshift(snapshot);

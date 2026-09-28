@@ -4,6 +4,7 @@ import { saveDecision, getRecentDecisions } from './store.js';
 import { validateTradeIntent } from './risk.js';
 import { reviewPendingDecision } from './review-agent.js';
 import { extractMarketFeatures, prefilterSnapshot, PIPELINE_VERSIONS } from './market-features.js';
+import { activeDemoPlans } from './demo-execution.js';
 
 let client = null;
 const inFlight = new Set();
@@ -24,11 +25,16 @@ const decisionSchema = {
     confidence: { type: 'number', minimum: 0, maximum: 1 },
     reason_codes: { type: 'array', items: { type: 'string' }, maxItems: 12 },
     thesis: { type: 'string' },
-    invalidation: { type: 'string' }
+    invalidation: { type: 'string' },
+    pending_trigger: { anyOf: [{ type: 'string', enum: ['PRICE_TOUCH', 'WAIT_FOR_CONFIRMATION'] }, { type: 'null' }] },
+    invalidation_price: { anyOf: [{ type: 'number' }, { type: 'null' }] },
+    invalidation_operator: { anyOf: [{ type: 'string', enum: ['ABOVE', 'BELOW'] }, { type: 'null' }] },
+    cancel_trade_id: { anyOf: [{ type: 'string' }, { type: 'null' }] }
   },
   required: [
     'decision', 'side', 'order_type', 'setup', 'regime', 'entry', 'stop_loss',
-    'take_profit', 'expiration_candles', 'confidence', 'reason_codes', 'thesis', 'invalidation'
+    'take_profit', 'expiration_candles', 'confidence', 'reason_codes', 'thesis', 'invalidation',
+    'pending_trigger', 'invalidation_price', 'invalidation_operator', 'cancel_trade_id'
   ]
 };
 
@@ -128,17 +134,19 @@ export async function runAiDecision(snapshot) {
   const model = process.env.AI_MODEL || 'UNCONFIGURED';
   const marketFeatures = extractMarketFeatures(snapshot);
   const prefilter = prefilterSnapshot(snapshot, marketFeatures);
+  const activePending = await activeDemoPlans();
   const decisionKey = snapshotDecisionKey(snapshot, model);
 
   const existing = await alreadyProcessed(decisionKey);
   if (existing) return { skipped: 'DUPLICATE_SNAPSHOT', trade_id: existing.trade_id, decision_key: decisionKey };
   if (inFlight.has(decisionKey)) return { skipped: 'IN_FLIGHT_DUPLICATE', decision_key: decisionKey };
-  if (!prefilter.should_call_ai) return savePrefilterWait(snapshot, model, decisionKey, prefilter);
+  if (!prefilter.should_call_ai && activePending.length === 0) return savePrefilterWait(snapshot, model, decisionKey, prefilter);
 
   inFlight.add(decisionKey);
   try {
     const openai = getClient();
     const market = compactSnapshot(snapshot, marketFeatures);
+    market.active_demo_pending = activePending;
 
     const response = await openai.responses.create({
       model,
@@ -151,6 +159,11 @@ export async function runAiDecision(snapshot) {
         'Prefer pending orders. Do not choose lot size or monetary risk.',
         'For PLACE_PENDING, entry, stop_loss, take_profit, side, order_type, setup and expiration_candles must be non-null.',
         'For WAIT, use null for fields that do not apply.',
+        'A separately enabled DEMO executor may use approved PLACE_PENDING decisions with confidence strictly above 0.80. Never inflate confidence to reach this threshold; confidence is not a calibrated win probability.',
+        'Set pending_trigger=PRICE_TOUCH only when all confirmation conditions have ALREADY occurred and the broker may execute on price touch. If waiting for rejection, candle close or another confirmation, choose WAIT and WAIT_FOR_CONFIRMATION.',
+        'For PLACE_PENDING supply a numeric invalidation_price and invalidation_operator. SELL invalidation must be ABOVE entry and at or below SL; BUY invalidation must be BELOW entry and at or above SL.',
+        'Review each active_demo_pending against the fresh market. If its scenario no longer holds, choose CANCEL and set cancel_trade_id to that exact existing trade_id. A WAIT alone does not cancel an existing pending order.',
+        'While an active demo pending exists, prioritize monitoring or targeted cancellation; do not propose a replacement or close a filled position.',
         'Stop loss must represent structural invalidation, not an arbitrary fixed distance.',
         'Avoid a setup when spread, structure, volatility, or reward/risk makes the edge unclear.',
         'Return only the structured decision.'
@@ -188,6 +201,9 @@ export async function runAiDecision(snapshot) {
         market_features: marketFeatures,
         thesis: parsed.thesis,
         invalidation: parsed.invalidation,
+        pending_trigger: parsed.pending_trigger,
+        scenario_guard: { operator: parsed.invalidation_operator, price: parsed.invalidation_price },
+        cancel_trade_id: parsed.cancel_trade_id,
         risk_review: risk,
         review_agent: review
       }
@@ -195,6 +211,10 @@ export async function runAiDecision(snapshot) {
 
     delete decision.thesis;
     delete decision.invalidation;
+    delete decision.pending_trigger;
+    delete decision.invalidation_price;
+    delete decision.invalidation_operator;
+    delete decision.cancel_trade_id;
     await saveDecision(decision);
 
     return {
