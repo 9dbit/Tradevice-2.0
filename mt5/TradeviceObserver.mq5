@@ -1,5 +1,5 @@
 #property strict
-#property version   "0.210"
+#property version   "0.220"
 #property description "Tradevice 2.0 observer bridge. Sends market snapshots only; no order execution."
 
 input string ApiBase = "https://tradevice-api-production.up.railway.app";
@@ -10,9 +10,12 @@ input int M1Bars = 60;
 input int M5Bars = 36;
 input int M15Bars = 16;
 input int RequestTimeoutMs = 5000;
+input int RetrySeconds = 10;
 
 static datetime lastM1Bar = 0;
+static datetime lastRetryAttempt = 0;
 static string resolvedSymbol = "";
+static bool snapshotChannelReady = false;
 
 string IsoUtc(datetime t)
 {
@@ -31,16 +34,10 @@ bool TrySymbol(string symbol)
 
 bool ResolveBrokerSymbol()
 {
-   // Best choice: the chart where the observer is attached.
    if(StringFind(_Symbol, CanonicalSymbol) >= 0 && TrySymbol(_Symbol)) return true;
-
-   // Explicit override, if supplied.
    if(StringLen(TradeSymbol) > 0 && TrySymbol(TradeSymbol)) return true;
-
-   // Exact canonical symbol, for brokers that do not use suffixes.
    if(TrySymbol(CanonicalSymbol)) return true;
 
-   // Search every broker symbol for XAUUSD variants such as XAUUSDm / XAUUSD.a.
    int total = SymbolsTotal(false);
    for(int i = 0; i < total; i++)
    {
@@ -99,7 +96,7 @@ bool SendSnapshot()
    string m15 = RatesJson(resolvedSymbol, PERIOD_M15, M15Bars);
 
    string payload = StringFormat(
-      "{\"symbol\":\"%s\",\"timeframe\":\"M1\",\"timestamp\":\"%s\",\"bid\":%.8f,\"ask\":%.8f,\"spread_points\":%.2f,\"candles\":%s,\"account\":{\"balance\":%.2f,\"equity\":%.2f,\"margin_free\":%.2f,\"positions_total\":%d,\"orders_total\":%d},\"features\":{\"bridge_version\":\"0.210\",\"broker_symbol\":\"%s\",\"terminal_build\":%d,\"terminal_connected\":%s,\"point_size\":%.8f,\"m5_candles\":%s,\"m15_candles\":%s}}",
+      "{\"symbol\":\"%s\",\"timeframe\":\"M1\",\"timestamp\":\"%s\",\"bid\":%.8f,\"ask\":%.8f,\"spread_points\":%.2f,\"candles\":%s,\"account\":{\"balance\":%.2f,\"equity\":%.2f,\"margin_free\":%.2f,\"positions_total\":%d,\"orders_total\":%d},\"features\":{\"bridge_version\":\"0.220\",\"broker_symbol\":\"%s\",\"terminal_build\":%d,\"terminal_connected\":%s,\"point_size\":%.8f,\"m5_candles\":%s,\"m15_candles\":%s}}",
       CanonicalSymbol,
       IsoUtc(TimeGMT()),
       tick.bid,
@@ -128,6 +125,8 @@ bool SendSnapshot()
    string headers = "Content-Type: application/json\r\n";
    if(StringLen(ApiKey) > 0)
       headers += "Authorization: Bearer " + ApiKey + "\r\n";
+   else
+      Print("Tradevice warning: ApiKey is blank. Protected Railway endpoint will reject the snapshot.");
 
    string url = ApiBase + "/api/v1/market/snapshots";
    ResetLastError();
@@ -160,7 +159,15 @@ int OnInit()
 
    EventSetTimer(1);
    lastM1Bar = iTime(resolvedSymbol, PERIOD_M1, 0);
-   Print("Tradevice Observer v0.210 started. Broker symbol=", resolvedSymbol, ", canonical=", CanonicalSymbol, ". Execution is disabled by design.");
+   Print("Tradevice Observer v0.220 started. Broker symbol=", resolvedSymbol, ", canonical=", CanonicalSymbol, ". Execution is disabled by design.");
+
+   lastRetryAttempt = TimeCurrent();
+   snapshotChannelReady = SendSnapshot();
+   if(!snapshotChannelReady)
+      Print("Tradevice: initial snapshot failed. Will retry every ", RetrySeconds, " seconds until the bridge is connected.");
+   else
+      Print("Tradevice: bridge CONNECTED. Future snapshots will be sent on each new M1 bar.");
+
    return INIT_SUCCEEDED;
 }
 
@@ -171,9 +178,32 @@ void OnDeinit(const int reason)
 
 void OnTimer()
 {
+   datetime now = TimeCurrent();
+
+   if(!snapshotChannelReady)
+   {
+      int retry = MathMax(2, RetrySeconds);
+      if((now - lastRetryAttempt) >= retry)
+      {
+         lastRetryAttempt = now;
+         snapshotChannelReady = SendSnapshot();
+         if(snapshotChannelReady)
+         {
+            lastM1Bar = iTime(resolvedSymbol, PERIOD_M1, 0);
+            Print("Tradevice: bridge CONNECTED after retry.");
+         }
+      }
+      return;
+   }
+
    datetime currentM1Bar = iTime(resolvedSymbol, PERIOD_M1, 0);
    if(currentM1Bar <= 0 || currentM1Bar == lastM1Bar) return;
 
    lastM1Bar = currentM1Bar;
-   SendSnapshot();
+   if(!SendSnapshot())
+   {
+      snapshotChannelReady = false;
+      lastRetryAttempt = now;
+      Print("Tradevice: bridge became unavailable. Retry mode enabled.");
+   }
 }
