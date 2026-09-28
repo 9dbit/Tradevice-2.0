@@ -5,126 +5,178 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Tradevice 2.0</title>
   <style>
-    :root{--bg:#080b10;--panel:#10151d;--panel2:#151c26;--line:#263141;--text:#f3f7fb;--muted:#8e9bac;--green:#7bf0a7;--amber:#ffd27a;--blue:#79b8ff;--red:#ff8f8f}
-    *{box-sizing:border-box} body{margin:0;background:radial-gradient(circle at 20% 0%,#101b26 0,#080b10 42%);color:var(--text);font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;min-height:100vh}
-    .wrap{max-width:1220px;margin:0 auto;padding:28px 22px 54px}.top{display:flex;justify-content:space-between;gap:20px;align-items:center;margin-bottom:28px}.brand{display:flex;align-items:center;gap:13px}.logo{width:42px;height:42px;border-radius:12px;background:linear-gradient(145deg,#90ffc0,#2a8f61);box-shadow:0 0 30px rgba(123,240,167,.14);position:relative}.logo:after{content:"";position:absolute;inset:10px;border:2px solid #06120c;border-top-color:transparent;transform:rotate(45deg);border-radius:5px}.brand h1{font-size:19px;margin:0}.brand p{margin:2px 0 0;color:var(--muted);font-size:12px}.pill{padding:8px 12px;border-radius:999px;border:1px solid var(--line);font-size:12px;color:var(--muted);background:rgba(255,255,255,.025)}.pill.live{color:var(--green);border-color:rgba(123,240,167,.28)}
-    .hero{display:grid;grid-template-columns:1.6fr .9fr;gap:18px;margin-bottom:18px}.card{background:linear-gradient(180deg,rgba(19,26,36,.94),rgba(13,18,25,.94));border:1px solid var(--line);border-radius:18px;padding:20px;box-shadow:0 18px 60px rgba(0,0,0,.22)}.headline{font-size:34px;line-height:1.08;margin:6px 0 12px;letter-spacing:-.035em}.sub{color:var(--muted);max-width:680px;line-height:1.6;font-size:14px}.mode{display:inline-flex;gap:8px;align-items:center;color:var(--amber);font-size:12px;font-weight:700;letter-spacing:.08em}.dot{width:7px;height:7px;border-radius:50%;background:currentColor;box-shadow:0 0 15px currentColor}.rightMetric{display:grid;gap:12px}.big{font-size:30px;font-weight:760;letter-spacing:-.03em}.label{font-size:11px;text-transform:uppercase;letter-spacing:.12em;color:var(--muted);margin-bottom:7px}.line{height:1px;background:var(--line);margin:14px 0}.actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:18px}.btn{display:inline-flex;align-items:center;gap:8px;padding:10px 14px;border-radius:11px;border:1px solid var(--line);background:#141c26;color:var(--text);text-decoration:none;font-size:12px;font-weight:700}.btn.primary{background:#75e7a0;color:#07110b;border-color:#75e7a0}.btn:hover{filter:brightness(1.06)}
-    .grid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:18px}.metric{min-height:126px}.value{font-size:22px;font-weight:700;margin-top:12px}.mini{font-size:12px;color:var(--muted);margin-top:6px;line-height:1.45}.ok{color:var(--green)}.warn{color:var(--amber)}.off{color:var(--muted)}.bad{color:var(--red)}
-    .marketGrid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-top:14px}.marketBox{border:1px solid var(--line);border-radius:13px;padding:14px;background:rgba(255,255,255,.022)}.marketBox .mVal{font-size:19px;font-weight:720;margin-top:5px}.lower{display:grid;grid-template-columns:1.15fr .85fr;gap:18px}.flow{display:grid;grid-template-columns:repeat(5,1fr);gap:9px;align-items:stretch;margin-top:18px}.node{padding:13px 10px;border:1px solid var(--line);border-radius:13px;background:rgba(255,255,255,.025);font-size:12px;min-height:76px}.node b{display:block;font-size:12px;margin-bottom:5px}.node span{color:var(--muted);font-size:11px;line-height:1.4}.table{width:100%;border-collapse:collapse;margin-top:12px}.table td{padding:11px 0;border-bottom:1px solid var(--line);font-size:12px}.table td:last-child{text-align:right;color:var(--muted)}.footer{margin-top:18px;color:#687688;font-size:11px;text-align:center}
-    @media(max-width:900px){.hero,.lower{grid-template-columns:1fr}.grid,.marketGrid{grid-template-columns:repeat(2,1fr)}.flow{grid-template-columns:1fr 1fr}.headline{font-size:29px}}@media(max-width:560px){.wrap{padding:18px 14px 40px}.top{align-items:flex-start}.grid,.marketGrid{grid-template-columns:1fr}.flow{grid-template-columns:1fr}.headline{font-size:26px}.pill{display:none}}
+    :root{
+      --bg:#07110c;--surface:#0b1710;--surface2:#0f1f16;--surface3:#13281c;
+      --line:#1d3a29;--line2:#285038;--text:#f4fff7;--muted:#86a590;
+      --green:#53f28f;--green2:#27c86a;--green3:#b7ffd1;--amber:#ffd875;--red:#ff8b8b;
+    }
+    *{box-sizing:border-box}
+    html,body{margin:0;min-height:100%;background:var(--bg);color:var(--text)}
+    body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}
+    a{color:inherit}
+    .app{min-height:100vh;display:grid;grid-template-rows:auto auto 1fr auto;padding:18px;gap:14px;background:
+      radial-gradient(circle at 15% -10%,rgba(83,242,143,.11),transparent 30%),
+      linear-gradient(180deg,#08130d 0%,#061009 100%)}
+    .panel{border:1px solid var(--line);background:rgba(11,23,16,.9);border-radius:16px}
+    .header{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:13px 15px}
+    .brand{display:flex;align-items:center;gap:11px;min-width:0}.mark{width:34px;height:34px;border-radius:10px;background:var(--green);position:relative;box-shadow:0 0 26px rgba(83,242,143,.18)}
+    .mark:before,.mark:after{content:"";position:absolute;background:#07110c;border-radius:2px}.mark:before{width:15px;height:3px;left:9px;top:10px;transform:rotate(38deg)}.mark:after{width:15px;height:3px;left:10px;top:20px;transform:rotate(-38deg)}
+    .brandText{min-width:0}.brandText h1{margin:0;font-size:17px;letter-spacing:-.02em}.brandText p{margin:2px 0 0;color:var(--muted);font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .headerRight{display:flex;gap:8px;align-items:center;flex-wrap:wrap;justify-content:flex-end}.chip{display:inline-flex;align-items:center;gap:7px;border:1px solid var(--line);background:#0d1b13;color:var(--muted);padding:7px 10px;border-radius:999px;font-size:11px;font-weight:650}.chip strong{color:var(--text)}.chip.live{color:var(--green);border-color:rgba(83,242,143,.35)}.dot{width:7px;height:7px;border-radius:50%;background:currentColor;box-shadow:0 0 12px currentColor}
+    .summary{display:grid;grid-template-columns:1.35fr repeat(4,minmax(120px,.65fr));overflow:hidden}.hero{padding:17px 18px;border-right:1px solid var(--line);display:flex;flex-direction:column;justify-content:center}.eyebrow{font-size:10px;text-transform:uppercase;letter-spacing:.13em;color:var(--green);font-weight:800}.hero h2{font-size:26px;line-height:1.05;letter-spacing:-.04em;margin:7px 0 6px}.hero p{margin:0;color:var(--muted);font-size:12px;line-height:1.45;max-width:580px}
+    .metric{padding:15px;border-right:1px solid var(--line);display:flex;flex-direction:column;justify-content:center}.metric:last-child{border-right:0}.label{font-size:9px;text-transform:uppercase;letter-spacing:.12em;color:var(--muted);font-weight:750}.value{font-size:18px;font-weight:760;letter-spacing:-.025em;margin-top:7px}.sub{font-size:10px;color:var(--muted);margin-top:4px;line-height:1.35}.ok{color:var(--green)}.warn{color:var(--amber)}.bad{color:var(--red)}.off{color:#718479}
+    .workspace{display:grid;grid-template-columns:minmax(0,1.6fr) minmax(310px,.72fr);gap:14px;min-height:0}.main{display:grid;grid-template-rows:auto 1fr;min-height:0;overflow:hidden}.sectionHead{display:flex;justify-content:space-between;align-items:center;padding:13px 15px;border-bottom:1px solid var(--line);gap:10px}.sectionTitle{font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.12em;color:var(--green3)}.sectionMeta{font-size:10px;color:var(--muted)}
+    .pipeline{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:0;padding:14px 14px 12px}.stage{position:relative;padding:13px 13px 12px 15px;border:1px solid var(--line);background:#0b1810;min-height:110px}.stage:first-child{border-radius:12px 0 0 12px}.stage:last-child{border-radius:0 12px 12px 0}.stage:not(:last-child){border-right:0}.stage:not(:last-child):after{content:"›";position:absolute;right:-8px;top:50%;transform:translateY(-50%);z-index:2;width:16px;height:25px;display:grid;place-items:center;color:var(--green);font-size:20px;background:var(--bg)}.stageNum{font-size:9px;color:var(--green);font-weight:800;letter-spacing:.1em}.stage b{display:block;font-size:12px;margin:8px 0 5px}.stage span{font-size:10px;line-height:1.45;color:var(--muted)}
+    .marketArea{display:grid;grid-template-columns:1.1fr .9fr;border-top:1px solid var(--line);min-height:0}.marketPane{padding:14px;border-right:1px solid var(--line);display:grid;grid-template-rows:auto 1fr;min-height:0}.priceGrid{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-top:12px;align-content:start}.priceBox{border:1px solid var(--line);background:#0c1a12;border-radius:12px;padding:14px}.priceBox .p{font-size:24px;font-weight:780;letter-spacing:-.03em;margin-top:5px}.priceBox .s{font-size:10px;color:var(--muted);margin-top:3px}.feedBanner{margin-top:10px;border:1px solid var(--line2);background:rgba(83,242,143,.035);border-radius:12px;padding:12px;display:flex;justify-content:space-between;gap:12px;align-items:center}.feedState{font-size:12px;font-weight:750}.feedNote{font-size:10px;color:var(--muted);margin-top:3px}.actions{display:flex;gap:8px;flex-wrap:wrap}.btn{display:inline-flex;align-items:center;justify-content:center;text-decoration:none;border:1px solid var(--line2);background:#102319;color:var(--text);padding:8px 10px;border-radius:9px;font-size:10px;font-weight:760}.btn.primary{background:var(--green);border-color:var(--green);color:#061009}.btn:hover{filter:brightness(1.05)}
+    .runtime{padding:14px;min-height:0}.runtimeGrid{display:grid;grid-template-columns:1fr 1fr;gap:1px;background:var(--line);border:1px solid var(--line);border-radius:12px;overflow:hidden;margin-top:12px}.runtimeItem{background:#0b1810;padding:11px}.runtimeItem span{display:block;font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:.1em}.runtimeItem strong{display:block;margin-top:5px;font-size:12px;font-weight:720}
+    .side{display:grid;grid-template-rows:auto 1fr;min-height:0;overflow:hidden}.researchTop{padding:15px;border-bottom:1px solid var(--line)}.researchTop h3{font-size:17px;margin:4px 0 5px;letter-spacing:-.025em}.researchTop p{font-size:10px;color:var(--muted);line-height:1.5;margin:0}.researchStats{display:grid;grid-template-columns:1fr 1fr;gap:1px;background:var(--line);border-bottom:1px solid var(--line)}.researchStat{background:#0b1810;padding:14px}.researchStat .n{font-size:20px;font-weight:780;letter-spacing:-.03em;margin-top:5px}.researchStat .t{font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:.1em}.researchBody{padding:14px;display:flex;flex-direction:column;gap:10px;min-height:0}.gate{border:1px solid var(--line);border-radius:11px;padding:11px 12px;background:#0b1810;display:flex;justify-content:space-between;align-items:center;gap:10px}.gate b{font-size:11px}.gate span{font-size:9px;color:var(--muted)}.state{font-size:9px;padding:5px 7px;border:1px solid var(--line2);border-radius:999px;color:var(--muted);white-space:nowrap}.state.green{color:var(--green);border-color:rgba(83,242,143,.32)}
+    .footer{display:flex;justify-content:space-between;align-items:center;color:#587060;font-size:9px;padding:0 3px;gap:12px}.footer strong{color:#75917e;font-weight:650}
+    @media(max-width:1050px){.summary{grid-template-columns:1.2fr repeat(2,1fr)}.hero{grid-row:span 2}.metric:nth-child(3){border-right:0}.metric:nth-child(4),.metric:nth-child(5){border-top:1px solid var(--line)}.workspace{grid-template-columns:1fr}.side{min-height:340px}.pipeline{grid-template-columns:1fr}.stage{border:1px solid var(--line)!important;border-radius:0!important;min-height:auto}.stage:first-child{border-radius:12px 12px 0 0!important}.stage:last-child{border-radius:0 0 12px 12px!important}.stage:not(:last-child):after{content:"↓";right:auto;left:50%;top:auto;bottom:-13px;transform:translateX(-50%);width:26px;height:20px}}
+    @media(max-width:720px){.app{padding:10px;gap:10px}.header{align-items:flex-start}.headerRight{max-width:48%}.summary{grid-template-columns:1fr 1fr}.hero{grid-column:1/-1;grid-row:auto;border-right:0;border-bottom:1px solid var(--line)}.metric:nth-child(n){border-top:0}.metric:nth-child(even){border-right:0}.metric:nth-child(4),.metric:nth-child(5){border-top:1px solid var(--line)}.marketArea{grid-template-columns:1fr}.marketPane{border-right:0;border-bottom:1px solid var(--line)}.priceGrid{grid-template-columns:1fr 1fr}.feedBanner{align-items:flex-start;flex-direction:column}.footer{flex-direction:column;align-items:flex-start}}
+    @media(max-width:460px){.summary{grid-template-columns:1fr}.hero,.metric{border-right:0!important;border-bottom:1px solid var(--line)}.metric:last-child{border-bottom:0}.headerRight .chip:not(.live){display:none}.priceGrid,.runtimeGrid,.researchStats{grid-template-columns:1fr}.hero h2{font-size:23px}}
   </style>
 </head>
 <body>
-<div class="wrap">
-  <div class="top">
-    <div class="brand"><div class="logo"></div><div><h1>Tradevice 2.0</h1><p>XAUUSD AI Trading Research Platform</p></div></div>
-    <div class="pill live" id="servicePill">● CONNECTING</div>
-  </div>
+<div class="app">
+  <header class="panel header">
+    <div class="brand"><div class="mark"></div><div class="brandText"><h1>Tradevice 2.0</h1><p>XAUUSD AI Research & Execution Control</p></div></div>
+    <div class="headerRight">
+      <div class="chip"><span>MODE</span><strong>SHADOW</strong></div>
+      <div class="chip"><span>LIVE ORDERS</span><strong>LOCKED</strong></div>
+      <div class="chip live" id="servicePill"><span class="dot"></span> CONNECTING</div>
+    </div>
+  </header>
 
-  <section class="hero">
-    <div class="card">
-      <div class="mode"><span class="dot"></span> P0/P1 · OBSERVER + SHADOW AI</div>
-      <div class="headline">AI analysis first.<br/>Execution later.</div>
-      <div class="sub">Tradevice observes XAUUSD M1 with M5/M15 context, generates structured trade ideas, passes them through deterministic risk checks, and simulates the result before any live execution is allowed.</div>
-      <div class="actions">
-        <a class="btn primary" href="/downloads/TradeviceObserver.mq5">↓ Download MT5 Observer</a>
-        <a class="btn" href="/api/v1/dashboard" target="_blank" rel="noopener">View Feed JSON</a>
+  <section class="panel summary">
+    <div class="hero">
+      <div class="eyebrow">End-to-end trading intelligence</div>
+      <h2>Observe. Decide. Validate. Learn.</h2>
+      <p>One control screen for the full Tradevice pipeline, from MT5 market intake through AI shadow decisions, deterministic risk validation, simulated outcomes, and research review.</p>
+    </div>
+    <div class="metric"><div class="label">API</div><div class="value" id="apiStatus">CHECKING</div><div class="sub" id="apiNote">Railway production</div></div>
+    <div class="metric"><div class="label">Database</div><div class="value" id="storeStatus">—</div><div class="sub">Persistent journal</div></div>
+    <div class="metric"><div class="label">MT5 Feed</div><div class="value" id="marketStatus">WAITING</div><div class="sub" id="marketNote">Awaiting observer</div></div>
+    <div class="metric"><div class="label">AI Worker</div><div class="value" id="aiStatus">OFF</div><div class="sub" id="aiModel">Structured decision engine</div></div>
+  </section>
+
+  <section class="workspace">
+    <div class="panel main">
+      <div>
+        <div class="sectionHead"><div class="sectionTitle">Live Decision Pipeline</div><div class="sectionMeta">P0/P1 · Observer + Shadow AI</div></div>
+        <div class="pipeline">
+          <div class="stage"><div class="stageNum">01 · INPUT</div><b>MT5 Observer</b><span>M1 execution context<br>M5 / M15 market structure<br>Bid · Ask · Spread</span></div>
+          <div class="stage"><div class="stageNum">02 · THINK</div><b>AI Brain</b><span>WAIT / pending order<br>Setup + market regime<br>Structured thesis</span></div>
+          <div class="stage"><div class="stageNum">03 · GUARD</div><b>Risk Governor</b><span>Spread ceiling<br>RR validation<br>SL / TP structure</span></div>
+          <div class="stage"><div class="stageNum">04 · SIMULATE</div><b>Shadow Engine</b><span>Pending fill / expiry<br>MFE · MAE tracking<br>TP / SL outcome</span></div>
+          <div class="stage"><div class="stageNum">05 · LEARN</div><b>Research Loop</b><span>20 quick review<br>100 deep review<br>Candidate strategy</span></div>
+        </div>
+      </div>
+
+      <div class="marketArea">
+        <div class="marketPane">
+          <div>
+            <div class="sectionTitle">Live XAUUSD Feed</div>
+            <div class="priceGrid">
+              <div class="priceBox"><div class="label">Bid</div><div class="p" id="bid">—</div><div class="s">Current market bid</div></div>
+              <div class="priceBox"><div class="label">Ask</div><div class="p" id="ask">—</div><div class="s">Current market ask</div></div>
+              <div class="priceBox"><div class="label">Spread</div><div class="p" id="spread">—</div><div class="s">Risk governor input</div></div>
+              <div class="priceBox"><div class="label">Bridge</div><div class="p" id="bridge">—</div><div class="s">Observer version</div></div>
+            </div>
+          </div>
+          <div class="feedBanner">
+            <div><div class="feedState" id="feedState">MT5 FEED WAITING</div><div class="feedNote" id="feedNote">Attach TradeviceObserver.mq5 to XAUUSD M1</div></div>
+            <div class="actions"><a class="btn primary" href="/downloads/TradeviceObserver.mq5">Download MT5 Observer</a><a class="btn" href="/api/v1/dashboard" target="_blank" rel="noopener">Feed JSON</a></div>
+          </div>
+        </div>
+
+        <div class="runtime">
+          <div class="sectionTitle">Runtime Configuration</div>
+          <div class="runtimeGrid">
+            <div class="runtimeItem"><span>Symbol</span><strong id="symbol">XAUUSD</strong></div>
+            <div class="runtimeItem"><span>Execution TF</span><strong id="tf">M1</strong></div>
+            <div class="runtimeItem"><span>Context</span><strong id="context">M5 · M15</strong></div>
+            <div class="runtimeItem"><span>Mode</span><strong id="mode">shadow</strong></div>
+            <div class="runtimeItem"><span>Execution</span><strong id="execution">false</strong></div>
+            <div class="runtimeItem"><span>Store</span><strong id="runtimeStore">—</strong></div>
+          </div>
+        </div>
       </div>
     </div>
-    <div class="card rightMetric">
-      <div><div class="label">Execution</div><div class="big warn">SHADOW ONLY</div></div>
-      <div class="line"></div>
-      <div><div class="label">Live order access</div><div class="big off" style="font-size:22px">DISABLED</div></div>
-    </div>
-  </section>
 
-  <section class="grid">
-    <div class="card metric"><div class="label">API Service</div><div class="value" id="apiStatus">Checking…</div><div class="mini" id="apiNote">Railway production</div></div>
-    <div class="card metric"><div class="label">Data Store</div><div class="value" id="storeStatus">—</div><div class="mini">Persistent Postgres required before research dataset collection</div></div>
-    <div class="card metric"><div class="label">AI Decision Worker</div><div class="value" id="aiStatus">—</div><div class="mini" id="aiModel">Structured output engine</div></div>
-    <div class="card metric"><div class="label">MT5 Market Feed</div><div class="value" id="marketStatus">WAITING</div><div class="mini" id="marketNote">Attach TradeviceObserver.mq5 to XAUUSD M1</div></div>
-  </section>
-
-  <section class="card" style="margin-bottom:18px">
-    <div class="label">Live Feed Telemetry</div>
-    <div class="marketGrid">
-      <div class="marketBox"><div class="label">Bid</div><div class="mVal" id="bid">—</div></div>
-      <div class="marketBox"><div class="label">Ask</div><div class="mVal" id="ask">—</div></div>
-      <div class="marketBox"><div class="label">Spread</div><div class="mVal" id="spread">—</div></div>
-      <div class="marketBox"><div class="label">Bridge</div><div class="mVal" id="bridge">—</div></div>
-    </div>
-  </section>
-
-  <section class="lower">
-    <div class="card">
-      <div class="label">Decision Pipeline</div>
-      <div class="flow">
-        <div class="node"><b>MT5 Observer</b><span>M1/M5/M15<br/>Bid · Ask · Spread</span></div>
-        <div class="node"><b>AI Brain</b><span>WAIT / Pending<br/>Setup + regime</span></div>
-        <div class="node"><b>Risk Governor</b><span>Spread · RR<br/>SL/TP structure</span></div>
-        <div class="node"><b>Shadow Simulator</b><span>Fill · expiry<br/>MFE · MAE</span></div>
-        <div class="node"><b>Research Loop</b><span>20 / 50 / 100<br/>trade review</span></div>
+    <aside class="panel side">
+      <div class="researchTop"><div class="eyebrow">Research Console</div><h3>Shadow performance</h3><p>Tradevice keeps production execution locked while building an inspectable research sample.</p></div>
+      <div>
+        <div class="researchStats">
+          <div class="researchStat"><div class="t">Closed trades</div><div class="n" id="closedTrades">0</div></div>
+          <div class="researchStat"><div class="t">Win rate</div><div class="n" id="winRate">—</div></div>
+          <div class="researchStat"><div class="t">Expectancy</div><div class="n" id="expectancy">—</div></div>
+          <div class="researchStat"><div class="t">Profit factor</div><div class="n" id="profitFactor">—</div></div>
+        </div>
+        <div class="researchBody">
+          <div class="gate"><div><b>Infrastructure</b><br><span>API + PostgreSQL persistence</span></div><div class="state green" id="infraGate">READY</div></div>
+          <div class="gate"><div><b>Market intake</b><br><span>MT5 observer heartbeat</span></div><div class="state" id="feedGate">WAITING</div></div>
+          <div class="gate"><div><b>AI shadow decisions</b><br><span>Structured decision worker</span></div><div class="state" id="aiGate">OFF</div></div>
+          <div class="gate"><div><b>Live execution</b><br><span>Separate approval gate</span></div><div class="state">LOCKED</div></div>
+        </div>
       </div>
-    </div>
-    <div class="card">
-      <div class="label">Runtime Configuration</div>
-      <table class="table">
-        <tr><td>Symbol</td><td id="symbol">XAUUSD</td></tr>
-        <tr><td>Execution timeframe</td><td id="tf">M1</td></tr>
-        <tr><td>Context</td><td id="context">M5 · M15</td></tr>
-        <tr><td>Trading mode</td><td id="mode">shadow</td></tr>
-        <tr><td>Execution enabled</td><td id="execution">false</td></tr>
-        <tr><td>Closed shadow trades</td><td id="closedTrades">0</td></tr>
-      </table>
-    </div>
+    </aside>
   </section>
-  <div class="footer">Tradevice 2.0 · research environment · live execution intentionally locked</div>
+
+  <footer class="footer"><span><strong>Tradevice 2.0</strong> · research environment</span><span>Live order execution intentionally disabled</span></footer>
 </div>
 <script>
 function fmt(n,d=3){return typeof n==='number'&&Number.isFinite(n)?n.toFixed(d):'—'}
+function pct(n){return typeof n==='number'&&Number.isFinite(n)?(n*100).toFixed(1)+'%':'—'}
 async function boot(){
   try{
-    const [health,status,d] = await Promise.all([
+    const [health,status,d]=await Promise.all([
       fetch('/health',{cache:'no-store'}).then(r=>r.json()),
       fetch('/api/v1/status',{cache:'no-store'}).then(r=>r.json()),
       fetch('/api/v1/dashboard',{cache:'no-store'}).then(r=>r.json())
     ]);
-    document.getElementById('servicePill').textContent='● ONLINE';
-    document.getElementById('apiStatus').textContent='ONLINE'; document.getElementById('apiStatus').className='value ok';
-    document.getElementById('apiNote').textContent='Railway production · '+health.mode;
-    document.getElementById('storeStatus').textContent=(status.store||'unknown').toUpperCase();
-    document.getElementById('storeStatus').className='value '+(status.store==='postgres'?'ok':'warn');
-    document.getElementById('aiStatus').textContent=status.ai_decision_enabled?'ENABLED':'OFF';
-    document.getElementById('aiStatus').className='value '+(status.ai_decision_enabled?'ok':'off');
-    document.getElementById('aiModel').textContent=status.ai_model||'Structured output engine';
+    const online=document.getElementById('servicePill'); online.innerHTML='<span class="dot"></span> ONLINE'; online.className='chip live';
+    const api=document.getElementById('apiStatus'); api.textContent='ONLINE'; api.className='value ok';
+    document.getElementById('apiNote').textContent='Railway · '+health.mode;
+    const store=(status.store||'unknown').toUpperCase();
+    const storeEl=document.getElementById('storeStatus'); storeEl.textContent=store; storeEl.className='value '+(status.store==='postgres'?'ok':'warn');
+    document.getElementById('runtimeStore').textContent=store;
+    const aiOn=!!status.ai_decision_enabled;
+    const ai=document.getElementById('aiStatus'); ai.textContent=aiOn?'ENABLED':'OFF'; ai.className='value '+(aiOn?'ok':'off');
+    document.getElementById('aiModel').textContent=status.ai_model||'Structured decision engine';
+    document.getElementById('aiGate').textContent=aiOn?'READY':'OFF'; document.getElementById('aiGate').className='state '+(aiOn?'green':'');
     document.getElementById('symbol').textContent=status.symbol||'XAUUSD';
     document.getElementById('tf').textContent=status.execution_timeframe||'M1';
     document.getElementById('context').textContent=(status.context_timeframes||[]).join(' · ');
     document.getElementById('mode').textContent=status.trading_mode||'shadow';
     document.getElementById('execution').textContent=String(status.execution_enabled);
-    document.getElementById('closedTrades').textContent=String(d.performance?.closed_trades||0);
+
+    const p=d.performance||{};
+    document.getElementById('closedTrades').textContent=String(p.closed_trades||0);
+    document.getElementById('winRate').textContent=pct(p.win_rate);
+    document.getElementById('expectancy').textContent=typeof p.expectancy_r==='number'?fmt(p.expectancy_r,2)+'R':'—';
+    document.getElementById('profitFactor').textContent=typeof p.profit_factor==='number'?fmt(p.profit_factor,2):'—';
 
     const state=d.feed?.state||'WAITING';
-    const el=document.getElementById('marketStatus');
-    el.textContent=state;
-    el.className='value '+(state==='CONNECTED'?'ok':state==='STALE'?'warn':'off');
+    const market=document.getElementById('marketStatus'); market.textContent=state; market.className='value '+(state==='CONNECTED'?'ok':state==='STALE'?'warn':'off');
+    const feedState=document.getElementById('feedState'); feedState.textContent='MT5 FEED '+state; feedState.className='feedState '+(state==='CONNECTED'?'ok':state==='STALE'?'warn':'off');
+    const gate=document.getElementById('feedGate'); gate.textContent=state; gate.className='state '+(state==='CONNECTED'?'green':'');
     if(d.market){
       const age=d.feed?.age_seconds;
-      document.getElementById('marketNote').textContent=(state==='CONNECTED'?'Live snapshot':'Last snapshot')+' · '+(age==null?'unknown age':age+'s ago');
-      document.getElementById('bid').textContent=fmt(d.market.bid);
-      document.getElementById('ask').textContent=fmt(d.market.ask);
+      const note=(state==='CONNECTED'?'Live snapshot':'Last snapshot')+' · '+(age==null?'unknown age':age+'s ago');
+      document.getElementById('marketNote').textContent=note; document.getElementById('feedNote').textContent=note;
+      document.getElementById('bid').textContent=fmt(d.market.bid); document.getElementById('ask').textContent=fmt(d.market.ask);
       document.getElementById('spread').textContent=d.market.spread_points==null?'—':fmt(d.market.spread_points,1)+' pt';
       document.getElementById('bridge').textContent=d.market.bridge_version?'v'+d.market.bridge_version:'—';
     }else{
-      document.getElementById('marketNote').textContent='Attach TradeviceObserver.mq5 to XAUUSD M1';
+      const note='Attach TradeviceObserver.mq5 to XAUUSD M1'; document.getElementById('marketNote').textContent=note; document.getElementById('feedNote').textContent=note;
       ['bid','ask','spread','bridge'].forEach(id=>document.getElementById(id).textContent='—');
     }
   }catch(e){
-    document.getElementById('servicePill').textContent='● OFFLINE';
-    document.getElementById('apiStatus').textContent='OFFLINE'; document.getElementById('apiStatus').className='value bad';
+    const online=document.getElementById('servicePill'); online.innerHTML='<span class="dot"></span> OFFLINE'; online.className='chip bad';
+    const api=document.getElementById('apiStatus'); api.textContent='OFFLINE'; api.className='value bad';
   }
 }
-boot(); setInterval(boot,10000);
+boot();setInterval(boot,10000);
 </script>
 </body>
 </html>
