@@ -77,7 +77,7 @@ async function preparedObserver(req, res) {
   res.end(source);
 }
 
-const gateway = http.createServer(async (req, res) => {
+const handleRequest = async (req, res) => {
   try {
     const pathname = pathOnly(req);
     if (pathname === '/downloads/TradeviceObserver.mq5') return await preparedObserver(req, res);
@@ -97,10 +97,12 @@ const gateway = http.createServer(async (req, res) => {
     res.writeHead(500, { 'content-type': 'application/json' });
     res.end(JSON.stringify({ error: 'gateway_internal_error' }));
   }
-});
+};
 
 function listen(port) {
-  gateway.listen(port, '0.0.0.0', () => console.log(`Tradevice Observer Gateway listening on :${port}; upstream=:${internalPort}`));
+  const server = http.createServer(handleRequest);
+  server.listen(port, '0.0.0.0', () => console.log(`Tradevice Observer Gateway listening on :${port}; upstream=:${internalPort}`));
+  return server;
 }
 
 listen(externalPort);
