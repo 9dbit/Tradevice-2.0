@@ -1,7 +1,7 @@
 import pg from 'pg';
 
 const { Pool } = pg;
-const memory = { snapshots: [], decisions: [] };
+const memory = { snapshots: [], decisions: [], planCandidates: [], settings: new Map() };
 let pool = null;
 
 export async function initStore() {
@@ -49,7 +49,49 @@ export async function initStore() {
     ALTER TABLE trade_decisions ADD COLUMN IF NOT EXISTS reviewed_at TIMESTAMPTZ;
     CREATE INDEX IF NOT EXISTS trade_decisions_created_idx ON trade_decisions(created_at DESC);
     CREATE INDEX IF NOT EXISTS trade_decisions_review_idx ON trade_decisions(review_status, created_at DESC);
+
+    CREATE TABLE IF NOT EXISTS trade_plan_candidates (
+      id BIGSERIAL PRIMARY KEY,
+      plan_id TEXT UNIQUE NOT NULL,
+      group_id TEXT NOT NULL,
+      symbol TEXT NOT NULL DEFAULT 'XAUUSD',
+      market_timestamp TIMESTAMPTZ,
+      side TEXT NOT NULL,
+      order_type TEXT NOT NULL,
+      setup TEXT NOT NULL,
+      regime TEXT NOT NULL,
+      entry NUMERIC NOT NULL,
+      stop_loss NUMERIC NOT NULL,
+      take_profit NUMERIC NOT NULL,
+      expiration_candles INTEGER NOT NULL DEFAULT 3,
+      decision_confidence NUMERIC,
+      entry_confidence NUMERIC NOT NULL,
+      reason_codes JSONB NOT NULL DEFAULT '[]'::jsonb,
+      thesis TEXT,
+      invalidation TEXT,
+      status TEXT NOT NULL DEFAULT 'CANDIDATE',
+      review JSONB NOT NULL DEFAULT '{}'::jsonb,
+      source_model TEXT,
+      linked_trade_id TEXT,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      approved_at TIMESTAMPTZ,
+      rejected_at TIMESTAMPTZ
+    );
+    CREATE INDEX IF NOT EXISTS trade_plan_candidates_group_idx ON trade_plan_candidates(group_id, created_at DESC);
+    CREATE INDEX IF NOT EXISTS trade_plan_candidates_status_idx ON trade_plan_candidates(status, created_at DESC);
+
+    CREATE TABLE IF NOT EXISTS runtime_settings (
+      key TEXT PRIMARY KEY,
+      value JSONB NOT NULL,
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
   `);
+  const defaultApprovalMode = String(process.env.APPROVAL_MODE || 'manual').toLowerCase() === 'ai' ? 'ai' : 'manual';
+  await pool.query(
+    `INSERT INTO runtime_settings(key,value) VALUES('approval_mode',$1::jsonb) ON CONFLICT(key) DO NOTHING`,
+    [JSON.stringify(defaultApprovalMode)]
+  );
   return { driver: 'postgres' };
 }
 
@@ -231,4 +273,95 @@ export async function performanceSummary(limit = 100) {
     avg_mae_points: mae.length ? mae.reduce((a,b) => a+b, 0) / mae.length : null,
     note: 'Shadow/research metrics only; not a promise of future profitability.'
   };
+}
+
+export async function savePlanCandidate(plan) {
+  const now = new Date().toISOString();
+  const normalized = { status: 'CANDIDATE', review: {}, created_at: now, updated_at: now, ...plan };
+  if (!pool) {
+    const idx = memory.planCandidates.findIndex(x => x.plan_id === normalized.plan_id);
+    if (idx >= 0) memory.planCandidates[idx] = { ...memory.planCandidates[idx], ...normalized };
+    else memory.planCandidates.unshift(normalized);
+    memory.planCandidates = memory.planCandidates.slice(0, 1000);
+    return normalized;
+  }
+  const { rows } = await pool.query(
+    `INSERT INTO trade_plan_candidates(
+      plan_id,group_id,symbol,market_timestamp,side,order_type,setup,regime,entry,stop_loss,take_profit,
+      expiration_candles,decision_confidence,entry_confidence,reason_codes,thesis,invalidation,status,review,source_model,linked_trade_id
+    ) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21)
+    ON CONFLICT(plan_id) DO UPDATE SET
+      status=EXCLUDED.status, review=EXCLUDED.review, linked_trade_id=COALESCE(EXCLUDED.linked_trade_id,trade_plan_candidates.linked_trade_id),
+      updated_at=NOW()
+    RETURNING *`,
+    [normalized.plan_id,normalized.group_id,normalized.symbol ?? 'XAUUSD',normalized.market_timestamp ?? null,
+     normalized.side,normalized.order_type,normalized.setup,normalized.regime,normalized.entry,normalized.stop_loss,normalized.take_profit,
+     normalized.expiration_candles ?? 3,normalized.decision_confidence ?? null,normalized.entry_confidence,
+     JSON.stringify(normalized.reason_codes ?? []),normalized.thesis ?? null,normalized.invalidation ?? null,normalized.status,
+     JSON.stringify(normalized.review ?? {}),normalized.source_model ?? null,normalized.linked_trade_id ?? null]
+  );
+  return rows[0];
+}
+
+export async function listPlanCandidates(limit = 50) {
+  if (!pool) return memory.planCandidates.slice(0, limit);
+  const { rows } = await pool.query(`SELECT * FROM trade_plan_candidates ORDER BY created_at DESC LIMIT $1`, [Math.min(limit, 200)]);
+  return rows;
+}
+
+export async function getPlanCandidate(planId) {
+  if (!pool) return memory.planCandidates.find(x => x.plan_id === planId) ?? null;
+  const { rows } = await pool.query(`SELECT * FROM trade_plan_candidates WHERE plan_id=$1 LIMIT 1`, [planId]);
+  return rows[0] ?? null;
+}
+
+export async function updatePlanCandidateStatus(planId, status, options = {}) {
+  const now = new Date().toISOString();
+  if (!pool) {
+    const idx = memory.planCandidates.findIndex(x => x.plan_id === planId);
+    if (idx < 0) return null;
+    memory.planCandidates[idx] = {
+      ...memory.planCandidates[idx], status, review: options.review ?? memory.planCandidates[idx].review ?? {},
+      linked_trade_id: options.linked_trade_id ?? memory.planCandidates[idx].linked_trade_id ?? null,
+      approved_at: options.approved_at ?? memory.planCandidates[idx].approved_at ?? null,
+      rejected_at: options.rejected_at ?? memory.planCandidates[idx].rejected_at ?? null, updated_at: now
+    };
+    return memory.planCandidates[idx];
+  }
+  const { rows } = await pool.query(
+    `UPDATE trade_plan_candidates SET status=$2,review=$3::jsonb,linked_trade_id=COALESCE($4,linked_trade_id),
+       approved_at=COALESCE($5,approved_at),rejected_at=COALESCE($6,rejected_at),updated_at=NOW()
+     WHERE plan_id=$1 RETURNING *`,
+    [planId,status,JSON.stringify(options.review ?? {}),options.linked_trade_id ?? null,options.approved_at ?? null,options.rejected_at ?? null]
+  );
+  return rows[0] ?? null;
+}
+
+export async function supersedePlanGroup(groupId, exceptPlanId) {
+  if (!pool) {
+    memory.planCandidates = memory.planCandidates.map(x => x.group_id === groupId && x.plan_id !== exceptPlanId && ['CANDIDATE','AWAITING_APPROVAL','AI_REVIEW'].includes(x.status)
+      ? { ...x, status: 'SUPERSEDED', updated_at: new Date().toISOString() } : x);
+    return;
+  }
+  await pool.query(
+    `UPDATE trade_plan_candidates SET status='SUPERSEDED',updated_at=NOW()
+      WHERE group_id=$1 AND plan_id<>$2 AND status IN ('CANDIDATE','AWAITING_APPROVAL','AI_REVIEW')`,
+    [groupId, exceptPlanId]
+  );
+}
+
+export async function getRuntimeSetting(key, fallback = null) {
+  if (!pool) return memory.settings.has(key) ? memory.settings.get(key) : fallback;
+  const { rows } = await pool.query(`SELECT value FROM runtime_settings WHERE key=$1`, [key]);
+  return rows[0]?.value ?? fallback;
+}
+
+export async function setRuntimeSetting(key, value) {
+  if (!pool) { memory.settings.set(key, value); return value; }
+  await pool.query(
+    `INSERT INTO runtime_settings(key,value) VALUES($1,$2::jsonb)
+     ON CONFLICT(key) DO UPDATE SET value=EXCLUDED.value,updated_at=NOW()`,
+    [key, JSON.stringify(value)]
+  );
+  return value;
 }

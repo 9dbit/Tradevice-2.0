@@ -2,12 +2,13 @@ import express from 'express';
 import fs from 'fs';
 import path from 'path';
 import { z } from 'zod/v4';
-import { initStore, storeDriver, saveSnapshot, getLatestSnapshot, getRecentDecisions, performanceSummary, saveDecision, recordOutcome } from './store.js';
+import { initStore, storeDriver, saveSnapshot, getLatestSnapshot, getRecentDecisions, performanceSummary, saveDecision, recordOutcome, listPlanCandidates, getRuntimeSetting, setRuntimeSetting } from './store.js';
 import { mcpNodeHandler } from './mcp.js';
 import { validateTradeIntent } from './risk.js';
 import { reviewPendingDecision } from './review-agent.js';
 import { evaluateShadowSnapshot } from './shadow-simulator.js';
 import { aiWorkerEnabled, runAiDecision } from './ai-worker.js';
+import { activatePlanCandidate, rejectPlanCandidate } from './plan-service.js';
 
 const app = express();
 const port = Number(process.env.PORT || 3000);
@@ -15,11 +16,18 @@ const publicTargetPort = Number(process.env.PUBLIC_TARGET_PORT || 3000);
 const apiKey = process.env.TRADEVICE_API_KEY || '';
 const feedStaleAfterSeconds = Number(process.env.FEED_STALE_AFTER_SECONDS || 180);
 const shadowLot = Number(process.env.SHADOW_LOT || 0.01);
+const approvalKey = process.env.TRADEVICE_APPROVAL_KEY || '';
 
 function requireKey(req, res, next) {
   if (!apiKey) return next();
   const auth = req.headers.authorization || '';
   if (auth !== `Bearer ${apiKey}`) return res.status(401).json({ error: 'unauthorized' });
+  next();
+}
+
+function requireApprovalKey(req, res, next) {
+  if (!approvalKey) return res.status(503).json({ error: 'approval_key_not_configured' });
+  if (req.headers['x-approval-key'] !== approvalKey) return res.status(401).json({ error: 'approval_unauthorized' });
   next();
 }
 
@@ -133,11 +141,48 @@ function ledgerRecord(order, snapshot) {
   };
 }
 
+function planRecord(plan, snapshot, linkedDecision = null) {
+  const entry = num(plan.entry);
+  const sl = num(plan.stop_loss);
+  const tp = num(plan.take_profit);
+  const point = num(snapshot?.features?.point_size) || 0.001;
+  const digits = Number(snapshot?.features?.digits ?? 3);
+  const pipSize = (digits === 3 || digits === 5) ? point * 10 : point;
+  const tickSize = num(snapshot?.features?.tick_size);
+  const tickValueProfit = num(snapshot?.features?.tick_value_profit) ?? num(snapshot?.features?.tick_value);
+  const tickValueLoss = num(snapshot?.features?.tick_value_loss) ?? num(snapshot?.features?.tick_value);
+  const tpDistance = entry !== null && tp !== null ? Math.abs(tp - entry) : null;
+  const slDistance = entry !== null && sl !== null ? Math.abs(entry - sl) : null;
+  const planView = {
+    lot: shadowLot,
+    tp_points: tpDistance !== null ? tpDistance / point : null,
+    tp_pips: tpDistance !== null ? tpDistance / pipSize : null,
+    tp_usd: tpDistance !== null && tickSize && tickValueProfit ? tpDistance / tickSize * tickValueProfit * shadowLot : null,
+    sl_points: slDistance !== null ? slDistance / point : null,
+    sl_pips: slDistance !== null ? slDistance / pipSize : null,
+    sl_usd: slDistance !== null && tickSize && tickValueLoss ? slDistance / tickSize * tickValueLoss * shadowLot : null,
+    rr: slDistance && tpDistance !== null ? tpDistance / slDistance : null
+  };
+  const linked = linkedDecision ? ledgerRecord(linkedDecision, snapshot) : null;
+  return {
+    plan_id: plan.plan_id, group_id: plan.group_id, symbol: plan.symbol, market_timestamp: plan.market_timestamp,
+    side: plan.side, order_type: plan.order_type, setup: plan.setup, regime: plan.regime,
+    entry, stop_loss: sl, take_profit: tp, expiration_candles: plan.expiration_candles,
+    decision_confidence: num(plan.decision_confidence), entry_confidence: num(plan.entry_confidence),
+    reason_codes: Array.isArray(plan.reason_codes) ? plan.reason_codes : [], thesis: plan.thesis, invalidation: plan.invalidation,
+    status: plan.status, review: plan.review ?? {}, source_model: plan.source_model, linked_trade_id: plan.linked_trade_id,
+    created_at: plan.created_at, updated_at: plan.updated_at, approved_at: plan.approved_at, rejected_at: plan.rejected_at,
+    plan: planView, execution: linked ? { lifecycle: linked.lifecycle, floating: linked.floating, result: linked.result } : null
+  };
+}
+
 app.get('/api/v1/status', async (_req, res) => {
+  const approvalMode = await getRuntimeSetting('approval_mode', 'manual');
   res.json({
     service: 'tradevice-2.0', phase: 'P0/P1', trading_mode: 'shadow', execution_enabled: false, ai_decision_enabled: aiWorkerEnabled(),
     ai_model: process.env.AI_MODEL || 'gpt-6-astra', shadow_lot: shadowLot, store: storeDriver(), symbol: process.env.TRADEVICE_SYMBOL || 'XAUUSD', execution_timeframe: 'M1',
     context_timeframes: ['M5', 'M15'], setup_families: ['TREND_PULLBACK', 'BREAKOUT_RETEST', 'LIQUIDITY_SWEEP'],
+    approval_mode: approvalMode, approval_key_configured: Boolean(approvalKey),
     review_agent: { enabled: true, source: 'POLICY_AGENT', min_entry_confidence: Number(process.env.REVIEW_MIN_ENTRY_CONFIDENCE || process.env.ENTRY_PENDING_THRESHOLD || 0.80) }
   });
 });
@@ -182,6 +227,57 @@ app.get('/api/v1/orders/ledger', async (req, res, next) => {
       pipeline_versions: row.context?.pipeline_versions ?? null
     }));
     res.json({ generated_at: new Date().toISOString(), execution_enabled: false, mode: 'shadow', shadow_lot: shadowLot, analyses, orders });
+  } catch (err) { next(err); }
+});
+
+app.get('/api/v1/settings/approval-mode', async (_req, res, next) => {
+  try {
+    const mode = await getRuntimeSetting('approval_mode', 'manual');
+    res.json({ mode, approval_key_configured: Boolean(approvalKey), auto_threshold: Number(process.env.ENTRY_PENDING_THRESHOLD || 0.80) });
+  } catch (err) { next(err); }
+});
+
+app.post('/api/v1/approval/verify', requireApprovalKey, (_req, res) => res.status(204).end());
+
+app.post('/api/v1/settings/approval-mode', requireApprovalKey, async (req, res, next) => {
+  try {
+    const mode = String(req.body?.mode || '').toLowerCase();
+    if (!['manual','ai'].includes(mode)) return res.status(400).json({ error: 'invalid_approval_mode' });
+    await setRuntimeSetting('approval_mode', mode);
+    res.json({ ok: true, mode, applies_to: 'new_candidate_cycles' });
+  } catch (err) { next(err); }
+});
+
+app.get('/api/v1/plans', async (req, res, next) => {
+  try {
+    const limit = Math.min(Math.max(Number(req.query.limit || 30), 1), 100);
+    const [plans, snapshot, decisions, approvalMode] = await Promise.all([
+      listPlanCandidates(limit), getLatestSnapshot(process.env.TRADEVICE_SYMBOL || 'XAUUSD'), getRecentDecisions(500), getRuntimeSetting('approval_mode', 'manual')
+    ]);
+    const decisionMap = new Map(decisions.map(row => [row.trade_id, row]));
+    res.json({
+      generated_at: new Date().toISOString(), approval_mode: approvalMode,
+      auto_threshold: Number(process.env.ENTRY_PENDING_THRESHOLD || 0.80), shadow_lot: shadowLot,
+      plans: plans.map(plan => planRecord(plan, snapshot, plan.linked_trade_id ? decisionMap.get(plan.linked_trade_id) : null))
+    });
+  } catch (err) { next(err); }
+});
+
+app.post('/api/v1/plans/:planId/approve', requireApprovalKey, async (req, res, next) => {
+  try {
+    const mode = await getRuntimeSetting('approval_mode', 'manual');
+    if (mode !== 'manual') return res.status(409).json({ error: 'manual_approval_disabled', mode });
+    const result = await activatePlanCandidate(req.params.planId, 'MANUAL');
+    res.status(result.ok ? 202 : 409).json(result);
+  } catch (err) { next(err); }
+});
+
+app.post('/api/v1/plans/:planId/reject', requireApprovalKey, async (req, res, next) => {
+  try {
+    const mode = await getRuntimeSetting('approval_mode', 'manual');
+    if (mode !== 'manual') return res.status(409).json({ error: 'manual_approval_disabled', mode });
+    const result = await rejectPlanCandidate(req.params.planId, 'MANUAL');
+    res.status(result.ok ? 202 : 409).json(result);
   } catch (err) { next(err); }
 });
 

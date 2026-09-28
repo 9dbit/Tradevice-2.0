@@ -1,199 +1,112 @@
 (() => {
   const $ = id => document.getElementById(id);
-  const esc = value => String(value ?? '').replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
-  const num = (value, digits = 3) => typeof value === 'number' && Number.isFinite(value) ? value.toFixed(digits) : '—';
-  const dt = value => {
-    if (!value) return '—';
-    const d = new Date(value);
-    return Number.isNaN(d.getTime()) ? String(value) : d.toLocaleString([], {month:'short',day:'2-digit',hour:'2-digit',minute:'2-digit'});
-  };
-  const sign = (value, digits = 2) => typeof value === 'number' && Number.isFinite(value) ? `${value >= 0 ? '+' : ''}${value.toFixed(digits)}` : '—';
-  const conf = value => typeof value === 'number' && Number.isFinite(value) ? `${Math.round(value * 100)}%` : '—';
-  const setText = (id, value) => { const el = $(id); if (el) el.textContent = value; };
-  const closedStates = new Set(['PROFIT','LOSS','EXPIRED','CANCELLED','CLOSED','REJECTED']);
-  let lastOrders = [];
-  let orderFilter = 'ALL';
+  const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  const num = (v,d=3) => typeof v === 'number' && Number.isFinite(v) ? v.toFixed(d) : '—';
+  const conf = v => typeof v === 'number' && Number.isFinite(v) ? `${Math.round(v*100)}%` : '—';
+  const dt = v => { const d=new Date(v); return v && !Number.isNaN(d.getTime()) ? d.toLocaleString([], {month:'short',day:'2-digit',hour:'2-digit',minute:'2-digit'}) : '—'; };
+  const sign = (v,d=2) => typeof v === 'number' && Number.isFinite(v) ? `${v>=0?'+':''}${v.toFixed(d)}` : '—';
+  let approvalMode = 'manual';
+  let approvalUnlocked = Boolean(sessionStorage.getItem('tradeviceApprovalKey'));
 
-  function statusClass(status) {
-    if (['PROFIT','APPROVED','CONNECTED','ONLINE'].includes(status)) return 'ok';
-    if (['LOSS','REJECTED','STALE'].includes(status)) return 'bad';
-    return 'warn';
+  function setText(id,v){ const el=$(id); if(el) el.textContent=v; }
+  function currentKey(){ return sessionStorage.getItem('tradeviceApprovalKey') || ''; }
+  function stateLabel(plan){ return plan.execution?.lifecycle || plan.status || 'CANDIDATE'; }
+  function stateColor(state){ return ['PROFIT','AUTO_APPROVED','MANUAL_APPROVED','FLOATING'].includes(state)?'green':['LOSS','REJECTED'].includes(state)?'red':['AWAITING_APPROVAL','AI_REVIEW','CANDIDATE'].includes(state)?'amber':''; }
+
+  async function ensureApprovalKey(){
+    let key=currentKey();
+    if(!key) key=window.prompt('Tradevice Approval Key');
+    if(!key) return false;
+    const res=await fetch('/api/v1/approval/verify',{method:'POST',headers:{'x-approval-key':key}});
+    if(!res.ok){ sessionStorage.removeItem('tradeviceApprovalKey'); approvalUnlocked=false; renderUnlock(); window.alert('Approval key is invalid.'); return false; }
+    sessionStorage.setItem('tradeviceApprovalKey',key); approvalUnlocked=true; renderUnlock(); return true;
   }
 
-  function setDecision(decision, side) {
-    const el = $('decisionValue');
-    if (!el) return;
-    el.textContent = decision || 'WAIT';
-    el.className = 'decisionValue';
-    if (decision === 'PLACE_PENDING' && side === 'BUY') el.classList.add('buy');
-    else if (decision === 'PLACE_PENDING' && side === 'SELL') el.classList.add('sell');
-    else el.classList.add('wait');
+  function renderUnlock(){ const b=$('unlockBtn'); if(!b)return; b.textContent=approvalUnlocked?'Unlocked':'Unlock'; b.classList.toggle('unlocked',approvalUnlocked); }
+  function renderMode(mode){
+    approvalMode=mode==='ai'?'ai':'manual';
+    $('manualMode')?.classList.toggle('active',approvalMode==='manual');
+    $('aiMode')?.classList.toggle('active',approvalMode==='ai');
+    setText('approvalNote', approvalMode==='manual' ? 'Manual mode: choose which offered plan enters the shadow pending-order engine.' : 'AI Auto: only the highest eligible plan at or above 80% entry confidence can auto-activate after risk review.');
   }
 
-  function renderMarket(dashboard, status) {
-    const market = dashboard?.market || {};
-    const feed = dashboard?.feed || {};
-    setText('bid', num(market.bid));
-    setText('ask', num(market.ask));
-    setText('spread', typeof market.spread_points === 'number' ? market.spread_points.toFixed(0) : '—');
-    setText('feedState', feed.state || 'WAIT');
-    setText('feedAge', typeof feed.age_seconds === 'number' ? `${feed.age_seconds}s ago` : 'No snapshot');
-    setText('aiWorker', status?.ai_decision_enabled ? 'ON' : 'OFF');
-    setText('aiModel', status?.ai_model || 'Decision engine');
-    setText('chartPrice', market.bid ? `XAUUSD ${num(market.bid)}` : 'XAUUSD —');
-    setText('chartMeta', `${feed.state || 'WAIT'} · spread ${typeof market.spread_points === 'number' ? market.spread_points.toFixed(0) : '—'} pt`);
-    const pill = $('servicePill');
-    if (pill) pill.innerHTML = `<span class="dot"></span> ${feed.state === 'CONNECTED' ? 'ONLINE' : esc(feed.state || 'CHECK')}`;
+  function renderMarket(dashboard,status){
+    const m=dashboard?.market||{}, f=dashboard?.feed||{};
+    setText('bid',num(m.bid)); setText('ask',num(m.ask)); setText('spread',typeof m.spread_points==='number'?`${m.spread_points.toFixed(0)} pt`:'—');
+    setText('feedState',f.state||'—'); setText('aiWorker',status?.ai_decision_enabled?'ON':'OFF');
+    setText('chartPrice',m.bid?`XAUUSD ${num(m.bid)}`:'XAUUSD —'); setText('chartMeta',`${f.state||'WAIT'} · spread ${typeof m.spread_points==='number'?m.spread_points.toFixed(0):'—'} pt · ${typeof f.age_seconds==='number'?f.age_seconds+'s ago':'—'}`);
+    const p=$('servicePill'); if(p) p.textContent=f.state==='CONNECTED'?'● ONLINE':`● ${f.state||'CHECK'}`;
   }
 
-  function renderPerformance(dashboard, orders, analyses) {
-    const p = dashboard?.performance || {};
-    setText('closedTrades', String(p.closed_trades ?? 0));
-    setText('winRate', typeof p.win_rate === 'number' ? `${(p.win_rate * 100).toFixed(1)}%` : '—');
-    setText('expectancy', typeof p.expectancy_r === 'number' ? `${sign(p.expectancy_r)}R` : '—');
-    setText('profitFactor', typeof p.profit_factor === 'number' ? p.profit_factor.toFixed(2) : '—');
-    const open = (orders || []).filter(o => !closedStates.has(o.lifecycle || 'PENDING')).length;
-    setText('pendingCount', String(open));
-    setText('analysisCount', String((analyses || []).length));
+  function renderPerformance(d){
+    const p=d?.performance||{}; setText('closedTrades',String(p.closed_trades??0)); setText('winRate',typeof p.win_rate==='number'?`${(p.win_rate*100).toFixed(1)}%`:'—');
+    setText('expectancy',typeof p.expectancy_r==='number'?`${sign(p.expectancy_r)}R`:'—'); setText('profitFactor',typeof p.profit_factor==='number'?p.profit_factor.toFixed(2):'—');
   }
 
-  function clearPlanPrices() {
-    setText('entry', '—'); setText('tp', '—'); setText('sl', '—'); setText('rr', '—');
-    setText('tpPips', '—'); setText('tpUsd', '—'); setText('slPips', '—'); setText('slUsd', '—');
-    setText('floating', '—'); setText('floatingSub', 'No fill');
+  function planCard(p,threshold){
+    const pv=p.plan||{}, state=stateLabel(p), manualAction=approvalMode==='manual' && ['AWAITING_APPROVAL','CANDIDATE'].includes(p.status);
+    const low=typeof p.entry_confidence==='number' && p.entry_confidence<threshold;
+    const execution=p.execution?.lifecycle ? ` · ${p.execution.lifecycle}` : '';
+    const tpText=typeof pv.tp_pips==='number'?`${pv.tp_pips.toFixed(1)}p · ${typeof pv.tp_usd==='number'?`+$${Math.abs(pv.tp_usd).toFixed(2)}`:'$—'}`:'—';
+    const slText=typeof pv.sl_pips==='number'?`${pv.sl_pips.toFixed(1)}p · ${typeof pv.sl_usd==='number'?`-$${Math.abs(pv.sl_usd).toFixed(2)}`:'$—'}`:'—';
+    return `<article class="planCard" data-plan-id="${esc(p.plan_id)}">
+      <div class="planTop"><div class="planIdentity"><b class="${p.side==='BUY'?'green':'red'}">${esc(p.side)} · ${esc(p.order_type)}</b><span>${esc(p.setup)} · ${esc(p.regime)}</span></div><span class="planState ${stateColor(state)}">${esc(state)}${esc(execution)}</span></div>
+      <div class="confidenceBand"><div class="entryConfidence"><div class="n">${conf(p.entry_confidence)}</div><div class="t">Entry confidence</div></div><div class="decisionConfidence"><div class="n">${conf(p.decision_confidence)}</div><div class="t">Decision confidence</div></div></div>
+      <div class="priceGrid"><div class="price"><div class="k">Entry</div><div class="v">${num(p.entry)}</div></div><div class="price"><div class="k">Take Profit</div><div class="v green">${num(p.take_profit)}</div></div><div class="price"><div class="k">Stop Loss</div><div class="v red">${num(p.stop_loss)}</div></div></div>
+      <div class="metrics"><div class="metric"><div class="k">Lot</div><div class="v">${typeof pv.lot==='number'?pv.lot.toFixed(2):'0.01'}</div></div><div class="metric"><div class="k">R:R</div><div class="v">${typeof pv.rr==='number'?`1:${pv.rr.toFixed(2)}`:'—'}</div></div><div class="metric"><div class="k">TP / $</div><div class="v green">${tpText}</div></div><div class="metric"><div class="k">SL / $</div><div class="v red">${slText}</div></div></div>
+      <div class="planStory"><p>${esc(p.thesis||'No thesis supplied.')}</p><small>${esc(p.invalidation?`Invalidation: ${p.invalidation}`:'')} ${low?' · Below AI auto threshold':''}</small></div>
+      <div class="planActions">${manualAction?`<button class="approve" data-action="approve" data-plan="${esc(p.plan_id)}">Approve</button><button class="reject" data-action="reject" data-plan="${esc(p.plan_id)}">Reject</button>`:`<div class="planMessage">${approvalMode==='ai'?'AI Auto review controls activation':esc(state.replaceAll('_',' '))}</div>`}</div>
+    </article>`;
   }
 
-  function renderPlan(orders, analyses, shadowLot) {
-    const activeOrder = (orders || []).find(o => !closedStates.has(o.lifecycle || 'PENDING')) || null;
-    const latest = analyses?.[0] || null;
-    const lot = activeOrder?.plan?.lot ?? shadowLot ?? 0.01;
-    setText('lot', typeof lot === 'number' ? lot.toFixed(2) : '0.01');
-
-    if (!activeOrder) {
-      const decision = latest?.decision || 'WAIT';
-      setDecision(decision, latest?.side);
-      setText('decisionConfidence', conf(latest?.decision_confidence ?? latest?.confidence));
-      setText('entryConfidence', conf(latest?.entry_confidence));
-      setText('orderType', latest?.order_type || '—');
-      setText('setupRegime', [latest?.setup, latest?.regime].filter(Boolean).join(' · ') || 'No executable setup');
-      clearPlanPrices();
-      setText('planMeta', latest ? `${latest.source || 'AI'} · ${dt(latest.market_timestamp || latest.created_at)}` : 'Latest Astra decision');
-      setText('planLifecycle', decision === 'WAIT' ? 'WAIT' : decision);
-      const lifecycle = $('planLifecycle'); if (lifecycle) lifecycle.className = 'status warn';
-      setText('reviewState', latest?.source === 'AI' ? 'Astra' : 'Prefilter');
-      const threshold = typeof latest?.entry_pending_threshold === 'number' ? Math.round(latest.entry_pending_threshold * 100) : 80;
-      const reason = latest?.thesis || latest?.prefilter_reasons?.join(' · ') || `Entry confidence must reach ${threshold}% with valid price structure.`;
-      setText('reviewReason', reason);
-      const badge = $('reviewBadge');
-      if (badge) { badge.textContent = decision; badge.className = 'reviewBadge wait'; }
-      return;
-    }
-
-    const order = activeOrder;
-    const plan = order.plan || {};
-    setDecision('PLACE_PENDING', order.side);
-    setText('decisionConfidence', conf(order.decision_confidence ?? order.confidence));
-    setText('entryConfidence', conf(order.entry_confidence));
-    setText('orderType', order.order_type || '—');
-    setText('setupRegime', [order.setup, order.regime].filter(Boolean).join(' · ') || '—');
-    setText('entry', num(order.entry));
-    setText('tp', num(order.take_profit));
-    setText('sl', num(order.stop_loss));
-    setText('rr', typeof plan.rr === 'number' ? `1:${plan.rr.toFixed(2)}` : '—');
-    setText('tpPips', typeof plan.tp_pips === 'number' ? `${plan.tp_pips.toFixed(1)} pips · ${Math.round(plan.tp_points || 0)} pt` : '—');
-    setText('tpUsd', typeof plan.tp_usd === 'number' ? `+$${Math.abs(plan.tp_usd).toFixed(2)}` : '$—');
-    setText('slPips', typeof plan.sl_pips === 'number' ? `${plan.sl_pips.toFixed(1)} pips · ${Math.round(plan.sl_points || 0)} pt` : '—');
-    setText('slUsd', typeof plan.sl_usd === 'number' ? `-$${Math.abs(plan.sl_usd).toFixed(2)}` : '$—');
-    setText('planMeta', `${order.side || ''} ${order.order_type || ''} · ${dt(order.created_at)}`);
-    setText('planLifecycle', order.lifecycle || 'PENDING');
-    const lifecycle = $('planLifecycle'); if (lifecycle) lifecycle.className = `status ${statusClass(order.lifecycle)}`;
-    if (order.floating) {
-      setText('floating', `${sign(order.floating.pnl_r)}R`);
-      setText('floatingSub', `${sign(order.floating.points, 1)} pt · ${num(order.floating.mark_price)}`);
-    } else {
-      setText('floating', '—'); setText('floatingSub', 'Pending fill');
-    }
-    const reviewStatus = order.review?.status || 'PENDING_REVIEW';
-    setText('reviewState', 'Review Agent');
-    setText('reviewReason', order.review?.reasons?.join(' · ') || (reviewStatus === 'APPROVED' ? 'Entry confidence and risk policy passed' : 'Awaiting review'));
-    const badge = $('reviewBadge');
-    if (badge) { badge.textContent = reviewStatus.replaceAll('_',' '); badge.className = `reviewBadge ${reviewStatus === 'APPROVED' ? 'approved' : reviewStatus === 'REJECTED' ? 'rejected' : 'wait'}`; }
+  function renderPlans(payload){
+    renderMode(payload?.approval_mode||'manual');
+    const plans=payload?.plans||[], grid=$('planGrid'), threshold=Number(payload?.auto_threshold??0.8);
+    if(!grid)return;
+    if(!plans.length){ grid.innerHTML='<div class="empty"><b>No candidate plans yet</b>Astra will offer up to three scenarios when the market passes the deterministic prefilter.</div>'; setText('planCount','0 plans'); return; }
+    const group=plans[0].group_id; const latest=plans.filter(p=>p.group_id===group);
+    setText('planCount',`${latest.length} plan${latest.length===1?'':'s'} · ${dt(latest[0]?.market_timestamp)}`);
+    grid.innerHTML=latest.map(p=>planCard(p,threshold)).join('');
   }
 
-  function filterOrders(orders) {
-    if (orderFilter === 'PENDING') return orders.filter(o => ['PENDING','AWAITING_REVIEW'].includes(o.lifecycle));
-    if (orderFilter === 'FLOATING') return orders.filter(o => o.lifecycle === 'FLOATING');
-    if (orderFilter === 'CLOSED') return orders.filter(o => closedStates.has(o.lifecycle));
-    return orders;
+  function renderOrders(orders){
+    const w=$('ordersWrap'); if(!w)return; if(!orders?.length){w.innerHTML='<div class="empty">No order records yet.</div>';return;}
+    w.innerHTML=`<table class="tradeTable"><thead><tr><th>Time</th><th>Status</th><th>Side / Type</th><th>Lot</th><th>Entry</th><th>TP</th><th>SL</th><th>R:R</th><th>Entry conf</th><th>Review</th><th>P/L</th></tr></thead><tbody>${orders.map(o=>{const p=o.plan||{}, pnl=o.floating?.pnl_r??o.result?.pnl_r;return `<tr><td data-label="Time">${dt(o.created_at)}</td><td data-label="Status">${esc(o.lifecycle||'—')}</td><td data-label="Side / Type" class="${o.side==='BUY'?'green':'red'}">${esc(o.side||'—')} · ${esc(o.order_type||'—')}</td><td data-label="Lot">${typeof p.lot==='number'?p.lot.toFixed(2):'—'}</td><td data-label="Entry">${num(o.entry)}</td><td data-label="TP" class="green">${num(o.take_profit)}</td><td data-label="SL" class="red">${num(o.stop_loss)}</td><td data-label="R:R">${typeof p.rr==='number'?`1:${p.rr.toFixed(2)}`:'—'}</td><td data-label="Entry conf">${conf(o.entry_confidence)}</td><td data-label="Review">${esc(o.review?.status||'—')}</td><td data-label="P/L" class="${typeof pnl==='number'?(pnl>0?'green':pnl<0?'red':''):''}">${typeof pnl==='number'?`${sign(pnl)}R`:'—'}</td></tr>`}).join('')}</tbody></table>`;
   }
 
-  function renderOrders(orders) {
-    const wrap = $('ordersWrap'); if (!wrap) return;
-    const items = filterOrders(orders || []);
-    if (!items.length) { wrap.innerHTML = '<div class="empty"><b>No records in this view</b>Orders remain permanently available under All.</div>'; return; }
-    wrap.innerHTML = `<table class="tradeTable"><thead><tr><th>Time</th><th>Status</th><th>Side / Type</th><th>Lot</th><th>Entry</th><th>TP</th><th>TP pips / $</th><th>SL</th><th>SL pips / $</th><th>R:R</th><th>D conf</th><th>Entry conf</th><th>Review</th><th>P/L</th></tr></thead><tbody>${items.map(o => {
-      const plan=o.plan||{}; const life=o.lifecycle||'PENDING'; const pnl=o.floating?.pnl_r ?? o.result?.pnl_r;
-      return `<tr>
-        <td data-label="Time">${dt(o.created_at)}</td>
-        <td data-label="Status"><span class="status ${statusClass(life)}">${esc(life)}</span></td>
-        <td data-label="Side / Type" class="num ${o.side==='BUY'?'green':'red'}">${esc(o.side||'—')}<div class="muted">${esc(o.order_type||'—')}</div></td>
-        <td data-label="Lot" class="num">${typeof plan.lot==='number'?plan.lot.toFixed(2):'—'}</td>
-        <td data-label="Entry" class="num">${num(o.entry)}</td>
-        <td data-label="TP" class="num green">${num(o.take_profit)}</td>
-        <td data-label="TP pips / $">${typeof plan.tp_pips==='number'?`${plan.tp_pips.toFixed(1)} · ${typeof plan.tp_usd==='number'?`+$${Math.abs(plan.tp_usd).toFixed(2)}`:'$—'}`:'—'}</td>
-        <td data-label="SL" class="num red">${num(o.stop_loss)}</td>
-        <td data-label="SL pips / $">${typeof plan.sl_pips==='number'?`${plan.sl_pips.toFixed(1)} · ${typeof plan.sl_usd==='number'?`-$${Math.abs(plan.sl_usd).toFixed(2)}`:'$—'}`:'—'}</td>
-        <td data-label="R:R" class="num">${typeof plan.rr==='number'?`1:${plan.rr.toFixed(2)}`:'—'}</td>
-        <td data-label="Decision conf">${conf(o.decision_confidence ?? o.confidence)}</td>
-        <td data-label="Entry conf" class="green">${conf(o.entry_confidence)}</td>
-        <td data-label="Review">${esc(o.review?.status||'—')}</td>
-        <td data-label="P/L" class="num ${typeof pnl==='number'?(pnl>0?'green':pnl<0?'red':'muted'):'muted'}">${typeof pnl==='number'?`${sign(pnl)}R`:'—'}</td>
-      </tr>`;
-    }).join('')}</tbody></table>`;
+  function renderAnalysis(items){
+    const w=$('analysisWrap'); if(!w)return; if(!items?.length){w.innerHTML='<div class="empty">Waiting for analysis.</div>';return;}
+    w.innerHTML=`<table class="aiTable"><thead><tr><th>Time</th><th>Decision</th><th>Decision conf</th><th>Entry conf</th><th>Regime</th><th>Triggers</th><th>Why</th></tr></thead><tbody>${items.slice(0,30).map(a=>`<tr><td data-label="Time">${dt(a.market_timestamp||a.created_at)}</td><td data-label="Decision" class="${a.decision==='OFFER'?'green':a.decision==='WAIT'?'amber':''}">${esc(a.decision)}</td><td data-label="Decision conf">${conf(a.decision_confidence??a.confidence)}</td><td data-label="Entry conf">${conf(a.entry_confidence)}</td><td data-label="Regime">${esc(a.regime||'—')}</td><td data-label="Triggers">${esc((a.trigger_codes||a.reason_codes||[]).slice(0,3).join(' · ')||'—')}</td><td data-label="Why" data-wide="1" class="thesis">${esc(a.thesis||a.prefilter_reasons?.join(' · ')||'No AI call')}</td></tr>`).join('')}</tbody></table>`;
   }
 
-  function renderAnalyses(items) {
-    const wrap = $('analysisWrap'); if (!wrap) return;
-    if (!items?.length) { wrap.innerHTML = '<div class="empty">Waiting for analysis records.</div>'; return; }
-    wrap.innerHTML = `<table class="aiTable"><thead><tr><th>Time</th><th>Decision</th><th>D conf</th><th>Entry conf</th><th>Regime</th><th>Triggers</th><th>Why</th><th>Source</th></tr></thead><tbody>${items.slice(0,40).map(a => `<tr>
-      <td data-label="Time">${dt(a.market_timestamp||a.created_at)}</td>
-      <td data-label="Decision" class="aiDecision ${esc(a.decision)}">${esc(a.decision)}</td>
-      <td data-label="Decision conf">${conf(a.decision_confidence ?? a.confidence)}</td>
-      <td data-label="Entry conf" class="green">${conf(a.entry_confidence)}</td>
-      <td data-label="Regime">${esc(a.regime||'—')}</td>
-      <td data-label="Triggers">${esc((a.trigger_codes||a.reason_codes||[]).slice(0,3).join(' · ')||'—')}</td>
-      <td data-label="Why" data-wide="1" class="thesis">${esc(a.thesis||a.prefilter_reasons?.join(' · ')||'No AI call')}</td>
-      <td data-label="Source">${esc(a.source||'—')}</td>
-    </tr>`).join('')}</tbody></table>`;
+  async function setApprovalMode(mode){
+    if(!(await ensureApprovalKey()))return;
+    const res=await fetch('/api/v1/settings/approval-mode',{method:'POST',headers:{'content-type':'application/json','x-approval-key':currentKey()},body:JSON.stringify({mode})});
+    const data=await res.json().catch(()=>({})); if(!res.ok){window.alert(data.error||'Unable to change approval mode');return;} renderMode(data.mode); await refresh();
   }
 
-  function bindControls() {
-    document.querySelectorAll('.tab[data-filter]').forEach(btn => btn.addEventListener('click', () => {
-      orderFilter = btn.dataset.filter || 'ALL';
-      document.querySelectorAll('.tab[data-filter]').forEach(x => x.classList.toggle('active', x === btn));
-      renderOrders(lastOrders);
-    }));
-    document.querySelectorAll('.tool[data-tf]').forEach(btn => btn.addEventListener('click', () => {
-      document.querySelectorAll('.tool[data-tf]').forEach(x => x.classList.toggle('active', x === btn));
-      const frame = $('marketChart'); if (!frame) return;
-      const u = new URL(frame.src); u.searchParams.set('interval', btn.dataset.tf); frame.src = u.toString();
-    }));
+  async function planAction(planId,action){
+    if(!(await ensureApprovalKey()))return;
+    const res=await fetch(`/api/v1/plans/${encodeURIComponent(planId)}/${action}`,{method:'POST',headers:{'x-approval-key':currentKey()}});
+    const data=await res.json().catch(()=>({}));
+    if(!res.ok){ window.alert(data.code||data.error||'Plan action rejected'); }
+    await refresh();
   }
 
-  async function refresh() {
-    try {
-      const [dashboardRes,statusRes,ledgerRes] = await Promise.all([
-        fetch('/api/v1/dashboard',{cache:'no-store'}), fetch('/api/v1/status',{cache:'no-store'}), fetch('/api/v1/orders/ledger?limit=100',{cache:'no-store'})
-      ]);
-      if (!dashboardRes.ok || !statusRes.ok || !ledgerRes.ok) throw new Error('Tradevice API unavailable');
-      const [dashboard,status,ledger] = await Promise.all([dashboardRes.json(),statusRes.json(),ledgerRes.json()]);
-      lastOrders = ledger.orders || [];
-      renderMarket(dashboard,status); renderPerformance(dashboard,lastOrders,ledger.analyses); renderPlan(lastOrders,ledger.analyses,ledger.shadow_lot); renderOrders(lastOrders); renderAnalyses(ledger.analyses);
-    } catch (error) {
-      const pill=$('servicePill'); if(pill) pill.innerHTML='<span class="dot"></span> OFFLINE';
-      console.error('Tradevice dashboard refresh failed', error);
-    }
+  function bind(){
+    $('unlockBtn')?.addEventListener('click',ensureApprovalKey); $('manualMode')?.addEventListener('click',()=>setApprovalMode('manual')); $('aiMode')?.addEventListener('click',()=>setApprovalMode('ai'));
+    $('planGrid')?.addEventListener('click',e=>{ const b=e.target.closest('button[data-action]'); if(b) planAction(b.dataset.plan,b.dataset.action); });
+    document.querySelectorAll('.charttools button[data-tf]').forEach(b=>b.addEventListener('click',()=>{document.querySelectorAll('.charttools button').forEach(x=>x.classList.toggle('active',x===b));const f=$('marketChart');if(!f)return;const u=new URL(f.src);u.searchParams.set('interval',b.dataset.tf);f.src=u.toString();}));
+    renderUnlock();
   }
 
-  bindControls(); refresh(); setInterval(refresh,5000);
+  async function refresh(){
+    try{
+      const [dRes,sRes,lRes,pRes]=await Promise.all([fetch('/api/v1/dashboard',{cache:'no-store'}),fetch('/api/v1/status',{cache:'no-store'}),fetch('/api/v1/orders/ledger?limit=100',{cache:'no-store'}),fetch('/api/v1/plans?limit=30',{cache:'no-store'})]);
+      if(!dRes.ok||!sRes.ok||!lRes.ok||!pRes.ok)throw new Error('API unavailable');
+      const [d,s,l,p]=await Promise.all([dRes.json(),sRes.json(),lRes.json(),pRes.json()]); renderMarket(d,s);renderPerformance(d);renderPlans(p);renderOrders(l.orders);renderAnalysis(l.analyses);
+    }catch(err){const p=$('servicePill');if(p)p.textContent='● OFFLINE';console.error(err);}
+  }
+
+  bind();refresh();setInterval(refresh,5000);
 })();
