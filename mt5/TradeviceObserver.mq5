@@ -1,5 +1,5 @@
 #property strict
-#property version   "0.220"
+#property version   "1.22"
 #property description "Tradevice 2.0 observer bridge. Sends market snapshots only; no order execution."
 
 input string ApiBase = "https://tradevice-api-production.up.railway.app";
@@ -96,7 +96,7 @@ bool SendSnapshot()
    string m15 = RatesJson(resolvedSymbol, PERIOD_M15, M15Bars);
 
    string payload = StringFormat(
-      "{\"symbol\":\"%s\",\"timeframe\":\"M1\",\"timestamp\":\"%s\",\"bid\":%.8f,\"ask\":%.8f,\"spread_points\":%.2f,\"candles\":%s,\"account\":{\"balance\":%.2f,\"equity\":%.2f,\"margin_free\":%.2f,\"positions_total\":%d,\"orders_total\":%d},\"features\":{\"bridge_version\":\"0.220\",\"broker_symbol\":\"%s\",\"terminal_build\":%d,\"terminal_connected\":%s,\"point_size\":%.8f,\"m5_candles\":%s,\"m15_candles\":%s}}",
+      "{\"symbol\":\"%s\",\"timeframe\":\"M1\",\"timestamp\":\"%s\",\"bid\":%.8f,\"ask\":%.8f,\"spread_points\":%.2f,\"candles\":%s,\"account\":{\"balance\":%.2f,\"equity\":%.2f,\"margin_free\":%.2f,\"positions_total\":%d,\"orders_total\":%d},\"features\":{\"bridge_version\":\"1.22\",\"broker_symbol\":\"%s\",\"terminal_build\":%d,\"terminal_connected\":%s,\"point_size\":%.8f,\"m5_candles\":%s,\"m15_candles\":%s}}",
       CanonicalSymbol,
       IsoUtc(TimeGMT()),
       tick.bid,
@@ -134,7 +134,15 @@ bool SendSnapshot()
 
    if(status == -1)
    {
-      Print("Tradevice WebRequest failed. MT5 error=", GetLastError(), ". Add ApiBase to Tools > Options > Expert Advisors > Allow WebRequest.");
+      int err = GetLastError();
+      if(err == 4014)
+      {
+         Print("Tradevice WebRequest blocked by MT5 (error 4014). Add exactly this URL to Tools > Options > Expert Advisors > Allow WebRequest: ", ApiBase);
+      }
+      else
+      {
+         Print("Tradevice WebRequest failed. MT5 error=", err, " url=", ApiBase);
+      }
       return false;
    }
 
@@ -159,7 +167,7 @@ int OnInit()
 
    EventSetTimer(1);
    lastM1Bar = iTime(resolvedSymbol, PERIOD_M1, 0);
-   Print("Tradevice Observer v0.220 started. Broker symbol=", resolvedSymbol, ", canonical=", CanonicalSymbol, ". Execution is disabled by design.");
+   Print("Tradevice Observer v1.22 started. Broker symbol=", resolvedSymbol, ", canonical=", CanonicalSymbol, ". Execution is disabled by design.");
 
    lastRetryAttempt = TimeCurrent();
    snapshotChannelReady = SendSnapshot();
