@@ -7,6 +7,7 @@ import { evaluateShadowSnapshot } from './shadow-simulator.js';
 
 const app = express();
 const port = Number(process.env.PORT || 3000);
+const publicTargetPort = Number(process.env.PUBLIC_TARGET_PORT || 3000);
 const apiKey = process.env.TRADEVICE_API_KEY || '';
 
 function requireKey(req, res, next) {
@@ -158,4 +159,6 @@ app.use((err, _req, res, _next) => {
 });
 
 const store = await initStore();
-app.listen(port, '0.0.0.0', () => console.log(`Tradevice 2.0 listening on :${port}; store=${store.driver}; mode=shadow`));
+const listen = p => app.listen(p, '0.0.0.0', () => console.log(`Tradevice 2.0 listening on :${p}; store=${store.driver}; mode=shadow`));
+listen(port);
+if (publicTargetPort !== port) listen(publicTargetPort);
