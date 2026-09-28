@@ -70,11 +70,12 @@ export async function getLatestSnapshot(symbol = 'XAUUSD') {
 
 export async function saveDecision(decision) {
   if (!pool) {
-    const existing = memory.decisions.findIndex(d => d.trade_id === decision.trade_id);
-    if (existing >= 0) memory.decisions[existing] = { ...memory.decisions[existing], ...decision };
-    else memory.decisions.unshift(decision);
+    const normalized = { created_at: new Date().toISOString(), ...decision };
+    const existing = memory.decisions.findIndex(d => d.trade_id === normalized.trade_id);
+    if (existing >= 0) memory.decisions[existing] = { ...memory.decisions[existing], ...normalized };
+    else memory.decisions.unshift(normalized);
     memory.decisions = memory.decisions.slice(0, 2000);
-    return decision;
+    return normalized;
   }
   await pool.query(
     `INSERT INTO trade_decisions(
@@ -93,6 +94,44 @@ export async function saveDecision(decision) {
     ]
   );
   return decision;
+}
+
+export async function updateDecisionContext(tradeId, patch) {
+  if (!pool) {
+    const idx = memory.decisions.findIndex(d => d.trade_id === tradeId);
+    if (idx < 0) return null;
+    memory.decisions[idx] = {
+      ...memory.decisions[idx],
+      context: { ...(memory.decisions[idx].context ?? {}), ...patch }
+    };
+    return memory.decisions[idx];
+  }
+  const { rows } = await pool.query(
+    `UPDATE trade_decisions
+       SET context = context || $2::jsonb
+     WHERE trade_id=$1
+     RETURNING trade_id,mode,decision,side,setup,regime,entry,stop_loss,take_profit,
+               expiration_candles,confidence,reason_codes,context,outcome,created_at,closed_at`,
+    [tradeId, JSON.stringify(patch)]
+  );
+  return rows[0] ?? null;
+}
+
+export async function getActiveShadowDecisions(limit = 200) {
+  if (!pool) {
+    return memory.decisions
+      .filter(d => d.mode === 'shadow' && d.decision === 'PLACE_PENDING' && !d.outcome)
+      .slice(0, limit);
+  }
+  const { rows } = await pool.query(
+    `SELECT trade_id,mode,decision,side,setup,regime,entry,stop_loss,take_profit,
+            expiration_candles,confidence,reason_codes,context,outcome,created_at,closed_at
+       FROM trade_decisions
+      WHERE mode='shadow' AND decision='PLACE_PENDING' AND outcome IS NULL
+      ORDER BY created_at ASC LIMIT $1`,
+    [Math.min(limit, 500)]
+  );
+  return rows;
 }
 
 export async function recordOutcome(tradeId, outcome) {
