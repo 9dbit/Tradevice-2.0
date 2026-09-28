@@ -10,6 +10,7 @@ const app = express();
 const port = Number(process.env.PORT || 3000);
 const publicTargetPort = Number(process.env.PUBLIC_TARGET_PORT || 3000);
 const apiKey = process.env.TRADEVICE_API_KEY || '';
+const feedStaleAfterSeconds = Number(process.env.FEED_STALE_AFTER_SECONDS || 180);
 
 function requireKey(req, res, next) {
   if (!apiKey) return next();
@@ -25,7 +26,7 @@ app.get('/api/v1/info', (_req, res) => res.json({
   name: 'Tradevice 2.0',
   phase: 'P0/P1 Observer + Shadow AI',
   execution_enabled: false,
-  endpoints: { health: '/health', mcp: '/mcp', status: '/api/v1/status' }
+  endpoints: { health: '/health', mcp: '/mcp', status: '/api/v1/status', dashboard: '/api/v1/dashboard' }
 }));
 
 // MCP is mounted before express.json() so the MCP HTTP handler owns its request stream.
@@ -91,7 +92,7 @@ app.get('/api/v1/status', async (_req, res) => {
     ai_decision_enabled: aiWorkerEnabled(),
     ai_model: process.env.AI_MODEL || 'gpt-6-astra',
     store: storeDriver(),
-    symbol: 'XAUUSD',
+    symbol: process.env.TRADEVICE_SYMBOL || 'XAUUSD',
     execution_timeframe: 'M1',
     context_timeframes: ['M5', 'M15'],
     setup_families: ['TREND_PULLBACK', 'BREAKOUT_RETEST', 'LIQUIDITY_SWEEP']
@@ -100,10 +101,20 @@ app.get('/api/v1/status', async (_req, res) => {
 
 app.get('/api/v1/dashboard', async (_req, res, next) => {
   try {
-    const snapshot = await getLatestSnapshot('XAUUSD');
+    const snapshot = await getLatestSnapshot(process.env.TRADEVICE_SYMBOL || 'XAUUSD');
     const performance = await performanceSummary(100);
     const lastCandle = snapshot?.candles?.[snapshot.candles.length - 1] ?? null;
+    const snapshotMs = snapshot?.timestamp ? Date.parse(snapshot.timestamp) : NaN;
+    const ageSeconds = Number.isFinite(snapshotMs) ? Math.max(0, Math.floor((Date.now() - snapshotMs) / 1000)) : null;
+    const feedState = !snapshot ? 'WAITING' : ageSeconds !== null && ageSeconds <= feedStaleAfterSeconds ? 'CONNECTED' : 'STALE';
+
     res.json({
+      generated_at: new Date().toISOString(),
+      feed: {
+        state: feedState,
+        stale_after_seconds: feedStaleAfterSeconds,
+        age_seconds: ageSeconds
+      },
       market: snapshot ? {
         symbol: snapshot.symbol,
         timeframe: snapshot.timeframe,
@@ -111,9 +122,19 @@ app.get('/api/v1/dashboard', async (_req, res, next) => {
         bid: snapshot.bid ?? null,
         ask: snapshot.ask ?? null,
         spread_points: snapshot.spread_points ?? null,
-        last_close: lastCandle?.close ?? null
+        last_close: lastCandle?.close ?? null,
+        bridge_version: snapshot.features?.bridge_version ?? null,
+        terminal_build: snapshot.features?.terminal_build ?? null
       } : null,
-      performance
+      performance: {
+        sample_size: performance.sample_size ?? 0,
+        closed_trades: performance.closed_trades ?? 0,
+        wins: performance.wins ?? 0,
+        losses: performance.losses ?? 0,
+        win_rate: performance.win_rate ?? null,
+        expectancy_r: performance.expectancy_r ?? null,
+        profit_factor: performance.profit_factor ?? null
+      }
     });
   } catch (err) { next(err); }
 });
