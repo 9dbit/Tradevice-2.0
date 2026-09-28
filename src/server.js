@@ -1,6 +1,6 @@
 import express from 'express';
 import { z } from 'zod/v4';
-import { initStore, storeDriver, saveSnapshot, getLatestSnapshot, getRecentDecisions, performanceSummary, saveDecision } from './store.js';
+import { initStore, storeDriver, saveSnapshot, getLatestSnapshot, getRecentDecisions, performanceSummary, saveDecision, recordOutcome } from './store.js';
 import { mcpNodeHandler } from './mcp.js';
 import { validateTradeIntent } from './risk.js';
 
@@ -65,6 +65,18 @@ const Decision = z.object({
   context: z.record(z.string(), z.unknown()).default({})
 });
 
+const Outcome = z.object({
+  status: z.enum(['TP', 'SL', 'EXPIRED', 'CANCELLED', 'CLOSED']),
+  exit_price: z.number().optional(),
+  pnl_usd: z.number().optional(),
+  pnl_r: z.number().optional(),
+  mfe_points: z.number().nonnegative().optional(),
+  mae_points: z.number().nonnegative().optional(),
+  duration_seconds: z.number().int().nonnegative().optional(),
+  closed_at: z.string().optional(),
+  meta: z.record(z.string(), z.unknown()).optional()
+});
+
 app.get('/api/v1/status', async (_req, res) => {
   res.json({
     service: 'tradevice-2.0',
@@ -110,6 +122,15 @@ app.post('/api/v1/decisions/shadow', requireKey, async (req, res, next) => {
       risk_reasons: risk.reasons,
       trade_id: decision.trade_id
     });
+  } catch (err) { next(err); }
+});
+
+app.post('/api/v1/decisions/:tradeId/outcome', requireKey, async (req, res, next) => {
+  try {
+    const outcome = Outcome.parse(req.body);
+    const updated = await recordOutcome(req.params.tradeId, outcome);
+    if (!updated) return res.status(404).json({ error: 'trade_id_not_found' });
+    res.status(202).json({ accepted: true, trade_id: req.params.tradeId, outcome });
   } catch (err) { next(err); }
 });
 
