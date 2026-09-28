@@ -1,115 +1,92 @@
 <!doctype html>
 <html lang="en">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Tradevice 2.0 · XAUUSD Trading Dashboard</title>
-  <style>
-    :root{
-      --bg:#070a08;--panel:#0d110f;--panel2:#111713;--panel3:#151c17;
-      --line:#202b23;--line2:#2d3d32;--text:#f4f8f5;--muted:#7f9386;
-      --green:#00e676;--green2:#17c964;--green3:#8affbd;--red:#ff5f6d;--amber:#ffc857;
-    }
-    *{box-sizing:border-box}html,body{margin:0;min-height:100%;background:var(--bg);color:var(--text)}
-    body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;font-variant-numeric:tabular-nums}
-    a{color:inherit;text-decoration:none}.app{min-height:100vh;padding:16px;background:radial-gradient(circle at 12% 0,rgba(0,230,118,.08),transparent 26%),linear-gradient(180deg,#090d0a 0,#060806 100%)}
-    .shell{max-width:1680px;margin:0 auto}.panel{background:linear-gradient(180deg,rgba(17,23,19,.98),rgba(12,16,14,.98));border:1px solid var(--line);border-radius:14px}
-    .topbar{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:11px 14px;margin-bottom:10px}
-    .brand{display:flex;align-items:center;gap:10px}.mark{width:32px;height:32px;border-radius:9px;background:var(--green);display:grid;place-items:center;color:#041208;font-weight:900}.brand h1{font-size:16px;margin:0;letter-spacing:-.02em}.brand p{font-size:9px;color:var(--muted);margin:2px 0 0}
-    .nav{display:flex;gap:4px;align-items:center}.nav a{padding:8px 10px;border-radius:8px;font-size:10px;color:var(--muted);font-weight:700}.nav a.active,.nav a:hover{background:#142018;color:var(--green)}
-    .topright{display:flex;align-items:center;gap:7px}.pill{display:flex;align-items:center;gap:6px;border:1px solid var(--line2);background:#101712;border-radius:999px;padding:7px 9px;font-size:9px;color:var(--muted);font-weight:750}.pill strong{color:var(--text)}.pill.live{color:var(--green)}.dot{width:6px;height:6px;border-radius:50%;background:currentColor;box-shadow:0 0 10px currentColor}
-    .marketstrip{display:grid;grid-template-columns:1.2fr repeat(5,1fr);margin-bottom:10px;overflow:hidden}.marketcell{padding:11px 13px;border-right:1px solid var(--line)}.marketcell:last-child{border-right:0}.eyebrow{font-size:8px;text-transform:uppercase;letter-spacing:.13em;color:var(--muted);font-weight:800}.big{font-size:23px;font-weight:820;line-height:1;margin-top:6px;letter-spacing:-.035em}.big.green{color:var(--green)}.small{font-size:9px;color:var(--muted);margin-top:4px}.symbolTitle{display:flex;align-items:center;gap:9px}.coin{width:30px;height:30px;border-radius:50%;background:#18231c;border:1px solid var(--line2);display:grid;place-items:center;color:var(--green);font-weight:900}.symbolMain{font-size:15px;font-weight:800}.symbolSub{font-size:9px;color:var(--muted);margin-top:2px}
-    .terminal{display:grid;grid-template-columns:minmax(0,1.75fr) minmax(330px,.72fr);gap:10px;margin-bottom:10px}.chartPanel{overflow:hidden}.panelhead{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 12px;border-bottom:1px solid var(--line)}.paneltitle{font-size:10px;text-transform:uppercase;letter-spacing:.11em;font-weight:850;color:#cfe3d5}.panelmeta{font-size:9px;color:var(--muted)}
-    .charttools{display:flex;gap:5px}.tool{border:1px solid var(--line);background:#101612;color:var(--muted);font-size:9px;font-weight:750;padding:6px 8px;border-radius:7px}.tool.active{background:rgba(0,230,118,.1);color:var(--green);border-color:rgba(0,230,118,.35)}
-    .chartWrap{height:510px;background:#090d0a;position:relative}.chartWrap iframe{width:100%;height:100%;border:0;display:block}.chartOverlay{position:absolute;left:12px;top:10px;z-index:2;pointer-events:none;background:rgba(7,10,8,.72);border:1px solid rgba(45,61,50,.8);border-radius:9px;padding:8px 10px;backdrop-filter:blur(5px)}.chartOverlay b{font-size:11px}.chartOverlay span{display:block;color:var(--muted);font-size:8px;margin-top:2px}
-    .ticketPanel{overflow:hidden}.ticketBody{padding:12px}.decisionHero{display:flex;align-items:flex-end;justify-content:space-between;gap:10px;padding-bottom:12px;border-bottom:1px solid var(--line)}.decisionLabel{font-size:8px;color:var(--muted);text-transform:uppercase;letter-spacing:.12em;font-weight:800}.decisionValue{font-size:34px;line-height:1;font-weight:900;letter-spacing:-.04em;margin-top:6px}.decisionValue.wait{color:var(--amber)}.decisionValue.buy{color:var(--green)}.decisionValue.sell{color:var(--red)}.confidence{font-size:24px;font-weight:850}.confidence small{display:block;font-size:8px;color:var(--muted);text-transform:uppercase;letter-spacing:.1em;text-align:right;margin-bottom:4px}
-    .tradeGrid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px}.tradeBox{background:#0a0f0c;border:1px solid var(--line);border-radius:10px;padding:11px}.tradeBox.wide{grid-column:1/-1}.tradeBox .label{font-size:8px;color:var(--muted);text-transform:uppercase;letter-spacing:.1em;font-weight:800}.tradeBox .value{font-size:25px;font-weight:860;line-height:1;margin-top:7px;letter-spacing:-.03em}.tradeBox .sub{font-size:9px;color:var(--muted);margin-top:5px;line-height:1.4}.tradeBox.tp .value,.tradeBox.tp .sub strong{color:var(--green)}.tradeBox.sl .value,.tradeBox.sl .sub strong{color:var(--red)}
-    .orderline{display:flex;justify-content:space-between;gap:10px;align-items:center;margin-top:10px;padding:10px;border:1px solid var(--line);border-radius:9px;background:#0a0f0c}.orderline b{font-size:10px}.orderline span{font-size:9px;color:var(--muted)}.reviewBadge{font-size:9px;font-weight:850;padding:5px 7px;border-radius:999px;border:1px solid var(--line2)}.reviewBadge.approved{color:var(--green)}.reviewBadge.rejected{color:var(--red)}.reviewBadge.wait{color:var(--amber)}
-    .stats{display:grid;grid-template-columns:repeat(6,1fr);gap:10px;margin-bottom:10px}.stat{padding:12px}.stat .k{font-size:8px;color:var(--muted);text-transform:uppercase;letter-spacing:.1em;font-weight:800}.stat .v{font-size:21px;font-weight:830;margin-top:6px}.stat .s{font-size:8px;color:var(--muted);margin-top:3px}
-    .tablePanel{overflow:hidden;margin-bottom:10px}.tabs{display:flex;gap:3px}.tab{font-size:9px;color:var(--muted);font-weight:800;padding:6px 8px;border-radius:7px}.tab.active{background:#142018;color:var(--green)}.tableWrap{overflow:auto;max-height:330px}.tradeTable{width:100%;border-collapse:collapse;min-width:1100px}.tradeTable th{position:sticky;top:0;background:#0b100d;color:#6f8375;font-size:8px;text-transform:uppercase;letter-spacing:.09em;text-align:left;padding:9px 10px;border-bottom:1px solid var(--line)}.tradeTable td{padding:10px;border-bottom:1px solid #172019;font-size:10px}.tradeTable tr:hover td{background:rgba(0,230,118,.025)}.num{font-weight:800}.green{color:var(--green)}.red{color:var(--red)}.amber{color:var(--amber)}.muted{color:var(--muted)}.status{display:inline-flex;padding:4px 6px;border-radius:999px;border:1px solid var(--line2);font-size:8px;font-weight:850}.status.ok{color:var(--green)}.status.bad{color:var(--red)}.status.warn{color:var(--amber)}
-    .aiGrid{display:grid;grid-template-columns:minmax(0,1.3fr) minmax(320px,.7fr);gap:10px}.aiTableWrap{overflow:auto;max-height:320px}.aiTable{width:100%;border-collapse:collapse;min-width:860px}.aiTable th,.aiTable td{padding:9px 10px;border-bottom:1px solid #172019;text-align:left;font-size:9px}.aiTable th{color:var(--muted);font-size:8px;text-transform:uppercase;letter-spacing:.08em}.aiDecision{font-weight:850}.aiDecision.WAIT{color:var(--amber)}.aiDecision.PLACE_PENDING{color:var(--green)}.thesis{max-width:390px;color:#b9c9bf;line-height:1.45}.sidePanel{padding:12px}.sideList{display:grid;gap:8px}.sideItem{border:1px solid var(--line);background:#0a0f0c;border-radius:9px;padding:10px;display:flex;justify-content:space-between;gap:12px}.sideItem span{font-size:9px;color:var(--muted)}.sideItem b{font-size:10px;text-align:right}.footer{display:flex;justify-content:space-between;gap:10px;padding:8px 2px;color:#536258;font-size:8px}
-    .empty{padding:28px;text-align:center;color:var(--muted);font-size:10px}.empty b{display:block;color:var(--text);font-size:12px;margin-bottom:4px}
-    @media(max-width:1180px){.terminal,.aiGrid{grid-template-columns:1fr}.chartWrap{height:440px}.stats{grid-template-columns:repeat(3,1fr)}.marketstrip{grid-template-columns:repeat(3,1fr)}.marketcell:nth-child(3n){border-right:0}}
-    @media(max-width:720px){.app{padding:8px}.topbar{align-items:flex-start}.nav{display:none}.topright .pill:not(.live){display:none}.marketstrip{grid-template-columns:1fr 1fr}.marketcell{border-bottom:1px solid var(--line)}.marketcell:nth-child(even){border-right:0}.chartWrap{height:360px}.stats{grid-template-columns:1fr 1fr}.tradeGrid{grid-template-columns:1fr}.tradeBox.wide{grid-column:auto}.footer{flex-direction:column}}
-  </style>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+<meta name="theme-color" content="#080b09" />
+<title>Tradevice 2.0 · XAUUSD Trading Terminal</title>
+<style>
+:root{--bg:#080b09;--panel:#101411;--panel2:#0c100d;--panel3:#151a16;--line:#222a24;--line2:#303b33;--text:#e8eee9;--muted:#768178;--green:#00e676;--green2:#22c96b;--red:#ff6673;--amber:#e9b949}
+*{box-sizing:border-box}html,body{margin:0;min-height:100%;max-width:100%;overflow-x:hidden;background:var(--bg);color:var(--text)}
+body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;font-variant-numeric:tabular-nums;font-size:12px;font-weight:400}a{color:inherit;text-decoration:none}button{font:inherit}
+.app{min-height:100vh;padding:12px;background:radial-gradient(circle at 0 0,rgba(0,230,118,.055),transparent 24%),var(--bg)}.shell{max-width:1580px;margin:0 auto;min-width:0}.panel{background:var(--panel);border:1px solid var(--line);border-radius:10px;min-width:0;overflow:hidden}
+.topbar{height:52px;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:0 12px;margin-bottom:8px}.brand{display:flex;align-items:center;gap:9px;min-width:0}.mark{width:27px;height:27px;border:1px solid rgba(0,230,118,.45);border-radius:8px;display:grid;place-items:center;color:var(--green);font-size:13px}.brand h1{font-size:13px;font-weight:650;margin:0;letter-spacing:-.01em}.brand p{font-size:8px;color:var(--muted);margin:2px 0 0;white-space:nowrap}.nav{display:flex;gap:2px;align-items:center}.nav a{padding:6px 8px;border-radius:6px;font-size:9px;color:var(--muted);font-weight:500}.nav a.active,.nav a:hover{background:#152019;color:var(--green)}.topright{display:flex;align-items:center;gap:5px;min-width:0}.pill{display:flex;align-items:center;gap:5px;border:1px solid var(--line);background:#0c100d;border-radius:7px;padding:6px 8px;font-size:8px;color:var(--muted);white-space:nowrap}.pill strong{color:var(--text);font-weight:600}.pill.live{color:var(--green)}.dot{width:5px;height:5px;border-radius:50%;background:currentColor;box-shadow:0 0 8px currentColor}
+.workbench{display:grid;grid-template-columns:46px minmax(0,1fr);gap:8px}.rail{display:flex;flex-direction:column;align-items:center;gap:6px;padding:8px 5px;height:max-content;position:sticky;top:12px}.rail a{width:32px;height:32px;border-radius:8px;display:grid;place-items:center;color:#657269;font-size:9px;border:1px solid transparent}.rail a.active,.rail a:hover{color:var(--green);background:#142019;border-color:#26382c}.content{min-width:0}
+.marketstrip{display:grid;grid-template-columns:1.35fr repeat(5,minmax(0,1fr));margin-bottom:8px}.marketcell{min-width:0;padding:9px 10px;border-right:1px solid var(--line)}.marketcell:last-child{border-right:0}.symbolTitle{display:flex;align-items:center;gap:8px}.coin{width:26px;height:26px;border-radius:50%;background:#132018;border:1px solid #2b3b30;display:grid;place-items:center;color:var(--green);font-size:10px}.symbolMain{font-size:12px;font-weight:600}.symbolSub,.small{font-size:8px;color:var(--muted);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.eyebrow{font-size:7px;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);font-weight:600}.big{font-size:17px;font-weight:550;line-height:1.1;margin-top:4px;letter-spacing:-.02em;white-space:nowrap}.green{color:var(--green)}.red{color:var(--red)}.amber{color:var(--amber)}.muted{color:var(--muted)}
+.terminal{display:grid;grid-template-columns:minmax(0,1.7fr) minmax(300px,.68fr);gap:8px;margin-bottom:8px}.panelhead{min-height:38px;display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px 10px;border-bottom:1px solid var(--line);min-width:0}.paneltitle{font-size:9px;text-transform:uppercase;letter-spacing:.1em;font-weight:600;color:#c9d3cc}.panelmeta{font-size:8px;color:var(--muted);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.charttools,.tabs{display:flex;gap:3px;overflow-x:auto;max-width:100%;scrollbar-width:none}.charttools::-webkit-scrollbar,.tabs::-webkit-scrollbar{display:none}.tool,.tab{border:1px solid transparent;background:transparent;color:var(--muted);font-size:8px;font-weight:500;padding:5px 7px;border-radius:6px;white-space:nowrap;cursor:pointer}.tool.active,.tab.active{background:#15301f;color:var(--green);border-color:#24472f}.chartWrap{height:440px;background:#080b09;position:relative}.chartWrap iframe{width:100%;height:100%;border:0;display:block}.chartOverlay{position:absolute;left:9px;top:8px;z-index:2;pointer-events:none;background:rgba(8,11,9,.78);border:1px solid rgba(48,59,51,.8);border-radius:7px;padding:6px 8px;backdrop-filter:blur(5px)}.chartOverlay b{font-size:10px;font-weight:550}.chartOverlay span{display:block;color:var(--muted);font-size:7px;margin-top:2px}
+.ticketBody{padding:10px}.decisionHero{display:grid;grid-template-columns:minmax(0,1fr) auto auto;align-items:end;gap:10px;padding-bottom:9px;border-bottom:1px solid var(--line)}.decisionLabel,.confidence small,.label{font-size:7px;color:var(--muted);text-transform:uppercase;letter-spacing:.09em;font-weight:600}.decisionValue{font-size:23px;line-height:1;font-weight:600;letter-spacing:-.03em;margin-top:4px}.decisionValue.wait{color:var(--amber)}.decisionValue.buy{color:var(--green)}.decisionValue.sell{color:var(--red)}.confidence{font-size:17px;font-weight:550;text-align:right;min-width:54px}.confidence small{display:block;margin-bottom:3px}.entryConf{color:var(--green)}
+.tradeGrid{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:8px}.tradeBox{background:var(--panel2);border:1px solid var(--line);border-radius:7px;padding:8px;min-width:0}.tradeBox.wide{grid-column:1/-1}.tradeBox .value{font-size:19px;font-weight:550;line-height:1;margin-top:5px;letter-spacing:-.02em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.tradeBox .sub{font-size:8px;color:var(--muted);margin-top:4px;line-height:1.35}.tradeBox .sub strong{font-weight:550}.tradeBox.tp .value,.tradeBox.tp .sub strong{color:var(--green)}.tradeBox.sl .value,.tradeBox.sl .sub strong{color:var(--red)}.orderline{display:flex;justify-content:space-between;gap:8px;align-items:center;margin-top:7px;padding:7px 8px;border:1px solid var(--line);border-radius:7px;background:var(--panel2)}.orderline b{font-size:9px;font-weight:550;display:block}.orderline span{font-size:7px;color:var(--muted);display:block;margin-top:2px;line-height:1.35}.reviewBadge,.status{display:inline-flex;padding:4px 6px;border-radius:999px;border:1px solid var(--line2);font-size:7px;font-weight:600;white-space:nowrap}.reviewBadge.approved,.status.ok{color:var(--green)}.reviewBadge.rejected,.status.bad{color:var(--red)}.reviewBadge.wait,.status.warn{color:var(--amber)}
+.stats{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:8px;margin-bottom:8px}.stat{padding:9px 10px}.stat .k{font-size:7px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;font-weight:600}.stat .v{font-size:16px;font-weight:550;margin-top:4px}.stat .s{font-size:7px;color:var(--muted);margin-top:2px}
+.tablePanel{margin-bottom:8px}.tableWrap,.aiTableWrap{overflow:auto;max-width:100%;max-height:330px}.tradeTable,.aiTable{width:100%;border-collapse:collapse}.tradeTable{min-width:1080px}.aiTable{min-width:960px}.tradeTable th,.aiTable th{position:sticky;top:0;background:#0b0f0c;color:#6f7d73;font-size:7px;text-transform:uppercase;letter-spacing:.07em;text-align:left;padding:7px 8px;border-bottom:1px solid var(--line);font-weight:600;z-index:1}.tradeTable td,.aiTable td{padding:8px;border-bottom:1px solid #171d18;font-size:9px;vertical-align:top}.tradeTable tr:hover td,.aiTable tr:hover td{background:rgba(0,230,118,.018)}.num{font-weight:550}.aiDecision{font-weight:600}.aiDecision.WAIT{color:var(--amber)}.aiDecision.PLACE_PENDING{color:var(--green)}.thesis{max-width:420px;color:#aebbb2;line-height:1.4}.empty{padding:24px;text-align:center;color:var(--muted);font-size:9px}.empty b{display:block;color:var(--text);font-size:10px;font-weight:550;margin-bottom:3px}.footer{display:flex;justify-content:space-between;gap:8px;padding:7px 1px;color:#536057;font-size:7px}
+@media(max-width:1120px){.workbench{grid-template-columns:1fr}.rail{display:none}.terminal{grid-template-columns:1fr}.chartWrap{height:380px}.marketstrip{grid-template-columns:repeat(3,1fr)}.marketcell:nth-child(3n){border-right:0}.stats{grid-template-columns:repeat(3,1fr)}}
+@media(max-width:720px){body{font-size:11px}.app{padding:6px}.topbar{height:44px;padding:0 8px;margin-bottom:6px}.brand p,.nav,.topright .pill:not(.live){display:none}.brand h1{font-size:12px}.mark{width:24px;height:24px}.workbench{gap:6px}.marketstrip{grid-template-columns:repeat(6,1fr);margin-bottom:6px}.marketcell{padding:7px 7px;border-bottom:1px solid var(--line);border-right:1px solid var(--line)!important}.marketcell:nth-child(1){grid-column:1/-1}.marketcell:nth-child(2),.marketcell:nth-child(3),.marketcell:nth-child(4){grid-column:span 2}.marketcell:nth-child(5),.marketcell:nth-child(6){grid-column:span 3;border-bottom:0}.marketcell:nth-child(4),.marketcell:nth-child(6){border-right:0!important}.big{font-size:14px}.symbolSub{display:none}.terminal{gap:6px;margin-bottom:6px}.panelhead{min-height:34px;padding:7px 8px}.panelmeta{max-width:205px}.chartWrap{height:270px}.ticketBody{padding:8px}.decisionHero{grid-template-columns:1fr auto auto;gap:6px}.decisionValue{font-size:20px}.confidence{font-size:14px;min-width:46px}.tradeGrid{grid-template-columns:1fr 1fr;gap:5px;margin-top:6px}.tradeBox{padding:7px}.tradeBox.wide{grid-column:1/-1}.tradeBox .value{font-size:16px}.tradeBox .sub{font-size:7px}.stats{grid-template-columns:repeat(3,1fr);gap:5px;margin-bottom:6px}.stat{padding:7px}.stat .v{font-size:14px}.tablePanel{margin-bottom:6px}.paneltitle{font-size:8px}.tabs{max-width:190px}
+.tableWrap,.aiTableWrap{overflow:visible;max-height:none;padding:6px}.tradeTable,.aiTable{display:block;min-width:0}.tradeTable thead,.aiTable thead{display:none}.tradeTable tbody,.aiTable tbody{display:grid;gap:6px}.tradeTable tr,.aiTable tr{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));border:1px solid var(--line);border-radius:8px;background:var(--panel2);overflow:hidden}.tradeTable td,.aiTable td{min-width:0;padding:6px 7px;border-bottom:1px solid #171d18;font-size:8px;overflow-wrap:anywhere}.tradeTable td::before,.aiTable td::before{content:attr(data-label);display:block;font-size:6px;color:var(--muted);text-transform:uppercase;letter-spacing:.07em;margin-bottom:3px}.tradeTable td[data-wide="1"],.aiTable td[data-wide="1"]{grid-column:1/-1}.thesis{max-width:none}.footer{flex-direction:column;gap:2px;padding-bottom:calc(6px + env(safe-area-inset-bottom))}}
+@media(max-width:390px){.chartWrap{height:245px}.tradeBox .value{font-size:15px}.panelmeta{max-width:165px}.big{font-size:13px}.stats{grid-template-columns:repeat(2,1fr)}}
+</style>
 </head>
 <body>
 <div class="app"><div class="shell">
-  <header class="panel topbar">
-    <div class="brand"><div class="mark">T</div><div><h1>Tradevice 2.0</h1><p>XAUUSD AI Trading Dashboard</p></div></div>
-    <nav class="nav"><a class="active" href="/">Dashboard</a><a href="#orders">Orders</a><a href="#analysis">AI Analysis</a><a href="/workflow/">Workflow</a></nav>
-    <div class="topright"><div class="pill"><span>MODE</span><strong>SHADOW</strong></div><div class="pill"><span>LIVE</span><strong>LOCKED</strong></div><div class="pill live" id="servicePill"><span class="dot"></span> CONNECTING</div></div>
-  </header>
-
-  <section class="panel marketstrip">
-    <div class="marketcell"><div class="symbolTitle"><div class="coin">Au</div><div><div class="symbolMain">XAUUSD</div><div class="symbolSub">Gold vs US Dollar · M1</div></div></div></div>
-    <div class="marketcell"><div class="eyebrow">Bid</div><div class="big" id="bid">—</div><div class="small">Exness feed</div></div>
-    <div class="marketcell"><div class="eyebrow">Ask</div><div class="big" id="ask">—</div><div class="small">Live market</div></div>
-    <div class="marketcell"><div class="eyebrow">Spread</div><div class="big" id="spread">—</div><div class="small">Risk governor input</div></div>
-    <div class="marketcell"><div class="eyebrow">MT5 feed</div><div class="big green" id="feedState">WAITING</div><div class="small" id="feedAge">Awaiting snapshot</div></div>
-    <div class="marketcell"><div class="eyebrow">AI worker</div><div class="big green" id="aiWorker">—</div><div class="small" id="aiModel">Structured decision engine</div></div>
-  </section>
-
-  <section class="terminal">
-    <div class="panel chartPanel">
-      <div class="panelhead"><div><div class="paneltitle">XAUUSD Chart</div><div class="panelmeta">Market reference chart · live Tradevice prices shown above</div></div><div class="charttools"><span class="tool active">M1</span><span class="tool">M5</span><span class="tool">M15</span></div></div>
-      <div class="chartWrap">
-        <div class="chartOverlay"><b id="chartPrice">XAUUSD —</b><span id="chartMeta">Tradevice live feed</span></div>
-        <iframe title="XAUUSD market chart" src="https://s.tradingview.com/widgetembed/?symbol=OANDA%3AXAUUSD&interval=1&hidesidetoolbar=1&symboledit=0&saveimage=0&toolbarbg=0d110f&studies=[]&theme=dark&style=1&timezone=Asia%2FJakarta&withdateranges=1&hideideas=1" loading="lazy"></iframe>
+<header class="panel topbar">
+  <div class="brand"><div class="mark">T</div><div><h1>Tradevice 2.0</h1><p>XAUUSD AI trading terminal</p></div></div>
+  <nav class="nav"><a class="active" href="/">Trade</a><a href="#orders">Orders</a><a href="#analysis">Analysis</a><a href="/workflow/">Workflow</a></nav>
+  <div class="topright"><div class="pill"><span>Mode</span><strong>SHADOW</strong></div><div class="pill"><span>Execution</span><strong>LOCKED</strong></div><div class="pill live" id="servicePill"><span class="dot"></span> CONNECTING</div></div>
+</header>
+<div class="workbench">
+<aside class="panel rail"><a class="active" href="/">TR</a><a href="#orders">OR</a><a href="#analysis">AI</a><a href="/workflow/">WF</a></aside>
+<main class="content">
+<section class="panel marketstrip">
+  <div class="marketcell"><div class="symbolTitle"><div class="coin">Au</div><div><div class="symbolMain">XAUUSD</div><div class="symbolSub">Gold vs US Dollar · M1</div></div></div></div>
+  <div class="marketcell"><div class="eyebrow">Bid</div><div class="big" id="bid">—</div><div class="small">Exness</div></div>
+  <div class="marketcell"><div class="eyebrow">Ask</div><div class="big" id="ask">—</div><div class="small">Live</div></div>
+  <div class="marketcell"><div class="eyebrow">Spread</div><div class="big" id="spread">—</div><div class="small">Points</div></div>
+  <div class="marketcell"><div class="eyebrow">MT5</div><div class="big green" id="feedState">WAIT</div><div class="small" id="feedAge">No snapshot</div></div>
+  <div class="marketcell"><div class="eyebrow">Astra</div><div class="big green" id="aiWorker">—</div><div class="small" id="aiModel">Decision engine</div></div>
+</section>
+<section class="terminal">
+  <div class="panel chartPanel">
+    <div class="panelhead"><div><div class="paneltitle">XAUUSD Chart</div><div class="panelmeta">Reference chart · Exness prices shown above</div></div><div class="charttools"><button class="tool active" data-tf="1">M1</button><button class="tool" data-tf="5">M5</button><button class="tool" data-tf="15">M15</button></div></div>
+    <div class="chartWrap"><div class="chartOverlay"><b id="chartPrice">XAUUSD —</b><span id="chartMeta">Tradevice feed</span></div><iframe id="marketChart" title="XAUUSD market chart" src="https://s.tradingview.com/widgetembed/?symbol=OANDA%3AXAUUSD&interval=1&hidesidetoolbar=1&symboledit=0&saveimage=0&toolbarbg=0d110f&studies=[]&theme=dark&style=1&timezone=Asia%2FJakarta&withdateranges=1&hideideas=1" loading="lazy"></iframe></div>
+  </div>
+  <aside class="panel ticketPanel">
+    <div class="panelhead"><div><div class="paneltitle">Trade Plan</div><div class="panelmeta" id="planMeta">Latest Astra decision</div></div><span class="status warn" id="planLifecycle">WAIT</span></div>
+    <div class="ticketBody">
+      <div class="decisionHero">
+        <div><div class="decisionLabel">Decision</div><div class="decisionValue wait" id="decisionValue">WAIT</div></div>
+        <div class="confidence"><small>Decision</small><span id="decisionConfidence">—</span></div>
+        <div class="confidence entryConf"><small>Entry</small><span id="entryConfidence">—</span></div>
       </div>
+      <div class="tradeGrid">
+        <div class="tradeBox"><div class="label">Lot</div><div class="value" id="lot">0.01</div><div class="sub">Shadow volume</div></div>
+        <div class="tradeBox"><div class="label">Order</div><div class="value" id="orderType">—</div><div class="sub" id="setupRegime">No setup</div></div>
+        <div class="tradeBox wide"><div class="label">Planned Entry</div><div class="value" id="entry">—</div><div class="sub">Pending activation price</div></div>
+        <div class="tradeBox tp"><div class="label">Take Profit</div><div class="value" id="tp">—</div><div class="sub"><span id="tpPips">—</span> · <strong id="tpUsd">—</strong></div></div>
+        <div class="tradeBox sl"><div class="label">Stop Loss</div><div class="value" id="sl">—</div><div class="sub"><span id="slPips">—</span> · <strong id="slUsd">—</strong></div></div>
+        <div class="tradeBox"><div class="label">Risk : Reward</div><div class="value" id="rr">—</div><div class="sub">Risk governor</div></div>
+        <div class="tradeBox"><div class="label">Floating</div><div class="value" id="floating">—</div><div class="sub" id="floatingSub">No fill</div></div>
+      </div>
+      <div class="orderline"><div><b id="reviewState">Review Agent</b><span id="reviewReason">No pending proposal</span></div><div class="reviewBadge wait" id="reviewBadge">WAIT</div></div>
     </div>
-
-    <aside class="panel ticketPanel">
-      <div class="panelhead"><div><div class="paneltitle">Current Trade Plan</div><div class="panelmeta" id="planMeta">Latest Astra decision</div></div><span class="status warn" id="planLifecycle">WAITING</span></div>
-      <div class="ticketBody">
-        <div class="decisionHero"><div><div class="decisionLabel">Decision</div><div class="decisionValue wait" id="decisionValue">WAIT</div></div><div class="confidence"><small>Decision confidence</small><span id="decisionConfidence">—</span></div></div>
-        <div class="tradeGrid">
-          <div class="tradeBox"><div class="label">Volume / Lot</div><div class="value" id="lot">0.01</div><div class="sub">Deterministic shadow volume</div></div>
-          <div class="tradeBox"><div class="label">Order type</div><div class="value" id="orderType">—</div><div class="sub" id="setupRegime">Awaiting valid setup</div></div>
-          <div class="tradeBox wide"><div class="label">Planned Entry</div><div class="value" id="entry">—</div><div class="sub">Pending activation price</div></div>
-          <div class="tradeBox tp"><div class="label">Take Profit</div><div class="value" id="tp">—</div><div class="sub"><span id="tpPips">—</span> · <strong id="tpUsd">—</strong></div></div>
-          <div class="tradeBox sl"><div class="label">Stop Loss</div><div class="value" id="sl">—</div><div class="sub"><span id="slPips">—</span> · <strong id="slUsd">—</strong></div></div>
-          <div class="tradeBox"><div class="label">Risk : Reward</div><div class="value" id="rr">—</div><div class="sub">Risk governor validation</div></div>
-          <div class="tradeBox"><div class="label">Floating P/L</div><div class="value" id="floating">—</div><div class="sub" id="floatingSub">No filled shadow order</div></div>
-        </div>
-        <div class="orderline"><div><b id="reviewState">Review Agent</b><span id="reviewReason">No pending proposal yet</span></div><div class="reviewBadge wait" id="reviewBadge">WAIT</div></div>
-      </div>
-    </aside>
-  </section>
-
-  <section class="stats">
-    <div class="panel stat"><div class="k">Closed trades</div><div class="v" id="closedTrades">0</div><div class="s">Shadow sample</div></div>
-    <div class="panel stat"><div class="k">Win rate</div><div class="v" id="winRate">—</div><div class="s">Completed trades</div></div>
-    <div class="panel stat"><div class="k">Expectancy</div><div class="v" id="expectancy">—</div><div class="s">R per closed trade</div></div>
-    <div class="panel stat"><div class="k">Profit factor</div><div class="v" id="profitFactor">—</div><div class="s">Gross profit / loss</div></div>
-    <div class="panel stat"><div class="k">Pending proposals</div><div class="v" id="pendingCount">0</div><div class="s">Ledger records</div></div>
-    <div class="panel stat"><div class="k">AI analyses</div><div class="v" id="analysisCount">0</div><div class="s">Decision journal</div></div>
-  </section>
-
-  <section class="panel tablePanel" id="orders">
-    <div class="panelhead"><div><div class="paneltitle">Orders & Positions</div><div class="panelmeta">Pending, floating, rejected and completed shadow trades stay in the ledger</div></div><div class="tabs"><span class="tab active">All</span><span class="tab">Pending</span><span class="tab">Floating</span><span class="tab">Closed</span></div></div>
-    <div class="tableWrap" id="ordersWrap"><div class="empty"><b>No trade proposals yet</b>Astra is still waiting for a qualified setup.</div></div>
-  </section>
-
-  <section class="aiGrid" id="analysis">
-    <div class="panel">
-      <div class="panelhead"><div><div class="paneltitle">AI Analysis</div><div class="panelmeta">Compact decision log from Astra and deterministic prefilter</div></div><span class="status ok">LIVE</span></div>
-      <div class="aiTableWrap" id="analysisWrap"><div class="empty">Waiting for analysis records.</div></div>
-    </div>
-    <aside class="panel sidePanel">
-      <div class="paneltitle" style="margin-bottom:10px">System Snapshot</div>
-      <div class="sideList">
-        <div class="sideItem"><span>Trading mode</span><b>SHADOW</b></div>
-        <div class="sideItem"><span>Execution</span><b class="red">LOCKED</b></div>
-        <div class="sideItem"><span>Database</span><b id="dbStatus">—</b></div>
-        <div class="sideItem"><span>Bridge</span><b id="bridge">—</b></div>
-        <div class="sideItem"><span>Review agent</span><b>ACTIVE</b></div>
-        <div class="sideItem"><span>Workflow / architecture</span><b><a class="green" href="/workflow/">Open page →</a></b></div>
-      </div>
-    </aside>
-  </section>
-
-  <footer class="footer"><span>Tradevice 2.0 · XAUUSD research trading terminal</span><span>Live order execution intentionally disabled</span></footer>
+  </aside>
+</section>
+<section class="stats">
+  <div class="panel stat"><div class="k">Closed</div><div class="v" id="closedTrades">0</div><div class="s">Shadow trades</div></div>
+  <div class="panel stat"><div class="k">Win rate</div><div class="v" id="winRate">—</div><div class="s">Completed</div></div>
+  <div class="panel stat"><div class="k">Expectancy</div><div class="v" id="expectancy">—</div><div class="s">R / trade</div></div>
+  <div class="panel stat"><div class="k">Profit factor</div><div class="v" id="profitFactor">—</div><div class="s">Gross ratio</div></div>
+  <div class="panel stat"><div class="k">Open plans</div><div class="v" id="pendingCount">0</div><div class="s">Pending / floating</div></div>
+  <div class="panel stat"><div class="k">Analyses</div><div class="v" id="analysisCount">0</div><div class="s">Decision journal</div></div>
+</section>
+<section class="panel tablePanel" id="orders">
+  <div class="panelhead"><div><div class="paneltitle">Orders & Positions</div><div class="panelmeta">Permanent shadow ledger</div></div><div class="tabs"><button class="tab active" data-filter="ALL">All</button><button class="tab" data-filter="PENDING">Pending</button><button class="tab" data-filter="FLOATING">Floating</button><button class="tab" data-filter="CLOSED">Closed</button></div></div>
+  <div class="tableWrap" id="ordersWrap"><div class="empty"><b>No trade proposals</b>Waiting for an entry-confidence setup.</div></div>
+</section>
+<section class="panel" id="analysis">
+  <div class="panelhead"><div><div class="paneltitle">AI Analysis</div><div class="panelmeta">Decision confidence and entry confidence are separate</div></div><span class="status ok">LIVE</span></div>
+  <div class="aiTableWrap" id="analysisWrap"><div class="empty">Waiting for analysis records.</div></div>
+</section>
+<footer class="footer"><span>Tradevice 2.0 · shadow research terminal</span><span><a href="/workflow/">System workflow →</a> · Live execution locked</span></footer>
+</main>
+</div>
 </div></div>
 </body>
 </html>
