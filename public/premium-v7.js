@@ -27,6 +27,7 @@
   }
 
   async function refreshProfit() {
+    if (window.TRADEVICE_BROKER_SYNC_V2 === true) return;
     try {
       const [ledgerRes, dashboardRes] = await Promise.all([
         fetch('/api/v1/orders/ledger?limit=500', { cache: 'no-store' }),

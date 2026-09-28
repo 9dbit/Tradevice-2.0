@@ -9,6 +9,7 @@ import { reviewPendingDecision } from './review-agent.js';
 import { evaluateShadowSnapshot } from './shadow-simulator.js';
 import { aiWorkerEnabled, runAiDecision } from './ai-worker.js';
 import { activatePlanCandidate, rejectPlanCandidate } from './plan-service.js';
+import { mergeBrokerState, brokerStateView, brokerPerformance } from './broker-state.js';
 
 const app = express();
 const port = Number(process.env.PORT || 3000);
@@ -76,6 +77,13 @@ const Outcome = z.object({
   status: z.enum(['TP', 'SL', 'EXPIRED', 'CANCELLED', 'CLOSED']), exit_price: z.number().optional(), pnl_usd: z.number().optional(), pnl_r: z.number().optional(),
   mfe_points: z.number().nonnegative().optional(), mae_points: z.number().nonnegative().optional(), duration_seconds: z.number().int().nonnegative().optional(),
   closed_at: z.string().optional(), meta: z.record(z.string(), z.unknown()).optional()
+});
+
+const BrokerObject = z.record(z.string(), z.unknown());
+const BrokerSync = z.object({
+  timestamp: z.string(), bridge_version: z.string().optional(), broker_symbol: z.string().optional(),
+  account: BrokerObject, positions: z.array(BrokerObject).default([]), orders: z.array(BrokerObject).default([]),
+  history_deals: z.array(BrokerObject).optional(), features: BrokerObject.optional()
 });
 
 function num(value) {
@@ -207,6 +215,34 @@ app.get('/api/v1/dashboard', async (_req, res, next) => {
       performance: { sample_size: performance.sample_size ?? 0, closed_trades: performance.closed_trades ?? 0, wins: performance.wins ?? 0, losses: performance.losses ?? 0,
         win_rate: performance.win_rate ?? null, expectancy_r: performance.expectancy_r ?? null, profit_factor: performance.profit_factor ?? null }
     });
+  } catch (err) { next(err); }
+});
+
+app.post('/api/v1/broker/sync', requireKey, async (req, res, next) => {
+  try {
+    const incoming = BrokerSync.parse(req.body);
+    const previous = await getRuntimeSetting('broker_state', null);
+    const merged = mergeBrokerState(previous, incoming);
+    await setRuntimeSetting('broker_state', merged);
+    res.status(202).json({ accepted: true, source: 'MT5', timestamp: merged.timestamp, positions: merged.positions.length, orders: merged.orders.length, history_deals: merged.history_deals.length });
+  } catch (err) { next(err); }
+});
+
+app.get('/api/v1/broker/state', async (_req, res, next) => {
+  try {
+    const state = await getRuntimeSetting('broker_state', null);
+    if (!state) return res.status(404).json({ error: 'broker_state_not_available' });
+    res.json(brokerStateView(state));
+  } catch (err) { next(err); }
+});
+
+app.get('/api/v1/broker/performance', async (req, res, next) => {
+  try {
+    const state = await getRuntimeSetting('broker_state', null);
+    if (!state) return res.status(404).json({ error: 'broker_state_not_available' });
+    const period = String(req.query.period || 'D').toUpperCase();
+    const offset = Number(process.env.TRADEVICE_TIMEZONE_OFFSET_MINUTES || 420);
+    res.json(brokerPerformance(state, period, offset));
   } catch (err) { next(err); }
 });
 

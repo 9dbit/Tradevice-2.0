@@ -50,6 +50,7 @@
   }
 
   async function refreshTradeState() {
+    if (window.TRADEVICE_BROKER_SYNC_V2 === true) return;
     const positionsWrap = $('openPositionsWrap');
     const ordersWrap = $('pendingOrdersWrap');
     if (!positionsWrap || !ordersWrap) return;

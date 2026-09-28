@@ -1,0 +1,4 @@
+/* Phase 10 broker-real account layer */
+.walletMode{transition:background .2s ease,color .2s ease}.brokerCard .miniMetric .mv{font-variant-numeric:tabular-nums}.brokerCard .positionProfit .mv{font-size:30px!important;font-weight:720!important;letter-spacing:-.045em!important}.brokerCard .positionProfit .subPnl{color:#8a9c90}.brokerCard .miniMetric:nth-last-child(-n+4){border-bottom:0}
+@media(max-width:720px){.brokerCard .positionProfit .mv{font-size:27px!important}.brokerCard .miniMetric .mv{font-size:8.3px}.brokerCard .miniMetric .mk{font-size:5.4px}}
+@media(max-width:390px){.brokerCard .positionProfit .mv{font-size:25px!important}}
