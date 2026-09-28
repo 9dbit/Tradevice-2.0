@@ -4,6 +4,7 @@ import { initStore, storeDriver, saveSnapshot, getLatestSnapshot, getRecentDecis
 import { mcpNodeHandler } from './mcp.js';
 import { validateTradeIntent } from './risk.js';
 import { evaluateShadowSnapshot } from './shadow-simulator.js';
+import { aiWorkerEnabled, runAiDecision } from './ai-worker.js';
 
 const app = express();
 const port = Number(process.env.PORT || 3000);
@@ -85,6 +86,8 @@ app.get('/api/v1/status', async (_req, res) => {
     phase: 'P0/P1',
     trading_mode: 'shadow',
     execution_enabled: false,
+    ai_decision_enabled: aiWorkerEnabled(),
+    ai_model: process.env.AI_MODEL || 'gpt-6-astra',
     store: storeDriver(),
     symbol: 'XAUUSD',
     execution_timeframe: 'M1',
@@ -98,12 +101,23 @@ app.post('/api/v1/market/snapshots', requireKey, async (req, res, next) => {
     const snapshot = Snapshot.parse(req.body);
     await saveSnapshot(snapshot);
     const shadow = await evaluateShadowSnapshot(snapshot);
+    const aiScheduled = aiWorkerEnabled() && snapshot.timeframe === 'M1';
+
     res.status(202).json({
       accepted: true,
       symbol: snapshot.symbol,
       timestamp: snapshot.timestamp,
-      shadow_simulation: shadow
+      shadow_simulation: shadow,
+      ai_decision_scheduled: aiScheduled
     });
+
+    if (aiScheduled) {
+      setImmediate(() => {
+        runAiDecision(snapshot)
+          .then(result => console.log('Tradevice AI decision:', JSON.stringify(result)))
+          .catch(error => console.error('Tradevice AI decision failed:', error));
+      });
+    }
   } catch (err) { next(err); }
 });
 
