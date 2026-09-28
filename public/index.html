@@ -9,6 +9,7 @@
 <link rel="stylesheet" href="/premium-v6.css?v=1" />
 <link rel="stylesheet" href="/premium-v7.css?v=1" />
 <link rel="stylesheet" href="/premium-v8.css?v=1" />
+<link rel="stylesheet" href="/premium-v9.css?v=1" />
 </head>
 <body>
 <div class="app"><main class="shell">
@@ -48,7 +49,10 @@
   <div class="sectionHead"><div><strong>Trade Plan Offers</strong><span>Ranked XAUUSD scenarios</span></div><span id="planCount">0 plans</span></div>
   <div class="planGrid" id="planGrid"></div>
 </section>
-<section class="compactSection" id="orders"><div class="sectionHead"><div><strong>Orders & Positions</strong><span>Pending · Floating · Closed</span></div></div><div class="tableWrap" id="ordersWrap"></div></section>
+<div class="tradeStateStack" id="orders">
+  <section class="compactSection tradeStateCard positionSection"><div class="sectionHead"><div><strong>Open Positions</strong><span>Floating positions · live P/L focus</span></div><span class="stateCount" id="openPositionsCount">0 open</span></div><div class="tradeCards" id="openPositionsWrap"></div></section>
+  <section class="compactSection tradeStateCard orderSection"><div class="sectionHead"><div><strong>Pending Orders</strong><span>Active shadow pending orders</span></div><span class="stateCount" id="pendingOrdersCount">0 active</span></div><div class="tradeCards" id="pendingOrdersWrap"></div></section>
+</div>
 <section class="compactSection" id="analysis"><div class="sectionHead"><div><strong>AI Analysis</strong><span>Decision log</span></div></div><div class="tableWrap" id="analysisWrap"></div></section>
 <nav class="mobileNav" aria-label="Tradevice navigation">
   <span class="navLens" aria-hidden="true"></span>
@@ -62,6 +66,7 @@
 <script src="/premium-v6.js?v=1"></script>
 <script src="/premium-v7.js?v=1"></script>
 <script src="/premium-v8.js?v=1"></script>
+<script src="/premium-v9.js?v=1"></script>
 </main></div>
 </body>
 </html>
