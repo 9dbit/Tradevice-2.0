@@ -21,14 +21,15 @@ const decisionSchema = {
     stop_loss: { anyOf: [{ type: 'number' }, { type: 'null' }] },
     take_profit: { anyOf: [{ type: 'number' }, { type: 'null' }] },
     expiration_candles: { anyOf: [{ type: 'integer', minimum: 1, maximum: 10 }, { type: 'null' }] },
-    confidence: { type: 'number', minimum: 0, maximum: 1 },
+    decision_confidence: { type: 'number', minimum: 0, maximum: 1 },
+    entry_confidence: { type: 'number', minimum: 0, maximum: 1 },
     reason_codes: { type: 'array', items: { type: 'string' }, maxItems: 12 },
     thesis: { type: 'string' },
     invalidation: { type: 'string' }
   },
   required: [
     'decision', 'side', 'order_type', 'setup', 'regime', 'entry', 'stop_loss',
-    'take_profit', 'expiration_candles', 'confidence', 'reason_codes', 'thesis', 'invalidation'
+    'take_profit', 'expiration_candles', 'decision_confidence', 'entry_confidence', 'reason_codes', 'thesis', 'invalidation'
   ]
 };
 
@@ -109,6 +110,8 @@ async function savePrefilterWait(snapshot, model, decisionKey, prefilter) {
     },
     context: {
       ai_generated: false,
+      decision_confidence: 1,
+      entry_confidence: 0,
       ai_model: model,
       decision_key: decisionKey,
       market_timestamp: snapshot.timestamp,
@@ -149,6 +152,9 @@ export async function runAiDecision(snapshot) {
         'Use M5 and M15 only as context; M1 is the execution timeframe.',
         'Only use TREND_PULLBACK, BREAKOUT_RETEST, or LIQUIDITY_SWEEP.',
         'Prefer pending orders. Do not choose lot size or monetary risk.',
+        `decision_confidence means confidence that the chosen decision itself is correct. entry_confidence means confidence that a currently executable pending-entry setup has edge.`,
+        `If entry_confidence is at least ${Number(process.env.ENTRY_PENDING_THRESHOLD || 0.80).toFixed(2)}, you MUST choose PLACE_PENDING and provide a complete structurally valid order.`,
+        `Never return WAIT with entry_confidence at or above ${Number(process.env.ENTRY_PENDING_THRESHOLD || 0.80).toFixed(2)}. WAIT may still have high decision_confidence when the model is highly confident that no trade should be placed.`,
         'For PLACE_PENDING, entry, stop_loss, take_profit, side, order_type, setup and expiration_candles must be non-null.',
         'For WAIT, use null for fields that do not apply.',
         'Stop loss must represent structural invalidation, not an arbitrary fixed distance.',
@@ -167,7 +173,17 @@ export async function runAiDecision(snapshot) {
     });
 
     const parsed = JSON.parse(response.output_text);
-    const baseDecision = stripNulls(parsed);
+    const entryThreshold = Number(process.env.ENTRY_PENDING_THRESHOLD || 0.80);
+    if (parsed.decision === 'WAIT' && parsed.entry_confidence >= entryThreshold) {
+      throw new Error(`MODEL_CONTRACT_VIOLATION: WAIT_WITH_ENTRY_CONFIDENCE_${parsed.entry_confidence}`);
+    }
+    if (parsed.decision === 'PLACE_PENDING' && parsed.entry_confidence < entryThreshold) {
+      throw new Error(`MODEL_CONTRACT_VIOLATION: PENDING_BELOW_ENTRY_THRESHOLD_${parsed.entry_confidence}`);
+    }
+    const baseDecision = stripNulls({
+      ...parsed,
+      confidence: parsed.decision_confidence
+    });
     const tradeId = `ai-${decisionKey}`;
     const risk = validateTradeIntent(baseDecision, snapshot);
     const review = reviewPendingDecision(baseDecision, risk);
@@ -181,6 +197,9 @@ export async function runAiDecision(snapshot) {
         ai_generated: true,
         ai_model: model,
         ai_response_id: response.id,
+        decision_confidence: parsed.decision_confidence,
+        entry_confidence: parsed.entry_confidence,
+        entry_pending_threshold: entryThreshold,
         decision_key: decisionKey,
         market_timestamp: snapshot.timestamp,
         pipeline_versions: PIPELINE_VERSIONS,
@@ -195,11 +214,15 @@ export async function runAiDecision(snapshot) {
 
     delete decision.thesis;
     delete decision.invalidation;
+    delete decision.decision_confidence;
+    delete decision.entry_confidence;
     await saveDecision(decision);
 
     return {
       trade_id: tradeId,
       decision: decision.decision,
+      decision_confidence: parsed.decision_confidence,
+      entry_confidence: parsed.entry_confidence,
       decision_key: decisionKey,
       risk_approved: risk.approved,
       risk_reasons: risk.reasons,
