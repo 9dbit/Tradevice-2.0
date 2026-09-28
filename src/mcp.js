@@ -5,7 +5,8 @@ import {
   getLatestSnapshot,
   getRecentDecisions,
   performanceSummary,
-  saveDecision
+  saveDecision,
+  recordOutcome
 } from './store.js';
 import { validateTradeIntent } from './risk.js';
 
@@ -23,6 +24,19 @@ const ShadowDecisionSchema = z.object({
   confidence: z.number().min(0).max(1).optional(),
   reason_codes: z.array(z.string()).max(12).default([]),
   context: z.record(z.string(), z.unknown()).default({})
+});
+
+const OutcomeSchema = z.object({
+  trade_id: z.string().min(3),
+  status: z.enum(['TP', 'SL', 'EXPIRED', 'CANCELLED', 'CLOSED']),
+  exit_price: z.number().optional(),
+  pnl_usd: z.number().optional(),
+  pnl_r: z.number().optional(),
+  mfe_points: z.number().nonnegative().optional(),
+  mae_points: z.number().nonnegative().optional(),
+  duration_seconds: z.number().int().nonnegative().optional(),
+  closed_at: z.string().optional(),
+  meta: z.record(z.string(), z.unknown()).optional()
 });
 
 function buildServer() {
@@ -55,7 +69,7 @@ function buildServer() {
   server.registerTool(
     'get_performance_summary',
     {
-      description: 'Summarize recent shadow-trading performance. This is research output, not a profitability guarantee.',
+      description: 'Summarize recent shadow-trading performance including expectancy, profit factor, MFE and MAE. This is research output, not a profitability guarantee.',
       inputSchema: z.object({ limit: z.number().int().min(1).max(500).default(100) })
     },
     async ({ limit }) => {
@@ -90,6 +104,25 @@ function buildServer() {
             decision: saved
           })
         }]
+      };
+    }
+  );
+
+  server.registerTool(
+    'record_trade_outcome',
+    {
+      description: 'Attach TP/SL/expiry/close outcome plus PnL, MFE and MAE to a previously journaled shadow decision. Does not execute any order.',
+      inputSchema: OutcomeSchema
+    },
+    async input => {
+      const { trade_id, ...outcome } = OutcomeSchema.parse(input);
+      const updated = await recordOutcome(trade_id, outcome);
+      return {
+        content: [{
+          type: 'text',
+          text: JSON.stringify(updated ? { accepted: true, trade_id, outcome } : { accepted: false, error: 'trade_id_not_found' })
+        }],
+        isError: !updated
       };
     }
   );
