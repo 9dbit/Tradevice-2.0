@@ -2,6 +2,7 @@ import express from 'express';
 import { z } from 'zod/v4';
 import { initStore, storeDriver, saveSnapshot, getLatestSnapshot, getRecentDecisions, performanceSummary, saveDecision } from './store.js';
 import { mcpNodeHandler } from './mcp.js';
+import { validateTradeIntent } from './risk.js';
 
 const app = express();
 const port = Number(process.env.PORT || 3000);
@@ -94,8 +95,21 @@ app.get('/api/v1/market/latest', requireKey, async (req, res, next) => {
 app.post('/api/v1/decisions/shadow', requireKey, async (req, res, next) => {
   try {
     const decision = Decision.parse(req.body);
-    await saveDecision({ ...decision, mode: 'shadow' });
-    res.status(202).json({ accepted: true, execution_enabled: false, trade_id: decision.trade_id });
+    const snapshot = await getLatestSnapshot('XAUUSD');
+    const risk = validateTradeIntent(decision, snapshot);
+    const saved = {
+      ...decision,
+      mode: 'shadow',
+      context: { ...decision.context, risk_review: risk }
+    };
+    await saveDecision(saved);
+    res.status(202).json({
+      accepted: true,
+      execution_enabled: false,
+      risk_approved: risk.approved,
+      risk_reasons: risk.reasons,
+      trade_id: decision.trade_id
+    });
   } catch (err) { next(err); }
 });
 
