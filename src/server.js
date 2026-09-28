@@ -1,4 +1,5 @@
 import express from 'express';
+import path from 'path';
 import { z } from 'zod/v4';
 import { initStore, storeDriver, saveSnapshot, getLatestSnapshot, getRecentDecisions, performanceSummary, saveDecision, recordOutcome } from './store.js';
 import { mcpNodeHandler } from './mcp.js';
@@ -28,6 +29,9 @@ app.get('/api/v1/info', (_req, res) => res.json({
   execution_enabled: false,
   endpoints: { health: '/health', mcp: '/mcp', status: '/api/v1/status', dashboard: '/api/v1/dashboard' }
 }));
+app.get('/downloads/TradeviceObserver.mq5', (_req, res) => {
+  res.download(path.resolve('mt5/TradeviceObserver.mq5'), 'TradeviceObserver.mq5');
+});
 
 // MCP is mounted before express.json() so the MCP HTTP handler owns its request stream.
 app.all('/mcp', requireKey, mcpNodeHandler);
