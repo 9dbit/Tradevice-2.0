@@ -1,4 +1,4 @@
-const DEFAULT_MIN_CONFIDENCE = 0.55;
+const DEFAULT_MIN_ENTRY_CONFIDENCE = 0.80;
 
 export function reviewPendingDecision(decision, riskReview) {
   if (decision?.decision !== 'PLACE_PENDING') {
@@ -11,8 +11,12 @@ export function reviewPendingDecision(decision, riskReview) {
   }
 
   const reasons = [];
-  const minConfidence = Number(process.env.REVIEW_MIN_CONFIDENCE || DEFAULT_MIN_CONFIDENCE);
-  const confidence = Number(decision?.confidence);
+  const minEntryConfidence = Number(
+    process.env.REVIEW_MIN_ENTRY_CONFIDENCE ||
+    process.env.ENTRY_PENDING_THRESHOLD ||
+    DEFAULT_MIN_ENTRY_CONFIDENCE
+  );
+  const entryConfidence = Number(decision?.entry_confidence ?? decision?.confidence);
 
   if (riskReview?.approved !== true) {
     reasons.push(...(Array.isArray(riskReview?.reasons) && riskReview.reasons.length
@@ -24,8 +28,8 @@ export function reviewPendingDecision(decision, riskReview) {
     reasons.push(`REGIME:${decision.regime}`);
   }
 
-  if (Number.isFinite(confidence) && confidence < minConfidence) {
-    reasons.push(`CONFIDENCE_BELOW_${minConfidence.toFixed(2)}`);
+  if (!Number.isFinite(entryConfidence) || entryConfidence < minEntryConfidence) {
+    reasons.push(`ENTRY_CONFIDENCE_BELOW_${minEntryConfidence.toFixed(2)}`);
   }
 
   if (!decision?.entry || !decision?.stop_loss || !decision?.take_profit) {
@@ -38,7 +42,7 @@ export function reviewPendingDecision(decision, riskReview) {
     reasons,
     reviewed_at: new Date().toISOString(),
     policy: {
-      min_confidence: minConfidence,
+      min_entry_confidence: minEntryConfidence,
       requires_risk_approval: true,
       rejects_regimes: ['CHAOTIC', 'NO_TRADE']
     }
