@@ -8,21 +8,6 @@
   let approvalMode = 'manual';
   let approvalUnlocked = Boolean(sessionStorage.getItem('tradeviceApprovalKey'));
 
-  function bootstrapOfferingUi(){
-    if(!document.querySelector('link[data-tradevice-offering]')){
-      const css=document.createElement('link'); css.rel='stylesheet'; css.href='/offering-v2.css'; css.dataset.tradeviceOffering='1'; document.head.appendChild(css);
-    }
-    const offers=[...document.querySelectorAll('.section')].find(s=>s.querySelector('h2')?.textContent?.includes('Trade Plan Offers'));
-    if(offers){ offers.classList.add('offersSection'); offers.id='offers'; }
-    document.querySelector('.lower')?.classList.add('marketLower');
-    if(!document.querySelector('.mobileNav')){
-      const nav=document.createElement('nav'); nav.className='mobileNav'; nav.setAttribute('aria-label','Tradevice navigation');
-      nav.innerHTML='<a class="active" href="/">Dashboard</a><a href="#offers">Offers</a><a href="#orders">Orders</a><a href="#analysis">Analysis</a><a href="/workflow/">System</a>';
-      document.querySelector('.shell')?.appendChild(nav);
-    }
-  }
-  bootstrapOfferingUi();
-
   function setText(id,v){ const el=$(id); if(el) el.textContent=v; }
   function currentKey(){ return sessionStorage.getItem('tradeviceApprovalKey') || ''; }
   function stateLabel(plan){ return plan.execution?.lifecycle || plan.status || 'CANDIDATE'; }
@@ -77,11 +62,23 @@
     </article>`;
   }
 
+  function placeholderCard(rank){
+    const best=rank===0;
+    return `<article class="planCard placeholder${best?' best':''}">
+      <div class="offerMeta"><div class="offerMetaLeft"><span class="rankChip">${String(rank+1).padStart(2,'0')}</span><span class="offerTag bull">Awaiting Setup</span><span class="offerTag">ASTRA CANDIDATE</span></div><div class="offerMetaRight">${best?'<span class="bestBadge">BEST SETUP</span>':''}<span class="ageChip">waiting</span></div></div>
+      <div class="offerHero"><div class="instrumentLine"><span class="goldMark">◆</span><span class="instrument">XAUUSD</span><span class="sidePill buy">—</span><span class="orderPill">PENDING TYPE</span></div><div class="confidenceBox"><span class="signalBars"><i></i><i></i><i></i><i></i></span><div><div class="n">—</div><div class="t">Entry Confidence</div></div><div class="dc">Decision —</div></div></div>
+      <div class="priceGrid"><div class="price"><div class="k">Entry Price</div><div class="v">—</div></div><div class="price"><div class="k">TP Price</div><div class="v">—</div></div><div class="price"><div class="k">SL Price</div><div class="v">—</div></div></div>
+      <div class="metrics"><div class="metric"><div class="k">Lot Size</div><div class="v">0.01</div></div><div class="metric"><div class="k">R:R</div><div class="v">—</div></div><div class="metric"><div class="k">TP (Pips | $)</div><div class="v">—</div></div><div class="metric"><div class="k">SL (Pips | $)</div><div class="v">—</div></div></div>
+      <div class="planStory"><span class="storyLabel">Thesis</span><p>${rank===0?'Waiting for the next qualified XAUUSD setup.':'Candidate slot reserved for the next Astra scenario.'}</p></div>
+      <div class="planActions"><button class="approve" disabled>✓ &nbsp; Approve</button><button class="reject" disabled>✕ &nbsp; Reject</button></div>
+    </article>`;
+  }
+
   function renderPlans(payload){
     renderMode(payload?.approval_mode||'manual');
     const plans=payload?.plans||[], grid=$('planGrid'), threshold=Number(payload?.auto_threshold??0.8);
     if(!grid)return;
-    if(!plans.length){ grid.innerHTML='<div class="empty"><b>No candidate plans yet</b>Astra will offer up to three scenarios when the market passes the deterministic prefilter.</div>'; setText('planCount','0 plans'); return; }
+    if(!plans.length){ grid.innerHTML=[0,1,2].map(placeholderCard).join(''); setText('planCount','Waiting for Astra'); return; }
     const group=plans[0].group_id; const latest=plans.filter(p=>p.group_id===group);
     setText('planCount',`${latest.length} plan${latest.length===1?'':'s'} · ${dt(latest[0]?.market_timestamp)}`);
     grid.innerHTML=latest.sort((a,b)=>Number(b.entry_confidence||0)-Number(a.entry_confidence||0)).map((p,i)=>planCard(p,threshold,i)).join('');
