@@ -76,7 +76,7 @@ export function brokerStateView(state) {
     },
     positions: arr(state.positions).map(publicPosition),
     orders: arr(state.orders).map(publicOrder),
-    history_deals: arr(state.history_deals).map(publicDeal)
+    history_deals_count: arr(state.history_deals).length
   };
 }
 

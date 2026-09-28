@@ -36,5 +36,7 @@ test('public broker view omits private login and computes open net profit', () =
   });
   assert.equal(view.account.balance, 1000);
   assert.equal(view.account.login, undefined);
+  assert.equal(view.history_deals, undefined);
+  assert.equal(view.history_deals_count, 0);
   assert.equal(view.positions[0].net_profit, 5);
 });
