@@ -236,10 +236,46 @@ app.get('/api/v1/orders/ledger', async (req, res, next) => {
     const orders = decisions
       .filter(row => row.decision === 'PLACE_PENDING')
       .map(row => ledgerRecord(row, snapshot));
+    const analyses = decisions.map(row => ({
+      trade_id: row.trade_id,
+      created_at: row.created_at,
+      decision: row.decision,
+      side: row.side ?? null,
+      order_type: row.order_type ?? null,
+      setup: row.setup ?? null,
+      regime: row.regime ?? null,
+      confidence: num(row.confidence),
+      reason_codes: Array.isArray(row.reason_codes) ? row.reason_codes : [],
+      source: row.context?.ai_generated === true ? 'AI' : row.review_source === 'PREFILTER' ? 'PREFILTER' : 'SYSTEM',
+      model: row.context?.ai_model ?? null,
+      market_timestamp: row.context?.market_timestamp ?? null,
+      trigger_codes: Array.isArray(row.context?.prefilter?.trigger_codes) ? row.context.prefilter.trigger_codes : [],
+      prefilter_reasons: Array.isArray(row.context?.prefilter?.reasons) ? row.context.prefilter.reasons : [],
+      thesis: row.context?.thesis ?? null,
+      invalidation: row.context?.invalidation ?? null,
+      risk: row.context?.risk_review ? {
+        approved: row.context.risk_review.approved ?? null,
+        reasons: Array.isArray(row.context.risk_review.reasons) ? row.context.risk_review.reasons : []
+      } : null,
+      review: {
+        status: row.review_status,
+        source: row.review_source,
+        reasons: Array.isArray(row.review_reasons) ? row.review_reasons : []
+      },
+      market: row.context?.market_features ? {
+        session: row.context.market_features.session?.label ?? null,
+        trend_alignment: row.context.market_features.trend_alignment ?? null,
+        volatility: row.context.market_features.volatility ?? null,
+        spread_points: row.context.market_features.spread_points ?? null,
+        range_atr_ratio: row.context.market_features.range_atr_ratio ?? null
+      } : null,
+      pipeline_versions: row.context?.pipeline_versions ?? null
+    }));
     res.json({
       generated_at: new Date().toISOString(),
       execution_enabled: false,
       mode: 'shadow',
+      analyses,
       orders
     });
   } catch (err) { next(err); }
