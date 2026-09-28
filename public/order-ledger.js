@@ -8,10 +8,24 @@
   let approvalMode = 'manual';
   let approvalUnlocked = Boolean(sessionStorage.getItem('tradeviceApprovalKey'));
 
+  function bootstrapOfferingUi(){
+    if(!document.querySelector('link[data-tradevice-offering]')){
+      const css=document.createElement('link'); css.rel='stylesheet'; css.href='/offering-v2.css'; css.dataset.tradeviceOffering='1'; document.head.appendChild(css);
+    }
+    const offers=[...document.querySelectorAll('.section')].find(s=>s.querySelector('h2')?.textContent?.includes('Trade Plan Offers'));
+    if(offers){ offers.classList.add('offersSection'); offers.id='offers'; }
+    document.querySelector('.lower')?.classList.add('marketLower');
+    if(!document.querySelector('.mobileNav')){
+      const nav=document.createElement('nav'); nav.className='mobileNav'; nav.setAttribute('aria-label','Tradevice navigation');
+      nav.innerHTML='<a class="active" href="/">Dashboard</a><a href="#offers">Offers</a><a href="#orders">Orders</a><a href="#analysis">Analysis</a><a href="/workflow/">System</a>';
+      document.querySelector('.shell')?.appendChild(nav);
+    }
+  }
+  bootstrapOfferingUi();
+
   function setText(id,v){ const el=$(id); if(el) el.textContent=v; }
   function currentKey(){ return sessionStorage.getItem('tradeviceApprovalKey') || ''; }
   function stateLabel(plan){ return plan.execution?.lifecycle || plan.status || 'CANDIDATE'; }
-  function stateColor(state){ return ['PROFIT','AUTO_APPROVED','MANUAL_APPROVED','FLOATING'].includes(state)?'green':['LOSS','REJECTED'].includes(state)?'red':['AWAITING_APPROVAL','AI_REVIEW','CANDIDATE'].includes(state)?'amber':''; }
 
   async function ensureApprovalKey(){
     let key=currentKey();
@@ -43,19 +57,23 @@
     setText('expectancy',typeof p.expectancy_r==='number'?`${sign(p.expectancy_r)}R`:'—'); setText('profitFactor',typeof p.profit_factor==='number'?p.profit_factor.toFixed(2):'—');
   }
 
-  function planCard(p,threshold){
+  function planCard(p,threshold,rank=0){
     const pv=p.plan||{}, state=stateLabel(p), manualAction=approvalMode==='manual' && ['AWAITING_APPROVAL','CANDIDATE'].includes(p.status);
     const low=typeof p.entry_confidence==='number' && p.entry_confidence<threshold;
     const execution=p.execution?.lifecycle ? ` · ${p.execution.lifecycle}` : '';
-    const tpText=typeof pv.tp_pips==='number'?`${pv.tp_pips.toFixed(1)}p · ${typeof pv.tp_usd==='number'?`+$${Math.abs(pv.tp_usd).toFixed(2)}`:'$—'}`:'—';
-    const slText=typeof pv.sl_pips==='number'?`${pv.sl_pips.toFixed(1)}p · ${typeof pv.sl_usd==='number'?`-$${Math.abs(pv.sl_usd).toFixed(2)}`:'$—'}`:'—';
-    return `<article class="planCard" data-plan-id="${esc(p.plan_id)}">
-      <div class="planTop"><div class="planIdentity"><b class="${p.side==='BUY'?'green':'red'}">${esc(p.side)} · ${esc(p.order_type)}</b><span>${esc(p.setup)} · ${esc(p.regime)}</span></div><span class="planState ${stateColor(state)}">${esc(state)}${esc(execution)}</span></div>
-      <div class="confidenceBand"><div class="entryConfidence"><div class="n">${conf(p.entry_confidence)}</div><div class="t">Entry confidence</div></div><div class="decisionConfidence"><div class="n">${conf(p.decision_confidence)}</div><div class="t">Decision confidence</div></div></div>
-      <div class="priceGrid"><div class="price"><div class="k">Entry</div><div class="v">${num(p.entry)}</div></div><div class="price"><div class="k">Take Profit</div><div class="v green">${num(p.take_profit)}</div></div><div class="price"><div class="k">Stop Loss</div><div class="v red">${num(p.stop_loss)}</div></div></div>
-      <div class="metrics"><div class="metric"><div class="k">Lot</div><div class="v">${typeof pv.lot==='number'?pv.lot.toFixed(2):'0.01'}</div></div><div class="metric"><div class="k">R:R</div><div class="v">${typeof pv.rr==='number'?`1:${pv.rr.toFixed(2)}`:'—'}</div></div><div class="metric"><div class="k">TP / $</div><div class="v green">${tpText}</div></div><div class="metric"><div class="k">SL / $</div><div class="v red">${slText}</div></div></div>
-      <div class="planStory"><p>${esc(p.thesis||'No thesis supplied.')}</p><small>${esc(p.invalidation?`Invalidation: ${p.invalidation}`:'')} ${low?' · Below AI auto threshold':''}</small></div>
-      <div class="planActions">${manualAction?`<button class="approve" data-action="approve" data-plan="${esc(p.plan_id)}">Approve</button><button class="reject" data-action="reject" data-plan="${esc(p.plan_id)}">Reject</button>`:`<div class="planMessage">${approvalMode==='ai'?'AI Auto review controls activation':esc(state.replaceAll('_',' '))}</div>`}</div>
+    const tpText=typeof pv.tp_pips==='number'?`${pv.tp_pips.toFixed(1)} pips · ${typeof pv.tp_usd==='number'?`+$${Math.abs(pv.tp_usd).toFixed(2)}`:'$—'}`:'—';
+    const slText=typeof pv.sl_pips==='number'?`${pv.sl_pips.toFixed(1)} pips · ${typeof pv.sl_usd==='number'?`-$${Math.abs(pv.sl_usd).toFixed(2)}`:'$—'}`:'—';
+    const bullish=p.side==='BUY';
+    const best=rank===0;
+    const sideClass=bullish?'buy':'sell';
+    const setupLabel=bullish?'Bullish Setup':'Bearish Setup';
+    return `<article class="planCard${best?' best':''}" data-plan-id="${esc(p.plan_id)}">
+      <div class="offerMeta"><div class="offerMetaLeft"><span class="rankChip">${String(rank+1).padStart(2,'0')}</span><span class="offerTag ${bullish?'bull':'bear'}">${setupLabel}</span><span class="offerTag">${esc(String(p.setup||'').replaceAll('_',' '))}</span></div><div class="offerMetaRight">${best?'<span class="bestBadge">BEST SETUP</span>':''}<span class="ageChip">${dt(p.market_timestamp||p.created_at)}</span></div></div>
+      <div class="offerHero"><div class="instrumentLine"><span class="goldMark">◆</span><span class="instrument">XAUUSD</span><span class="sidePill ${sideClass}">${esc(p.side)}</span><span class="orderPill">${esc(String(p.order_type||'').replaceAll('_',' '))}</span></div><div class="confidenceBox"><span class="signalBars"><i></i><i></i><i></i><i></i></span><div><div class="n">${conf(p.entry_confidence)}</div><div class="t">Entry Confidence</div></div><div class="dc">Decision ${conf(p.decision_confidence)}</div></div></div>
+      <div class="priceGrid"><div class="price"><div class="k">Entry Price</div><div class="v">${num(p.entry)}</div></div><div class="price"><div class="k">TP Price</div><div class="v green">${num(p.take_profit)}</div></div><div class="price"><div class="k">SL Price</div><div class="v red">${num(p.stop_loss)}</div></div></div>
+      <div class="metrics"><div class="metric"><div class="k">Lot Size</div><div class="v">${typeof pv.lot==='number'?pv.lot.toFixed(2):'0.01'}</div></div><div class="metric"><div class="k">R:R</div><div class="v">${typeof pv.rr==='number'?`1:${pv.rr.toFixed(2)}`:'—'}</div></div><div class="metric"><div class="k">TP (Pips | $)</div><div class="v green">${tpText}</div></div><div class="metric"><div class="k">SL (Pips | $)</div><div class="v red">${slText}</div></div></div>
+      <div class="planStory"><span class="storyLabel">Thesis</span><p>${esc(p.thesis||'No thesis supplied.')}</p><small>${esc(p.invalidation?`Invalidation: ${p.invalidation}`:'')}${low?' · Below AI auto threshold':''}</small></div>
+      <div class="planActions">${manualAction?`<button class="approve" data-action="approve" data-plan="${esc(p.plan_id)}">✓ &nbsp; Approve</button><button class="reject" data-action="reject" data-plan="${esc(p.plan_id)}">✕ &nbsp; Reject</button>`:`<div class="planMessage">${approvalMode==='ai'?'AI Auto review controls activation':esc((state+execution).replaceAll('_',' '))}</div>`}</div>
     </article>`;
   }
 
@@ -66,7 +84,7 @@
     if(!plans.length){ grid.innerHTML='<div class="empty"><b>No candidate plans yet</b>Astra will offer up to three scenarios when the market passes the deterministic prefilter.</div>'; setText('planCount','0 plans'); return; }
     const group=plans[0].group_id; const latest=plans.filter(p=>p.group_id===group);
     setText('planCount',`${latest.length} plan${latest.length===1?'':'s'} · ${dt(latest[0]?.market_timestamp)}`);
-    grid.innerHTML=latest.map(p=>planCard(p,threshold)).join('');
+    grid.innerHTML=latest.sort((a,b)=>Number(b.entry_confidence||0)-Number(a.entry_confidence||0)).map((p,i)=>planCard(p,threshold,i)).join('');
   }
 
   function renderOrders(orders){
