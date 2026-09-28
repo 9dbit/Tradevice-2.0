@@ -11,12 +11,13 @@
   function haptic(pattern=10){ try{ if(typeof navigator.vibrate==='function') navigator.vibrate(pattern); }catch{} }
   function pressFx(button){ if(!button)return; button.classList.add('pressed'); setTimeout(()=>button.classList.remove('pressed'),110); }
   function setText(id,v){ const el=$(id); if(el) el.textContent=v; }
-  function currentKey(){ return sessionStorage.getItem('tradeviceApprovalKey') || ''; }
+  function currentKey(){ return String(sessionStorage.getItem('tradeviceApprovalKey') || '').trim(); }
   function stateLabel(plan){ return plan.execution?.lifecycle || plan.status || 'CANDIDATE'; }
 
   async function ensureApprovalKey(){
     let key=currentKey();
     if(!key) key=window.prompt('Tradevice Approval Key');
+    key=String(key||'').trim();
     if(!key) return false;
     const res=await fetch('/api/v1/approval/verify',{method:'POST',headers:{'x-approval-key':key}});
     if(!res.ok){ sessionStorage.removeItem('tradeviceApprovalKey'); approvalUnlocked=false; renderUnlock(); window.alert('Approval key is invalid.'); return false; }
@@ -31,8 +32,14 @@
     setText('approvalNote', approvalMode==='manual' ? 'Manual mode: choose which offered plan enters the shadow pending-order engine.' : 'AI Auto: only the highest eligible plan at or above 80% entry confidence can auto-activate after risk review.');
   }
 
+  function money(v){ return typeof v==='number' && Number.isFinite(v) ? `$${v.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})}` : '$—'; }
   function renderMarket(dashboard,status){
-    const m=dashboard?.market||{}, f=dashboard?.feed||{};
+    const m=dashboard?.market||{}, f=dashboard?.feed||{}, a=dashboard?.account||{};
+    setText('walletEquity',money(a.equity)); setText('walletBalance',money(a.balance)); setText('walletFreeMargin',money(a.free_margin));
+    setText('walletPositions',String(a.positions_total??0)); setText('walletOrders',String(a.orders_total??0));
+    const fp=typeof a.floating_pnl==='number'?a.floating_pnl:null;
+    setText('walletFloating',fp===null?'Floating $—':`Floating ${fp>=0?'+':''}${money(fp)}`);
+    const wf=$('walletFloating'); if(wf){wf.classList.toggle('green',fp>0);wf.classList.toggle('red',fp<0);}
     setText('bid',num(m.bid)); setText('ask',num(m.ask)); setText('spread',typeof m.spread_points==='number'?`${m.spread_points.toFixed(0)} pt`:'—');
     setText('feedState',f.state||'—'); setText('aiWorker',status?.ai_decision_enabled?'ON':'OFF');
     setText('chartPrice',m.bid?`XAUUSD ${num(m.bid)}`:'XAUUSD —'); setText('chartMeta',`${f.state||'WAIT'} · spread ${typeof m.spread_points==='number'?m.spread_points.toFixed(0):'—'} pt · ${typeof f.age_seconds==='number'?f.age_seconds+'s ago':'—'}`);
