@@ -70,7 +70,9 @@ export async function getLatestSnapshot(symbol = 'XAUUSD') {
 
 export async function saveDecision(decision) {
   if (!pool) {
-    memory.decisions.unshift(decision);
+    const existing = memory.decisions.findIndex(d => d.trade_id === decision.trade_id);
+    if (existing >= 0) memory.decisions[existing] = { ...memory.decisions[existing], ...decision };
+    else memory.decisions.unshift(decision);
     memory.decisions = memory.decisions.slice(0, 2000);
     return decision;
   }
@@ -93,6 +95,26 @@ export async function saveDecision(decision) {
   return decision;
 }
 
+export async function recordOutcome(tradeId, outcome) {
+  const closedAt = outcome.closed_at ?? new Date().toISOString();
+  if (!pool) {
+    const idx = memory.decisions.findIndex(d => d.trade_id === tradeId);
+    if (idx < 0) return null;
+    memory.decisions[idx] = { ...memory.decisions[idx], outcome, closed_at: closedAt };
+    return memory.decisions[idx];
+  }
+
+  const { rows } = await pool.query(
+    `UPDATE trade_decisions
+       SET outcome=$2, closed_at=$3
+     WHERE trade_id=$1
+     RETURNING trade_id,mode,decision,side,setup,regime,entry,stop_loss,take_profit,
+               expiration_candles,confidence,reason_codes,context,outcome,created_at,closed_at`,
+    [tradeId, JSON.stringify(outcome), closedAt]
+  );
+  return rows[0] ?? null;
+}
+
 export async function getRecentDecisions(limit = 100) {
   if (!pool) return memory.decisions.slice(0, limit);
   const { rows } = await pool.query(
@@ -108,6 +130,8 @@ export async function performanceSummary(limit = 100) {
   const decisions = await getRecentDecisions(limit);
   const closed = decisions.filter(d => d.outcome && typeof d.outcome === 'object');
   const pnlR = closed.map(d => Number(d.outcome.pnl_r ?? 0));
+  const mfe = closed.map(d => Number(d.outcome.mfe_points ?? 0)).filter(Number.isFinite);
+  const mae = closed.map(d => Number(d.outcome.mae_points ?? 0)).filter(Number.isFinite);
   const wins = pnlR.filter(x => x > 0).length;
   const losses = pnlR.filter(x => x < 0).length;
   const grossProfit = pnlR.filter(x => x > 0).reduce((a,b) => a+b, 0);
@@ -120,6 +144,8 @@ export async function performanceSummary(limit = 100) {
     win_rate: closed.length ? wins / closed.length : null,
     expectancy_r: closed.length ? pnlR.reduce((a,b) => a+b, 0) / closed.length : null,
     profit_factor: grossLoss > 0 ? grossProfit / grossLoss : null,
+    avg_mfe_points: mfe.length ? mfe.reduce((a,b) => a+b, 0) / mfe.length : null,
+    avg_mae_points: mae.length ? mae.reduce((a,b) => a+b, 0) / mae.length : null,
     note: 'Shadow/research metrics only; not a promise of future profitability.'
   };
 }
