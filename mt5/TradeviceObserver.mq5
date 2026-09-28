@@ -1,22 +1,54 @@
 #property strict
-#property version   "0.200"
+#property version   "0.210"
 #property description "Tradevice 2.0 observer bridge. Sends market snapshots only; no order execution."
 
 input string ApiBase = "https://tradevice-api-production.up.railway.app";
 input string ApiKey = "";
-input string TradeSymbol = "XAUUSD";
+input string CanonicalSymbol = "XAUUSD";
+input string TradeSymbol = ""; // Blank = auto-detect broker symbol from chart, e.g. XAUUSDm
 input int M1Bars = 60;
 input int M5Bars = 36;
 input int M15Bars = 16;
 input int RequestTimeoutMs = 5000;
 
 static datetime lastM1Bar = 0;
+static string resolvedSymbol = "";
 
 string IsoUtc(datetime t)
 {
    MqlDateTime d;
    TimeToStruct(t, d);
    return StringFormat("%04d-%02d-%02dT%02d:%02d:%02dZ", d.year, d.mon, d.day, d.hour, d.min, d.sec);
+}
+
+bool TrySymbol(string symbol)
+{
+   if(StringLen(symbol) == 0) return false;
+   if(!SymbolSelect(symbol, true)) return false;
+   resolvedSymbol = symbol;
+   return true;
+}
+
+bool ResolveBrokerSymbol()
+{
+   // Best choice: the chart where the observer is attached.
+   if(StringFind(_Symbol, CanonicalSymbol) >= 0 && TrySymbol(_Symbol)) return true;
+
+   // Explicit override, if supplied.
+   if(StringLen(TradeSymbol) > 0 && TrySymbol(TradeSymbol)) return true;
+
+   // Exact canonical symbol, for brokers that do not use suffixes.
+   if(TrySymbol(CanonicalSymbol)) return true;
+
+   // Search every broker symbol for XAUUSD variants such as XAUUSDm / XAUUSD.a.
+   int total = SymbolsTotal(false);
+   for(int i = 0; i < total; i++)
+   {
+      string candidate = SymbolName(i, false);
+      if(StringFind(candidate, CanonicalSymbol) >= 0 && TrySymbol(candidate)) return true;
+   }
+
+   return false;
 }
 
 string RatesJson(string symbol, ENUM_TIMEFRAMES timeframe, int count)
@@ -46,23 +78,29 @@ string RatesJson(string symbol, ENUM_TIMEFRAMES timeframe, int count)
 
 bool SendSnapshot()
 {
-   MqlTick tick;
-   if(!SymbolInfoTick(TradeSymbol, tick))
+   if(StringLen(resolvedSymbol) == 0)
    {
-      Print("Tradevice: SymbolInfoTick failed for ", TradeSymbol);
+      Print("Tradevice: broker symbol is not resolved.");
       return false;
    }
 
-   double point = SymbolInfoDouble(TradeSymbol, SYMBOL_POINT);
+   MqlTick tick;
+   if(!SymbolInfoTick(resolvedSymbol, tick))
+   {
+      Print("Tradevice: SymbolInfoTick failed for broker symbol ", resolvedSymbol);
+      return false;
+   }
+
+   double point = SymbolInfoDouble(resolvedSymbol, SYMBOL_POINT);
    double spreadPoints = point > 0 ? (tick.ask - tick.bid) / point : 0;
 
-   string m1 = RatesJson(TradeSymbol, PERIOD_M1, M1Bars);
-   string m5 = RatesJson(TradeSymbol, PERIOD_M5, M5Bars);
-   string m15 = RatesJson(TradeSymbol, PERIOD_M15, M15Bars);
+   string m1 = RatesJson(resolvedSymbol, PERIOD_M1, M1Bars);
+   string m5 = RatesJson(resolvedSymbol, PERIOD_M5, M5Bars);
+   string m15 = RatesJson(resolvedSymbol, PERIOD_M15, M15Bars);
 
    string payload = StringFormat(
-      "{\"symbol\":\"%s\",\"timeframe\":\"M1\",\"timestamp\":\"%s\",\"bid\":%.8f,\"ask\":%.8f,\"spread_points\":%.2f,\"candles\":%s,\"account\":{\"balance\":%.2f,\"equity\":%.2f,\"margin_free\":%.2f,\"positions_total\":%d,\"orders_total\":%d},\"features\":{\"bridge_version\":\"0.200\",\"terminal_build\":%d,\"terminal_connected\":%s,\"point_size\":%.8f,\"m5_candles\":%s,\"m15_candles\":%s}}",
-      TradeSymbol,
+      "{\"symbol\":\"%s\",\"timeframe\":\"M1\",\"timestamp\":\"%s\",\"bid\":%.8f,\"ask\":%.8f,\"spread_points\":%.2f,\"candles\":%s,\"account\":{\"balance\":%.2f,\"equity\":%.2f,\"margin_free\":%.2f,\"positions_total\":%d,\"orders_total\":%d},\"features\":{\"bridge_version\":\"0.210\",\"broker_symbol\":\"%s\",\"terminal_build\":%d,\"terminal_connected\":%s,\"point_size\":%.8f,\"m5_candles\":%s,\"m15_candles\":%s}}",
+      CanonicalSymbol,
       IsoUtc(TimeGMT()),
       tick.bid,
       tick.ask,
@@ -73,6 +111,7 @@ bool SendSnapshot()
       AccountInfoDouble(ACCOUNT_MARGIN_FREE),
       PositionsTotal(),
       OrdersTotal(),
+      resolvedSymbol,
       (int)TerminalInfoInteger(TERMINAL_BUILD),
       TerminalInfoInteger(TERMINAL_CONNECTED) ? "true" : "false",
       point,
@@ -107,21 +146,21 @@ bool SendSnapshot()
       return false;
    }
 
-   Print("Tradevice snapshot accepted: ", body);
+   Print("Tradevice snapshot accepted: broker=", resolvedSymbol, " canonical=", CanonicalSymbol, " response=", body);
    return true;
 }
 
 int OnInit()
 {
-   if(!SymbolSelect(TradeSymbol, true))
+   if(!ResolveBrokerSymbol())
    {
-      Print("Tradevice: cannot select symbol ", TradeSymbol);
+      Print("Tradevice: cannot resolve broker symbol for ", CanonicalSymbol, ". Attach Observer to the broker's gold M1 chart or set TradeSymbol manually.");
       return INIT_FAILED;
    }
 
    EventSetTimer(1);
-   lastM1Bar = iTime(TradeSymbol, PERIOD_M1, 0);
-   Print("Tradevice Observer v0.200 started for ", TradeSymbol, ". Execution is disabled by design.");
+   lastM1Bar = iTime(resolvedSymbol, PERIOD_M1, 0);
+   Print("Tradevice Observer v0.210 started. Broker symbol=", resolvedSymbol, ", canonical=", CanonicalSymbol, ". Execution is disabled by design.");
    return INIT_SUCCEEDED;
 }
 
@@ -132,7 +171,7 @@ void OnDeinit(const int reason)
 
 void OnTimer()
 {
-   datetime currentM1Bar = iTime(TradeSymbol, PERIOD_M1, 0);
+   datetime currentM1Bar = iTime(resolvedSymbol, PERIOD_M1, 0);
    if(currentM1Bar <= 0 || currentM1Bar == lastM1Bar) return;
 
    lastM1Bar = currentM1Bar;
