@@ -24,6 +24,7 @@ export async function initStore() {
       mode TEXT NOT NULL DEFAULT 'shadow',
       decision TEXT NOT NULL,
       side TEXT,
+      order_type TEXT,
       setup TEXT,
       regime TEXT,
       entry NUMERIC,
@@ -33,11 +34,21 @@ export async function initStore() {
       confidence NUMERIC,
       reason_codes JSONB NOT NULL DEFAULT '[]'::jsonb,
       context JSONB NOT NULL DEFAULT '{}'::jsonb,
+      review_status TEXT NOT NULL DEFAULT 'PENDING_REVIEW',
+      review_source TEXT,
+      review_reasons JSONB NOT NULL DEFAULT '[]'::jsonb,
+      reviewed_at TIMESTAMPTZ,
       outcome JSONB,
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       closed_at TIMESTAMPTZ
     );
+    ALTER TABLE trade_decisions ADD COLUMN IF NOT EXISTS order_type TEXT;
+    ALTER TABLE trade_decisions ADD COLUMN IF NOT EXISTS review_status TEXT NOT NULL DEFAULT 'PENDING_REVIEW';
+    ALTER TABLE trade_decisions ADD COLUMN IF NOT EXISTS review_source TEXT;
+    ALTER TABLE trade_decisions ADD COLUMN IF NOT EXISTS review_reasons JSONB NOT NULL DEFAULT '[]'::jsonb;
+    ALTER TABLE trade_decisions ADD COLUMN IF NOT EXISTS reviewed_at TIMESTAMPTZ;
     CREATE INDEX IF NOT EXISTS trade_decisions_created_idx ON trade_decisions(created_at DESC);
+    CREATE INDEX IF NOT EXISTS trade_decisions_review_idx ON trade_decisions(review_status, created_at DESC);
   `);
   return { driver: 'postgres' };
 }
@@ -69,31 +80,60 @@ export async function getLatestSnapshot(symbol = 'XAUUSD') {
 }
 
 export async function saveDecision(decision) {
+  const review = decision.review ?? {};
+  const reviewStatus = review.status ?? (decision.decision === 'PLACE_PENDING' ? 'PENDING_REVIEW' : 'NOT_REQUIRED');
+  const reviewSource = review.source ?? null;
+  const reviewReasons = review.reasons ?? [];
+  const reviewedAt = review.reviewed_at ?? null;
+
   if (!pool) {
-    const normalized = { created_at: new Date().toISOString(), ...decision };
+    const normalized = {
+      created_at: new Date().toISOString(),
+      ...decision,
+      review_status: reviewStatus,
+      review_source: reviewSource,
+      review_reasons: reviewReasons,
+      reviewed_at: reviewedAt
+    };
+    delete normalized.review;
     const existing = memory.decisions.findIndex(d => d.trade_id === normalized.trade_id);
     if (existing >= 0) memory.decisions[existing] = { ...memory.decisions[existing], ...normalized };
     else memory.decisions.unshift(normalized);
     memory.decisions = memory.decisions.slice(0, 2000);
     return normalized;
   }
+
   await pool.query(
     `INSERT INTO trade_decisions(
-      trade_id,mode,decision,side,setup,regime,entry,stop_loss,take_profit,
-      expiration_candles,confidence,reason_codes,context,outcome
-    ) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+      trade_id,mode,decision,side,order_type,setup,regime,entry,stop_loss,take_profit,
+      expiration_candles,confidence,reason_codes,context,review_status,review_source,
+      review_reasons,reviewed_at,outcome
+    ) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)
     ON CONFLICT(trade_id) DO UPDATE SET
+      order_type=COALESCE(EXCLUDED.order_type,trade_decisions.order_type),
       outcome=COALESCE(EXCLUDED.outcome,trade_decisions.outcome),
-      context=trade_decisions.context || EXCLUDED.context`,
+      context=trade_decisions.context || EXCLUDED.context,
+      review_status=COALESCE(EXCLUDED.review_status,trade_decisions.review_status),
+      review_source=COALESCE(EXCLUDED.review_source,trade_decisions.review_source),
+      review_reasons=CASE WHEN jsonb_array_length(EXCLUDED.review_reasons) > 0 THEN EXCLUDED.review_reasons ELSE trade_decisions.review_reasons END,
+      reviewed_at=COALESCE(EXCLUDED.reviewed_at,trade_decisions.reviewed_at)`,
     [
       decision.trade_id, decision.mode ?? 'shadow', decision.decision, decision.side ?? null,
-      decision.setup ?? null, decision.regime ?? null, decision.entry ?? null,
-      decision.stop_loss ?? null, decision.take_profit ?? null, decision.expiration_candles ?? null,
-      decision.confidence ?? null, JSON.stringify(decision.reason_codes ?? []),
-      JSON.stringify(decision.context ?? {}), decision.outcome ? JSON.stringify(decision.outcome) : null
+      decision.order_type ?? null, decision.setup ?? null, decision.regime ?? null,
+      decision.entry ?? null, decision.stop_loss ?? null, decision.take_profit ?? null,
+      decision.expiration_candles ?? null, decision.confidence ?? null,
+      JSON.stringify(decision.reason_codes ?? []), JSON.stringify(decision.context ?? {}),
+      reviewStatus, reviewSource, JSON.stringify(reviewReasons), reviewedAt,
+      decision.outcome ? JSON.stringify(decision.outcome) : null
     ]
   );
-  return decision;
+  return {
+    ...decision,
+    review_status: reviewStatus,
+    review_source: reviewSource,
+    review_reasons: reviewReasons,
+    reviewed_at: reviewedAt
+  };
 }
 
 export async function updateDecisionContext(tradeId, patch) {
@@ -110,8 +150,9 @@ export async function updateDecisionContext(tradeId, patch) {
     `UPDATE trade_decisions
        SET context = context || $2::jsonb
      WHERE trade_id=$1
-     RETURNING trade_id,mode,decision,side,setup,regime,entry,stop_loss,take_profit,
-               expiration_candles,confidence,reason_codes,context,outcome,created_at,closed_at`,
+     RETURNING trade_id,mode,decision,side,order_type,setup,regime,entry,stop_loss,take_profit,
+               expiration_candles,confidence,reason_codes,context,review_status,review_source,
+               review_reasons,reviewed_at,outcome,created_at,closed_at`,
     [tradeId, JSON.stringify(patch)]
   );
   return rows[0] ?? null;
@@ -120,14 +161,15 @@ export async function updateDecisionContext(tradeId, patch) {
 export async function getActiveShadowDecisions(limit = 200) {
   if (!pool) {
     return memory.decisions
-      .filter(d => d.mode === 'shadow' && d.decision === 'PLACE_PENDING' && !d.outcome)
+      .filter(d => d.mode === 'shadow' && d.decision === 'PLACE_PENDING' && d.review_status === 'APPROVED' && !d.outcome)
       .slice(0, limit);
   }
   const { rows } = await pool.query(
-    `SELECT trade_id,mode,decision,side,setup,regime,entry,stop_loss,take_profit,
-            expiration_candles,confidence,reason_codes,context,outcome,created_at,closed_at
+    `SELECT trade_id,mode,decision,side,order_type,setup,regime,entry,stop_loss,take_profit,
+            expiration_candles,confidence,reason_codes,context,review_status,review_source,
+            review_reasons,reviewed_at,outcome,created_at,closed_at
        FROM trade_decisions
-      WHERE mode='shadow' AND decision='PLACE_PENDING' AND outcome IS NULL
+      WHERE mode='shadow' AND decision='PLACE_PENDING' AND review_status='APPROVED' AND outcome IS NULL
       ORDER BY created_at ASC LIMIT $1`,
     [Math.min(limit, 500)]
   );
@@ -147,8 +189,9 @@ export async function recordOutcome(tradeId, outcome) {
     `UPDATE trade_decisions
        SET outcome=$2, closed_at=$3
      WHERE trade_id=$1
-     RETURNING trade_id,mode,decision,side,setup,regime,entry,stop_loss,take_profit,
-               expiration_candles,confidence,reason_codes,context,outcome,created_at,closed_at`,
+     RETURNING trade_id,mode,decision,side,order_type,setup,regime,entry,stop_loss,take_profit,
+               expiration_candles,confidence,reason_codes,context,review_status,review_source,
+               review_reasons,reviewed_at,outcome,created_at,closed_at`,
     [tradeId, JSON.stringify(outcome), closedAt]
   );
   return rows[0] ?? null;
@@ -157,8 +200,9 @@ export async function recordOutcome(tradeId, outcome) {
 export async function getRecentDecisions(limit = 100) {
   if (!pool) return memory.decisions.slice(0, limit);
   const { rows } = await pool.query(
-    `SELECT trade_id,mode,decision,side,setup,regime,entry,stop_loss,take_profit,
-            expiration_candles,confidence,reason_codes,context,outcome,created_at,closed_at
+    `SELECT trade_id,mode,decision,side,order_type,setup,regime,entry,stop_loss,take_profit,
+            expiration_candles,confidence,reason_codes,context,review_status,review_source,
+            review_reasons,reviewed_at,outcome,created_at,closed_at
      FROM trade_decisions ORDER BY created_at DESC LIMIT $1`,
     [Math.min(limit, 500)]
   );
