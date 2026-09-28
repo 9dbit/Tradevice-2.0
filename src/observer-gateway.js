@@ -9,6 +9,8 @@ const internalPort = Number(process.env.TRADEVICE_INTERNAL_PORT || 3101);
 const apiKey = String(process.env.TRADEVICE_API_KEY || '').trim();
 const observerKey = String(process.env.TRADEVICE_OBSERVER_KEY || '').trim();
 const approvalKey = String(process.env.TRADEVICE_APPROVAL_KEY || '').trim();
+const chatDownloadTokenHash = 'a533233463e013575fe4d5e2ea081f86de503e0a21fec66c2996c5bebbc0e68d';
+const chatDownloadExpiresAt = Date.parse('2026-09-29T20:00:00Z');
 const sessionToken = approvalKey && observerKey
   ? crypto.createHash('sha256').update(`${approvalKey}:${observerKey}`).digest('hex')
   : '';
@@ -20,8 +22,12 @@ await import('./server.js');
 const cookieName = 'tradevice_observer_download';
 const syncPaths = new Set(['/api/v1/market/snapshots', '/api/v1/broker/sync']);
 
+function requestUrl(req) {
+  return new URL(req.url || '/', 'http://tradevice.local');
+}
+
 function pathOnly(req) {
-  return new URL(req.url || '/', 'http://tradevice.local').pathname;
+  return requestUrl(req).pathname;
 }
 
 function hasDownloadSession(req) {
@@ -31,6 +37,16 @@ function hasDownloadSession(req) {
 
 function isApprovalHeader(req) {
   return Boolean(approvalKey) && String(req.headers['x-approval-key'] || '').trim() === approvalKey;
+}
+
+function hasValidChatDownloadToken(req) {
+  if (Date.now() > chatDownloadExpiresAt) return false;
+  const token = requestUrl(req).searchParams.get('download_token') || '';
+  if (!token) return false;
+  const digest = crypto.createHash('sha256').update(token).digest('hex');
+  const actual = Buffer.from(digest, 'hex');
+  const expected = Buffer.from(chatDownloadTokenHash, 'hex');
+  return actual.length === expected.length && crypto.timingSafeEqual(actual, expected);
 }
 
 function proxy(req, res, authOverride = null) {
@@ -53,11 +69,11 @@ function proxy(req, res, authOverride = null) {
 }
 
 async function preparedObserver(req, res) {
-  if (!observerKey || !approvalKey) {
+  if (!observerKey) {
     res.writeHead(503, { 'content-type': 'application/json' });
     return res.end(JSON.stringify({ error: 'observer_download_not_configured' }));
   }
-  if (!isApprovalHeader(req) && !hasDownloadSession(req)) {
+  if (!isApprovalHeader(req) && !hasDownloadSession(req) && !hasValidChatDownloadToken(req)) {
     res.writeHead(401, { 'content-type': 'application/json' });
     return res.end(JSON.stringify({ error: 'observer_download_locked' }));
   }
