@@ -1,5 +1,5 @@
 #property strict
-#property version   "1.22"
+#property version   "1.23"
 #property description "Tradevice 2.0 observer bridge. Sends market snapshots only; no order execution."
 
 input string ApiBase = "https://tradevice-api-production.up.railway.app";
@@ -90,13 +90,22 @@ bool SendSnapshot()
 
    double point = SymbolInfoDouble(resolvedSymbol, SYMBOL_POINT);
    double spreadPoints = point > 0 ? (tick.ask - tick.bid) / point : 0;
+   int digits = (int)SymbolInfoInteger(resolvedSymbol, SYMBOL_DIGITS);
+   double contractSize = SymbolInfoDouble(resolvedSymbol, SYMBOL_TRADE_CONTRACT_SIZE);
+   double tickSize = SymbolInfoDouble(resolvedSymbol, SYMBOL_TRADE_TICK_SIZE);
+   double tickValue = SymbolInfoDouble(resolvedSymbol, SYMBOL_TRADE_TICK_VALUE);
+   double tickValueProfit = SymbolInfoDouble(resolvedSymbol, SYMBOL_TRADE_TICK_VALUE_PROFIT);
+   double tickValueLoss = SymbolInfoDouble(resolvedSymbol, SYMBOL_TRADE_TICK_VALUE_LOSS);
+   double volumeMin = SymbolInfoDouble(resolvedSymbol, SYMBOL_VOLUME_MIN);
+   double volumeMax = SymbolInfoDouble(resolvedSymbol, SYMBOL_VOLUME_MAX);
+   double volumeStep = SymbolInfoDouble(resolvedSymbol, SYMBOL_VOLUME_STEP);
 
    string m1 = RatesJson(resolvedSymbol, PERIOD_M1, M1Bars);
    string m5 = RatesJson(resolvedSymbol, PERIOD_M5, M5Bars);
    string m15 = RatesJson(resolvedSymbol, PERIOD_M15, M15Bars);
 
    string payload = StringFormat(
-      "{\"symbol\":\"%s\",\"timeframe\":\"M1\",\"timestamp\":\"%s\",\"bid\":%.8f,\"ask\":%.8f,\"spread_points\":%.2f,\"candles\":%s,\"account\":{\"balance\":%.2f,\"equity\":%.2f,\"margin_free\":%.2f,\"positions_total\":%d,\"orders_total\":%d},\"features\":{\"bridge_version\":\"1.22\",\"broker_symbol\":\"%s\",\"terminal_build\":%d,\"terminal_connected\":%s,\"point_size\":%.8f,\"m5_candles\":%s,\"m15_candles\":%s}}",
+      "{\"symbol\":\"%s\",\"timeframe\":\"M1\",\"timestamp\":\"%s\",\"bid\":%.8f,\"ask\":%.8f,\"spread_points\":%.2f,\"candles\":%s,\"account\":{\"balance\":%.2f,\"equity\":%.2f,\"margin_free\":%.2f,\"positions_total\":%d,\"orders_total\":%d},\"features\":{\"bridge_version\":\"1.23\",\"broker_symbol\":\"%s\",\"terminal_build\":%d,\"terminal_connected\":%s,\"point_size\":%.8f,\"digits\":%d,\"contract_size\":%.8f,\"tick_size\":%.8f,\"tick_value\":%.8f,\"tick_value_profit\":%.8f,\"tick_value_loss\":%.8f,\"volume_min\":%.8f,\"volume_max\":%.8f,\"volume_step\":%.8f,\"m5_candles\":%s,\"m15_candles\":%s}}",
       CanonicalSymbol,
       IsoUtc(TimeGMT()),
       tick.bid,
@@ -112,6 +121,15 @@ bool SendSnapshot()
       (int)TerminalInfoInteger(TERMINAL_BUILD),
       TerminalInfoInteger(TERMINAL_CONNECTED) ? "true" : "false",
       point,
+      digits,
+      contractSize,
+      tickSize,
+      tickValue,
+      tickValueProfit,
+      tickValueLoss,
+      volumeMin,
+      volumeMax,
+      volumeStep,
       m5,
       m15
    );
@@ -136,13 +154,9 @@ bool SendSnapshot()
    {
       int err = GetLastError();
       if(err == 4014)
-      {
          Print("Tradevice WebRequest blocked by MT5 (error 4014). Add exactly this URL to Tools > Options > Expert Advisors > Allow WebRequest: ", ApiBase);
-      }
       else
-      {
          Print("Tradevice WebRequest failed. MT5 error=", err, " url=", ApiBase);
-      }
       return false;
    }
 
@@ -167,7 +181,7 @@ int OnInit()
 
    EventSetTimer(1);
    lastM1Bar = iTime(resolvedSymbol, PERIOD_M1, 0);
-   Print("Tradevice Observer v1.22 started. Broker symbol=", resolvedSymbol, ", canonical=", CanonicalSymbol, ". Execution is disabled by design.");
+   Print("Tradevice Observer v1.23 started. Broker symbol=", resolvedSymbol, ", canonical=", CanonicalSymbol, ". Execution is disabled by design.");
 
    lastRetryAttempt = TimeCurrent();
    snapshotChannelReady = SendSnapshot();
