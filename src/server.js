@@ -1,9 +1,11 @@
 import express from 'express';
+import fs from 'fs';
 import path from 'path';
 import { z } from 'zod/v4';
 import { initStore, storeDriver, saveSnapshot, getLatestSnapshot, getRecentDecisions, performanceSummary, saveDecision, recordOutcome } from './store.js';
 import { mcpNodeHandler } from './mcp.js';
 import { validateTradeIntent } from './risk.js';
+import { reviewPendingDecision } from './review-agent.js';
 import { evaluateShadowSnapshot } from './shadow-simulator.js';
 import { aiWorkerEnabled, runAiDecision } from './ai-worker.js';
 
@@ -20,6 +22,12 @@ function requireKey(req, res, next) {
   next();
 }
 
+app.get('/', async (_req, res, next) => {
+  try {
+    const source = await fs.promises.readFile(path.resolve('public/index.html'), 'utf8');
+    res.type('html').send(source.replace('</body>', '<script src="/order-ledger.js"></script></body>'));
+  } catch (err) { next(err); }
+});
 app.use(express.static('public'));
 
 app.get('/health', (_req, res) => res.json({ ok: true, service: 'tradevice-2.0', mode: 'shadow', store: storeDriver() }));
@@ -27,7 +35,7 @@ app.get('/api/v1/info', (_req, res) => res.json({
   name: 'Tradevice 2.0',
   phase: 'P0/P1 Observer + Shadow AI',
   execution_enabled: false,
-  endpoints: { health: '/health', mcp: '/mcp', status: '/api/v1/status', dashboard: '/api/v1/dashboard' }
+  endpoints: { health: '/health', mcp: '/mcp', status: '/api/v1/status', dashboard: '/api/v1/dashboard', order_ledger: '/api/v1/orders/ledger' }
 }));
 app.get('/downloads/TradeviceObserver.mq5', (_req, res) => {
   res.download(path.resolve('mt5/TradeviceObserver.mq5'), 'TradeviceObserver.mq5');
@@ -87,6 +95,76 @@ const Outcome = z.object({
   meta: z.record(z.string(), z.unknown()).optional()
 });
 
+function num(value) {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : null;
+}
+
+function ledgerRecord(order, snapshot) {
+  const side = order.side;
+  const entry = num(order.entry);
+  const sl = num(order.stop_loss);
+  const current = side === 'BUY' ? num(snapshot?.bid) : num(snapshot?.ask);
+  const point = num(snapshot?.features?.point_size) || 0.001;
+  const shadowState = order.context?.shadow_state ?? {};
+  const outcome = order.outcome && typeof order.outcome === 'object' ? order.outcome : null;
+
+  let lifecycle = 'PENDING';
+  if (order.review_status === 'REJECTED') lifecycle = 'REJECTED';
+  else if (outcome?.status === 'TP') lifecycle = 'PROFIT';
+  else if (outcome?.status === 'SL') lifecycle = 'LOSS';
+  else if (outcome?.status === 'EXPIRED') lifecycle = 'EXPIRED';
+  else if (outcome?.status === 'CANCELLED') lifecycle = 'CANCELLED';
+  else if (outcome) lifecycle = 'CLOSED';
+  else if (shadowState.status === 'FILLED') lifecycle = 'FLOATING';
+  else if (order.review_status === 'PENDING_REVIEW') lifecycle = 'AWAITING_REVIEW';
+
+  let floatingPoints = null;
+  let floatingR = null;
+  if (!outcome && shadowState.status === 'FILLED' && entry !== null && current !== null) {
+    const move = side === 'BUY' ? current - entry : entry - current;
+    floatingPoints = move / point;
+    const risk = sl !== null ? Math.abs(entry - sl) : 0;
+    floatingR = risk > 0 ? move / risk : null;
+  }
+
+  return {
+    trade_id: order.trade_id,
+    created_at: order.created_at,
+    reviewed_at: order.reviewed_at,
+    closed_at: order.closed_at,
+    mode: order.mode,
+    side: order.side,
+    order_type: order.order_type,
+    setup: order.setup,
+    regime: order.regime,
+    entry,
+    stop_loss: sl,
+    take_profit: num(order.take_profit),
+    confidence: num(order.confidence),
+    review: {
+      status: order.review_status,
+      source: order.review_source,
+      reasons: Array.isArray(order.review_reasons) ? order.review_reasons : []
+    },
+    lifecycle,
+    shadow_status: shadowState.status ?? null,
+    result: outcome ? {
+      status: outcome.status ?? null,
+      pnl_usd: num(outcome.pnl_usd),
+      pnl_r: num(outcome.pnl_r),
+      exit_price: num(outcome.exit_price),
+      mfe_points: num(outcome.mfe_points),
+      mae_points: num(outcome.mae_points)
+    } : null,
+    floating: floatingPoints === null ? null : {
+      points: floatingPoints,
+      pnl_r: floatingR,
+      mark_price: current
+    }
+  };
+}
+
 app.get('/api/v1/status', async (_req, res) => {
   res.json({
     service: 'tradevice-2.0',
@@ -99,7 +177,12 @@ app.get('/api/v1/status', async (_req, res) => {
     symbol: process.env.TRADEVICE_SYMBOL || 'XAUUSD',
     execution_timeframe: 'M1',
     context_timeframes: ['M5', 'M15'],
-    setup_families: ['TREND_PULLBACK', 'BREAKOUT_RETEST', 'LIQUIDITY_SWEEP']
+    setup_families: ['TREND_PULLBACK', 'BREAKOUT_RETEST', 'LIQUIDITY_SWEEP'],
+    review_agent: {
+      enabled: true,
+      source: 'POLICY_AGENT',
+      min_confidence: Number(process.env.REVIEW_MIN_CONFIDENCE || 0.55)
+    }
   });
 });
 
@@ -143,6 +226,25 @@ app.get('/api/v1/dashboard', async (_req, res, next) => {
   } catch (err) { next(err); }
 });
 
+app.get('/api/v1/orders/ledger', async (req, res, next) => {
+  try {
+    const limit = Math.min(Math.max(Number(req.query.limit || 100), 1), 500);
+    const [decisions, snapshot] = await Promise.all([
+      getRecentDecisions(limit),
+      getLatestSnapshot(process.env.TRADEVICE_SYMBOL || 'XAUUSD')
+    ]);
+    const orders = decisions
+      .filter(row => row.decision === 'PLACE_PENDING')
+      .map(row => ledgerRecord(row, snapshot));
+    res.json({
+      generated_at: new Date().toISOString(),
+      execution_enabled: false,
+      mode: 'shadow',
+      orders
+    });
+  } catch (err) { next(err); }
+});
+
 app.post('/api/v1/market/snapshots', requireKey, async (req, res, next) => {
   try {
     const snapshot = Snapshot.parse(req.body);
@@ -178,10 +280,12 @@ app.post('/api/v1/decisions/shadow', requireKey, async (req, res, next) => {
     const decision = Decision.parse(req.body);
     const snapshot = await getLatestSnapshot('XAUUSD');
     const risk = validateTradeIntent(decision, snapshot);
+    const review = reviewPendingDecision(decision, risk);
     const saved = {
       ...decision,
       mode: 'shadow',
-      context: { ...decision.context, risk_review: risk }
+      review,
+      context: { ...decision.context, risk_review: risk, review_agent: review }
     };
     await saveDecision(saved);
     res.status(202).json({
@@ -189,6 +293,8 @@ app.post('/api/v1/decisions/shadow', requireKey, async (req, res, next) => {
       execution_enabled: false,
       risk_approved: risk.approved,
       risk_reasons: risk.reasons,
+      review_status: review.status,
+      review_reasons: review.reasons,
       trade_id: decision.trade_id
     });
   } catch (err) { next(err); }
