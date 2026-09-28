@@ -1,6 +1,7 @@
 import OpenAI from 'openai';
 import { saveDecision } from './store.js';
 import { validateTradeIntent } from './risk.js';
+import { reviewPendingDecision } from './review-agent.js';
 
 let client = null;
 
@@ -99,11 +100,13 @@ export async function runAiDecision(snapshot) {
   const baseDecision = stripNulls(parsed);
   const tradeId = `ai-${String(snapshot.timestamp).replace(/[^0-9A-Za-z]/g, '')}-${response.id.slice(-8)}`;
   const risk = validateTradeIntent(baseDecision, snapshot);
+  const review = reviewPendingDecision(baseDecision, risk);
 
   const decision = {
     ...baseDecision,
     trade_id: tradeId,
     mode: 'shadow',
+    review,
     context: {
       ai_generated: true,
       ai_model: model,
@@ -111,7 +114,8 @@ export async function runAiDecision(snapshot) {
       market_timestamp: snapshot.timestamp,
       thesis: parsed.thesis,
       invalidation: parsed.invalidation,
-      risk_review: risk
+      risk_review: risk,
+      review_agent: review
     }
   };
 
@@ -124,6 +128,8 @@ export async function runAiDecision(snapshot) {
     decision: decision.decision,
     risk_approved: risk.approved,
     risk_reasons: risk.reasons,
+    review_status: review.status,
+    review_reasons: review.reasons,
     model
   };
 }
