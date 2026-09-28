@@ -18,8 +18,10 @@ function requireKey(req, res, next) {
   next();
 }
 
+app.use(express.static('public'));
+
 app.get('/health', (_req, res) => res.json({ ok: true, service: 'tradevice-2.0', mode: 'shadow', store: storeDriver() }));
-app.get('/', (_req, res) => res.json({
+app.get('/api/v1/info', (_req, res) => res.json({
   name: 'Tradevice 2.0',
   phase: 'P0/P1 Observer + Shadow AI',
   execution_enabled: false,
@@ -94,6 +96,26 @@ app.get('/api/v1/status', async (_req, res) => {
     context_timeframes: ['M5', 'M15'],
     setup_families: ['TREND_PULLBACK', 'BREAKOUT_RETEST', 'LIQUIDITY_SWEEP']
   });
+});
+
+app.get('/api/v1/dashboard', async (_req, res, next) => {
+  try {
+    const snapshot = await getLatestSnapshot('XAUUSD');
+    const performance = await performanceSummary(100);
+    const lastCandle = snapshot?.candles?.[snapshot.candles.length - 1] ?? null;
+    res.json({
+      market: snapshot ? {
+        symbol: snapshot.symbol,
+        timeframe: snapshot.timeframe,
+        timestamp: snapshot.timestamp,
+        bid: snapshot.bid ?? null,
+        ask: snapshot.ask ?? null,
+        spread_points: snapshot.spread_points ?? null,
+        last_close: lastCandle?.close ?? null
+      } : null,
+      performance
+    });
+  } catch (err) { next(err); }
 });
 
 app.post('/api/v1/market/snapshots', requireKey, async (req, res, next) => {
