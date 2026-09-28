@@ -8,6 +8,7 @@ import { validateTradeIntent } from './risk.js';
 import { reviewPendingDecision } from './review-agent.js';
 import { evaluateShadowSnapshot } from './shadow-simulator.js';
 import { aiWorkerEnabled, runAiDecision } from './ai-worker.js';
+import { initDemoExecution, pollDemo, demoLedger } from './demo-execution.js';
 
 const app = express();
 const port = Number(process.env.PORT || 3000);
@@ -26,7 +27,7 @@ function requireKey(req, res, next) {
 app.get('/', async (_req, res, next) => {
   try {
     const source = await fs.promises.readFile(path.resolve('public/index.html'), 'utf8');
-    res.type('html').send(source.replace('</body>', '<script src="/order-ledger.js"></script></body>'));
+    res.type('html').send(source.replace('</body>', '<script src="/order-ledger.js"></script><script src="/demo-ledger.js"></script></body>'));
   } catch (err) { next(err); }
 });
 app.use(express.static('public'));
@@ -44,6 +45,33 @@ app.get('/downloads/TradeviceObserver.mq5', (_req, res) => {
 
 app.all('/mcp', requireKey, mcpNodeHandler);
 app.use(express.json({ limit: '1mb' }));
+
+const DemoPoll = z.object({
+  client_id: z.string().regex(/^[A-Za-z0-9_-]{3,48}$/), nonce: z.string().regex(/^[0-9]{1,24}$/),
+  account_mode: z.literal('DEMO'), account_login: z.string().regex(/^[0-9]+$/), account_server: z.string().min(1).max(128),
+  armed: z.boolean(), orders_total: z.number().int().nonnegative(), positions_total: z.number().int().nonnegative(),
+  report: z.object({ token: z.string().regex(/^[a-f0-9]{24}$/), ticket: z.string().regex(/^[0-9]+$/),
+    status: z.enum(['PENDING','FILLED','CLOSED','CANCELLED','EXPIRED','REJECTED','UNKNOWN']),
+    reason: z.string().max(200), pnl_usd: z.number().nullable()
+  }).nullable()
+});
+app.get('/api/v1/demo/ledger', async (_req, res, next) => {
+  try { res.json(await demoLedger()); } catch (error) { next(error); }
+});
+app.get('/downloads/TradeviceDemoExecutor.mq5', (_req, res) => res.download(path.resolve('mt5/TradeviceDemoExecutor.mq5')));
+app.post('/api/v1/demo/poll', (req, res, next) => {
+  // Unlike the observer bootstrap route, demo commands always require a configured secret.
+  if (!apiKey || req.headers.authorization !== `Bearer ${apiKey}`) return res.status(401).json({ error: 'unauthorized' });
+  next();
+}, async (req, res, next) => {
+  try {
+    res.set('Cache-Control', 'no-store');
+    res.type('text/plain').send(await pollDemo(DemoPoll.parse(req.body)));
+  } catch (error) {
+    if (error.status === 403) return res.status(403).json({ error: 'demo_account_binding_mismatch' });
+    next(error);
+  }
+});
 
 const Candle = z.object({
   timestamp: z.string(), open: z.number(), high: z.number(), low: z.number(), close: z.number(), tick_volume: z.number().optional()
@@ -229,6 +257,7 @@ app.use((err, _req, res, _next) => {
 });
 
 const store = await initStore();
+await initDemoExecution();
 const listen = p => app.listen(p, '0.0.0.0', () => console.log(`Tradevice 2.0 listening on :${p}; store=${store.driver}; mode=shadow`));
 listen(port);
 if (publicTargetPort !== port) listen(publicTargetPort);

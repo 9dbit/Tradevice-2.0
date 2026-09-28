@@ -27,6 +27,14 @@ Keep the key out of Git and source files.
 
 ## MT5 observer setup
 
+### Optional demo pending executor (off by default)
+
+The separate `mt5/TradeviceDemoExecutor.mq5` bridge supports approved, ready pending proposals with confidence **strictly above 80%**, numeric scenario invalidation, native expiry, and a separate persistent demo ledger. It refuses real/contest accounts and never closes filled positions. `WAIT` decisions do not become orders, regardless of confidence.
+
+Read [demo setup, limits, failure behavior and required MT5 acceptance checks](docs/demo-pending-execution.md) before enabling it. The existing observer still sends data only. Server flag `DEMO_EXECUTION_ENABLED=false` and EA input `EnableDemoOrders=false` are the defaults.
+
+### Observer installation
+
 1. Open the Tradevice dashboard and download **MT5 Observer**, or copy `mt5/TradeviceObserver.mq5` from this repository.
 2. In MetaTrader 5 open **File > Open Data Folder > MQL5 > Experts** and place the `.mq5` file there.
 3. Compile it in MetaEditor.
