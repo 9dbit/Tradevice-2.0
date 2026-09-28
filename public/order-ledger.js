@@ -1,6 +1,21 @@
 (() => {
   const css = `
-    .ordersPanel{overflow:hidden}
+    .analysisPanel,.ordersPanel{overflow:hidden}
+    .analysisWrap{padding:12px;display:grid;gap:10px;max-height:430px;overflow:auto}
+    .analysisCard{border:1px solid var(--line);background:#0b1810;border-radius:12px;padding:12px}
+    .analysisTop{display:flex;justify-content:space-between;align-items:flex-start;gap:12px}
+    .analysisDecision{font-size:13px;font-weight:820;letter-spacing:-.01em}
+    .analysisMeta{font-size:9px;color:var(--muted);margin-top:3px}
+    .analysisTags{display:flex;gap:6px;flex-wrap:wrap;margin-top:9px}
+    .tag{display:inline-flex;padding:4px 7px;border-radius:999px;border:1px solid var(--line2);font-size:8px;color:var(--muted);font-weight:760}
+    .tag.ai{color:var(--green);border-color:rgba(83,242,143,.32)}
+    .tag.wait{color:var(--amber);border-color:rgba(255,216,117,.28)}
+    .tag.pending{color:var(--green3)}
+    .analysisCopy{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:10px}
+    .analysisBlock{border-top:1px solid var(--line);padding-top:9px}
+    .analysisBlock b{display:block;font-size:9px;text-transform:uppercase;letter-spacing:.09em;color:var(--muted);margin-bottom:4px}
+    .analysisBlock p{margin:0;font-size:10px;line-height:1.5;color:#dcebe1}
+    .analysisFoot{display:flex;gap:10px;flex-wrap:wrap;margin-top:10px;color:var(--muted);font-size:9px}
     .ordersHead{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:13px 15px;border-bottom:1px solid var(--line)}
     .ordersHint{font-size:10px;color:var(--muted)}
     .ordersWrap{overflow:auto;max-height:360px}
@@ -19,11 +34,24 @@
     .reviewReasons{font-size:9px;color:var(--muted);line-height:1.45;margin-top:5px;max-width:220px}
     .pnlPositive{color:var(--green);font-weight:800}.pnlNegative{color:var(--red);font-weight:800}.pnlNeutral{color:var(--muted)}
     .emptyOrders{padding:28px 16px;text-align:center;color:var(--muted);font-size:11px}
-    @media(max-width:720px){.ordersHint{display:none}.ordersWrap{max-height:420px}}
+    @media(max-width:720px){.ordersHint{display:none}.ordersWrap{max-height:420px}.analysisCopy{grid-template-columns:1fr}}
   `;
   const style = document.createElement('style');
   style.textContent = css;
   document.head.appendChild(style);
+
+  const aiPanel = document.createElement('section');
+  aiPanel.className = 'panel analysisPanel';
+  aiPanel.innerHTML = `
+    <div class="ordersHead">
+      <div>
+        <div class="sectionTitle">AI Analysis Stream</div>
+        <div class="ordersHint">Structured Astra decisions for every researched M1 snapshot, including WAIT outcomes.</div>
+      </div>
+      <div class="chip live"><span>GPT-6 ASTRA</span><strong>LIVE</strong></div>
+    </div>
+    <div class="analysisWrap" id="analysisWrap"><div class="emptyOrders">Waiting for AI analysis.</div></div>
+  `;
 
   const panel = document.createElement('section');
   panel.className = 'panel ordersPanel';
@@ -39,8 +67,13 @@
   `;
 
   const footer = document.querySelector('.footer');
-  if (footer?.parentNode) footer.parentNode.insertBefore(panel, footer);
-  else document.querySelector('.app')?.appendChild(panel);
+  if (footer?.parentNode) {
+    footer.parentNode.insertBefore(aiPanel, footer);
+    footer.parentNode.insertBefore(panel, footer);
+  } else {
+    document.querySelector('.app')?.appendChild(aiPanel);
+    document.querySelector('.app')?.appendChild(panel);
+  }
 
   function n(value, digits = 3) {
     return typeof value === 'number' && Number.isFinite(value) ? value.toFixed(digits) : '—';
@@ -83,6 +116,33 @@
     return `<span class="badge ${klass}">${esc(status)}</span>${detail}`;
   }
 
+  function renderAnalyses(items) {
+    const wrap = document.getElementById('analysisWrap');
+    if (!wrap) return;
+    if (!items?.length) {
+      wrap.innerHTML = '<div class="emptyOrders">Waiting for AI analysis.</div>';
+      return;
+    }
+    wrap.innerHTML = items.slice(0, 30).map(item => {
+      const isAi = item.source === 'AI';
+      const triggers = (item.trigger_codes || []).map(x => `<span class="tag">${esc(x.replaceAll('_',' '))}</span>`).join('');
+      const reasons = (item.reason_codes || []).map(x => `<span class="tag">${esc(x.replaceAll('_',' '))}</span>`).join('');
+      const confidence = typeof item.confidence === 'number' ? `${Math.round(item.confidence * 100)}%` : '—';
+      const market = item.market || {};
+      const thesis = item.thesis || (isAi ? 'No thesis text stored.' : 'Prefilter stopped this candle before an AI call.');
+      const invalidation = item.invalidation || (isAi ? 'No invalidation text stored.' : (item.prefilter_reasons || []).join(' · ') || 'No setup trigger.');
+      return `<div class="analysisCard">
+        <div class="analysisTop">
+          <div><div class="analysisDecision">${esc(item.decision)}${item.side ? ` · ${esc(item.side)}` : ''}</div><div class="analysisMeta">${dt(item.market_timestamp || item.created_at)} · ${esc(item.model || 'deterministic prefilter')}</div></div>
+          <span class="badge ${item.decision === 'PLACE_PENDING' ? 'approved' : item.decision === 'WAIT' ? 'awaiting' : 'closed'}">${esc(item.source)}</span>
+        </div>
+        <div class="analysisTags"><span class="tag ${isAi ? 'ai' : ''}">${esc(item.regime || 'NO REGIME')}</span><span class="tag">CONF ${confidence}</span>${triggers}${reasons}</div>
+        <div class="analysisCopy"><div class="analysisBlock"><b>Thesis</b><p>${esc(thesis)}</p></div><div class="analysisBlock"><b>Invalidation / Why no entry</b><p>${esc(invalidation)}</p></div></div>
+        <div class="analysisFoot"><span>Session ${esc(market.session || '—')}</span><span>Trend ${esc(market.trend_alignment || '—')}</span><span>Vol ${esc(market.volatility || '—')}</span><span>Spread ${market.spread_points ?? '—'} pt</span><span>Review ${esc(item.review?.status || '—')}</span></div>
+      </div>`;
+    }).join('');
+  }
+
   function render(orders) {
     const wrap = document.getElementById('ordersWrap');
     if (!wrap) return;
@@ -114,6 +174,7 @@
       const response = await fetch('/api/v1/orders/ledger?limit=100', { cache:'no-store' });
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       const data = await response.json();
+      renderAnalyses(data.analyses || []);
       render(data.orders || []);
     } catch (error) {
       const wrap = document.getElementById('ordersWrap');
