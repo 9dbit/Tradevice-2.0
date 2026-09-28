@@ -60,6 +60,7 @@ const Decision = z.object({
   order_type: z.enum(['BUY_LIMIT', 'SELL_LIMIT', 'BUY_STOP', 'SELL_STOP']).optional(), setup: z.enum(['TREND_PULLBACK', 'BREAKOUT_RETEST', 'LIQUIDITY_SWEEP']).optional(),
   regime: z.enum(['TREND_UP', 'TREND_DOWN', 'RANGE', 'BREAKOUT', 'HIGH_VOLATILITY', 'CHAOTIC', 'NO_TRADE']), entry: z.number().optional(),
   stop_loss: z.number().optional(), take_profit: z.number().optional(), expiration_candles: z.number().int().min(1).max(10).optional(), confidence: z.number().min(0).max(1).optional(),
+  decision_confidence: z.number().min(0).max(1).optional(), entry_confidence: z.number().min(0).max(1).optional(),
   reason_codes: z.array(z.string()).max(12).default([]), context: z.record(z.string(), z.unknown()).default({})
 });
 
@@ -121,6 +122,8 @@ function ledgerRecord(order, snapshot) {
   return {
     trade_id: order.trade_id, created_at: order.created_at, reviewed_at: order.reviewed_at, closed_at: order.closed_at, mode: order.mode,
     side: order.side, order_type: order.order_type, setup: order.setup, regime: order.regime, entry, stop_loss: sl, take_profit: tp, confidence: num(order.confidence),
+    decision_confidence: num(order.context?.decision_confidence ?? order.confidence),
+    entry_confidence: num(order.context?.entry_confidence),
     plan: { lot, point_size: point, pip_size: pipSize, tp_points: tpPoints, tp_pips: tpPips, tp_usd: tpUsd, sl_points: slPoints, sl_pips: slPips, sl_usd: slUsd, rr,
       pricing_ready: Boolean(tickSize && tickValueProfit && tickValueLoss), tick_size: tickSize, tick_value_profit: tickValueProfit, tick_value_loss: tickValueLoss },
     review: { status: order.review_status, source: order.review_source, reasons: Array.isArray(order.review_reasons) ? order.review_reasons : [] },
@@ -135,7 +138,7 @@ app.get('/api/v1/status', async (_req, res) => {
     service: 'tradevice-2.0', phase: 'P0/P1', trading_mode: 'shadow', execution_enabled: false, ai_decision_enabled: aiWorkerEnabled(),
     ai_model: process.env.AI_MODEL || 'gpt-6-astra', shadow_lot: shadowLot, store: storeDriver(), symbol: process.env.TRADEVICE_SYMBOL || 'XAUUSD', execution_timeframe: 'M1',
     context_timeframes: ['M5', 'M15'], setup_families: ['TREND_PULLBACK', 'BREAKOUT_RETEST', 'LIQUIDITY_SWEEP'],
-    review_agent: { enabled: true, source: 'POLICY_AGENT', min_confidence: Number(process.env.REVIEW_MIN_CONFIDENCE || 0.55) }
+    review_agent: { enabled: true, source: 'POLICY_AGENT', min_entry_confidence: Number(process.env.REVIEW_MIN_ENTRY_CONFIDENCE || process.env.ENTRY_PENDING_THRESHOLD || 0.80) }
   });
 });
 
@@ -164,7 +167,11 @@ app.get('/api/v1/orders/ledger', async (req, res, next) => {
     const orders = decisions.filter(row => row.decision === 'PLACE_PENDING').map(row => ledgerRecord(row, snapshot));
     const analyses = decisions.map(row => ({
       trade_id: row.trade_id, created_at: row.created_at, decision: row.decision, side: row.side ?? null, order_type: row.order_type ?? null,
-      setup: row.setup ?? null, regime: row.regime ?? null, confidence: num(row.confidence), reason_codes: Array.isArray(row.reason_codes) ? row.reason_codes : [],
+      setup: row.setup ?? null, regime: row.regime ?? null, confidence: num(row.confidence),
+      decision_confidence: num(row.context?.decision_confidence ?? row.confidence),
+      entry_confidence: num(row.context?.entry_confidence),
+      entry_pending_threshold: num(row.context?.entry_pending_threshold) ?? Number(process.env.ENTRY_PENDING_THRESHOLD || 0.80),
+      reason_codes: Array.isArray(row.reason_codes) ? row.reason_codes : [],
       source: row.context?.ai_generated === true ? 'AI' : row.review_source === 'PREFILTER' ? 'PREFILTER' : 'SYSTEM', model: row.context?.ai_model ?? null,
       market_timestamp: row.context?.market_timestamp ?? null, trigger_codes: Array.isArray(row.context?.prefilter?.trigger_codes) ? row.context.prefilter.trigger_codes : [],
       prefilter_reasons: Array.isArray(row.context?.prefilter?.reasons) ? row.context.prefilter.reasons : [], thesis: row.context?.thesis ?? null, invalidation: row.context?.invalidation ?? null,
@@ -195,11 +202,30 @@ app.get('/api/v1/market/latest', requireKey, async (req, res, next) => {
 
 app.post('/api/v1/decisions/shadow', requireKey, async (req, res, next) => {
   try {
-    const decision = Decision.parse(req.body);
+    const parsedDecision = Decision.parse(req.body);
+    const decision = {
+      ...parsedDecision,
+      confidence: parsedDecision.confidence ?? parsedDecision.decision_confidence,
+      entry_confidence: parsedDecision.entry_confidence ?? parsedDecision.confidence ?? parsedDecision.decision_confidence
+    };
     const snapshot = await getLatestSnapshot('XAUUSD');
     const risk = validateTradeIntent(decision, snapshot);
     const review = reviewPendingDecision(decision, risk);
-    const saved = { ...decision, mode: 'shadow', review, context: { ...decision.context, risk_review: risk, review_agent: review } };
+    const saved = {
+      ...decision,
+      mode: 'shadow',
+      review,
+      context: {
+        ...decision.context,
+        decision_confidence: parsedDecision.decision_confidence ?? decision.confidence ?? null,
+        entry_confidence: decision.entry_confidence ?? null,
+        entry_pending_threshold: Number(process.env.ENTRY_PENDING_THRESHOLD || 0.80),
+        risk_review: risk,
+        review_agent: review
+      }
+    };
+    delete saved.decision_confidence;
+    delete saved.entry_confidence;
     await saveDecision(saved);
     res.status(202).json({ accepted: true, execution_enabled: false, risk_approved: risk.approved, risk_reasons: risk.reasons, review_status: review.status, review_reasons: review.reasons, trade_id: decision.trade_id });
   } catch (err) { next(err); }
