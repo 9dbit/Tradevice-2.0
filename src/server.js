@@ -3,6 +3,7 @@ import { z } from 'zod/v4';
 import { initStore, storeDriver, saveSnapshot, getLatestSnapshot, getRecentDecisions, performanceSummary, saveDecision, recordOutcome } from './store.js';
 import { mcpNodeHandler } from './mcp.js';
 import { validateTradeIntent } from './risk.js';
+import { evaluateShadowSnapshot } from './shadow-simulator.js';
 
 const app = express();
 const port = Number(process.env.PORT || 3000);
@@ -95,7 +96,13 @@ app.post('/api/v1/market/snapshots', requireKey, async (req, res, next) => {
   try {
     const snapshot = Snapshot.parse(req.body);
     await saveSnapshot(snapshot);
-    res.status(202).json({ accepted: true, symbol: snapshot.symbol, timestamp: snapshot.timestamp });
+    const shadow = await evaluateShadowSnapshot(snapshot);
+    res.status(202).json({
+      accepted: true,
+      symbol: snapshot.symbol,
+      timestamp: snapshot.timestamp,
+      shadow_simulation: shadow
+    });
   } catch (err) { next(err); }
 });
 
