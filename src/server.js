@@ -16,7 +16,7 @@ const publicTargetPort = Number(process.env.PUBLIC_TARGET_PORT || 3000);
 const apiKey = process.env.TRADEVICE_API_KEY || '';
 const feedStaleAfterSeconds = Number(process.env.FEED_STALE_AFTER_SECONDS || 180);
 const shadowLot = Number(process.env.SHADOW_LOT || 0.01);
-const approvalKey = process.env.TRADEVICE_APPROVAL_KEY || '';
+const approvalKey = String(process.env.TRADEVICE_APPROVAL_KEY || '').trim();
 
 function requireKey(req, res, next) {
   if (!apiKey) return next();
@@ -27,7 +27,7 @@ function requireKey(req, res, next) {
 
 function requireApprovalKey(req, res, next) {
   if (!approvalKey) return res.status(503).json({ error: 'approval_key_not_configured' });
-  if (req.headers['x-approval-key'] !== approvalKey) return res.status(401).json({ error: 'approval_unauthorized' });
+  if (String(req.headers['x-approval-key'] || '').trim() !== approvalKey) return res.status(401).json({ error: 'approval_unauthorized' });
   next();
 }
 
@@ -199,6 +199,11 @@ app.get('/api/v1/dashboard', async (_req, res, next) => {
       generated_at: new Date().toISOString(), feed: { state: feedState, stale_after_seconds: feedStaleAfterSeconds, age_seconds: ageSeconds },
       market: snapshot ? { symbol: snapshot.symbol, timeframe: snapshot.timeframe, timestamp: snapshot.timestamp, bid: snapshot.bid ?? null, ask: snapshot.ask ?? null,
         spread_points: snapshot.spread_points ?? null, last_close: lastCandle?.close ?? null, bridge_version: snapshot.features?.bridge_version ?? null, terminal_build: snapshot.features?.terminal_build ?? null } : null,
+      account: snapshot?.account ? {
+        balance: num(snapshot.account.balance), equity: num(snapshot.account.equity), free_margin: num(snapshot.account.margin_free),
+        floating_pnl: num(snapshot.account.equity) !== null && num(snapshot.account.balance) !== null ? num(snapshot.account.equity) - num(snapshot.account.balance) : null,
+        positions_total: Number(snapshot.account.positions_total ?? 0), orders_total: Number(snapshot.account.orders_total ?? 0)
+      } : null,
       performance: { sample_size: performance.sample_size ?? 0, closed_trades: performance.closed_trades ?? 0, wins: performance.wins ?? 0, losses: performance.losses ?? 0,
         win_rate: performance.win_rate ?? null, expectancy_r: performance.expectancy_r ?? null, profit_factor: performance.profit_factor ?? null }
     });
