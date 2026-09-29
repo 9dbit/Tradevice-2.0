@@ -1,6 +1,6 @@
 (() => {
   const $ = id => document.getElementById(id);
-  const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot',"'":'&#39;'}[c]));
   const num = (v,d=3) => typeof v === 'number' && Number.isFinite(v) ? v.toFixed(d) : '—';
   const conf = v => typeof v === 'number' && Number.isFinite(v) ? `${Math.round(v*100)}%` : '—';
   const dt = v => { const d=new Date(v); return v && !Number.isNaN(d.getTime()) ? d.toLocaleString([], {month:'short',day:'2-digit',hour:'2-digit',minute:'2-digit'}) : '—'; };
@@ -90,7 +90,7 @@
     if(!plans.length){ grid.innerHTML=[0,1,2].map(placeholderCard).join(''); setText('planCount','Waiting for Astra'); return; }
     const group=plans[0].group_id; const latest=plans.filter(p=>p.group_id===group);
     setText('planCount',`${latest.length} plan${latest.length===1?'':'s'} · ${dt(latest[0]?.market_timestamp)}`);
-    grid.innerHTML=latest.sort((a,b)=>Number(b.entry_confidence||0)-Number(a.entry_confidence||0)).map((p,i)=>planCard(p,threshold,i)).join('');
+    grid.innerHTML=latest.sort((a,b)=>Number(b.review?.rank_score??b.entry_confidence??0)-Number(a.review?.rank_score??a.entry_confidence??0)).map((p,i)=>planCard(p,threshold,i)).join('');
   }
 
   function renderOrders(orders){
