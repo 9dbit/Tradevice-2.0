@@ -32,6 +32,18 @@
     </article>`;
   }
 
+  function emergingOfferCard(item, rank) {
+    const state = stateFromReasons(item);
+    const timeframe = (item.reason_codes || []).find(reason => /^M\d+$/i.test(String(reason))) || 'M15';
+    const quality = pct(item.confidence);
+    return `<article class="planCard deterministicPlan emergingPlan ${stateClass(state)}" data-emerging="1">
+      <div class="offerMeta"><div class="offerMetaLeft"><span class="rankChip">${String(rank + 1).padStart(2,'0')}</span><span class="offerTag">EMERGING</span><span class="offerTag">${esc(timeframe)}</span></div><div class="offerMetaRight"><span class="freshnessBadge ruleEngineBadge">${esc(state)}</span><span class="ageChip">${dt(item.market_timestamp || item.created_at)}</span></div></div>
+      <div class="offerHero"><div class="instrumentLine"><span class="goldMark">◆</span><span class="instrument">XAUUSD</span><span class="orderPill">${esc(String(item.setup || 'STRUCTURE WATCH').replaceAll('_',' '))}</span></div><div class="confidenceBox"><span class="signalBars"><i></i><i></i><i></i><i></i></span><div><div class="n">${quality}</div><div class="t">Structure Quality</div></div><div class="dc">Rule Engine · ${esc(timeframe)}</div></div></div>
+      <div class="planStory"><span class="storyLabel">Emerging analysis</span><p>${esc(item.thesis || 'Structure is forming and waiting for confirmation.')}</p><small>This is a watch state, not a trade instruction.</small></div>
+      <div class="planActions"><div class="planMessage emergingLocked">${state === 'ARMED' ? 'Armed · waiting confirmation' : 'Forming · monitoring structure'} · Approve locked</div></div>
+    </article>`;
+  }
+
   function summaryCard(item, watchCount) {
     const reasons = item?.reason_codes || [];
     const bias = String(reasons.find(reason => String(reason).startsWith('BIAS_')) || 'BIAS_NEUTRAL').replace('BIAS_','').replaceAll('_',' ');
@@ -42,7 +54,7 @@
       <div class="strategySummaryHead"><div><small>Current market read</small><h3>XAUUSD · ${esc(bias)}</h3></div><span class="strategyPulse">● ${state}</span></div>
       <div class="strategySummaryGrid"><div><span>M5 trend</span><strong>${esc(m5)}</strong></div><div><span>M15 trend</span><strong>${esc(m15)}</strong></div><div><span>Structure watches</span><strong>${watchCount}</strong></div><div><span>Last scan</span><strong>${dt(item.market_timestamp || item.created_at)}</strong></div></div>
       <p>${esc(item.thesis || 'Tradevice is scanning live structure.')}</p>
-      <div class="strategyRule">Offering appears only after a detector reaches CONFIRMED and passes risk validation.</div>
+      <div class="strategyRule">Offering becomes actionable only after a detector reaches CONFIRMED and passes risk validation.</div>
     </article>`;
   }
 
@@ -54,18 +66,23 @@
     </article>`;
   }
 
-  function updateOfferPlaceholder(summary, watches) {
-    const placeholder = document.querySelector('#planGrid .serverEmpty');
-    if (!placeholder || !summary) return;
+  function renderEmergingOffers(summary, watches) {
+    const grid = document.getElementById('planGrid');
+    if (!grid || !summary) return;
+    const hasActionable = grid.querySelector('.planCard[data-plan-id]:not(.placeholder)');
+    if (hasActionable) return;
+    if (watches.length) {
+      grid.innerHTML = watches.slice(0,5).map(emergingOfferCard).join('');
+      const count = document.getElementById('planCount');
+      if (count) count.textContent = `${watches.length} emerging setup${watches.length === 1 ? '' : 's'}`;
+      return;
+    }
+    const placeholder = grid.querySelector('.serverEmpty');
+    if (!placeholder) return;
     const p = placeholder.querySelector('.planStory p');
     const tag = placeholder.querySelector('.offerMetaLeft .offerTag:last-child');
-    const armed = watches.filter(item => stateFromReasons(item) === 'ARMED').length;
-    if (tag) tag.textContent = armed ? `${armed} ARMED WATCH${armed === 1 ? '' : 'ES'}` : watches.length ? `${watches.length} FORMING` : 'LIVE SCANNER';
-    if (p) p.textContent = armed
-      ? `${armed} structure watch${armed === 1 ? ' is' : 'es are'} armed, but confirmation is not complete yet. No pending-order offer will be created prematurely.`
-      : watches.length
-        ? `${watches.length} potential structure${watches.length === 1 ? ' is' : 's are'} forming. Tradevice is waiting for the exact confirmation trigger before creating an Offering.`
-        : 'Live structure analysis is active. No confirmed pending-order setup is available at this moment.';
+    if (tag) tag.textContent = 'LIVE SCANNER';
+    if (p) p.textContent = 'Live structure analysis is active. No nearby forming or confirmed setup is available at this moment.';
   }
 
   async function renderStrategyAnalysis() {
@@ -95,7 +112,7 @@
       html += '</div>';
       suppressUntil = Date.now() + 300;
       host.innerHTML = html;
-      updateOfferPlaceholder(summary, watches);
+      renderEmergingOffers(summary, watches);
     } catch (error) {
       console.error('strategy analysis render failed', error);
     }
