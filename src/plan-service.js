@@ -2,6 +2,18 @@ import { getLatestSnapshot, getPlanCandidate, saveDecision, updatePlanCandidateS
 import { validateTradeIntent } from './risk.js';
 import { reviewPendingDecision } from './review-agent.js';
 
+const ACTIVE_PLAN_STATUSES = new Set(['CANDIDATE','AWAITING_APPROVAL','AI_REVIEW']);
+
+export function planExpiryInfo(plan, now = Date.now()) {
+  const base = Date.parse(plan?.market_timestamp || plan?.created_at || '');
+  const deterministic = String(plan?.source_model || '').startsWith('deterministic-');
+  const candleMinutes = deterministic ? 5 : 1;
+  const candles = Math.max(1, Number(plan?.expiration_candles || 3));
+  const ttlMs = candles * candleMinutes * 60_000 + 30_000;
+  const ageMs = Number.isFinite(base) ? Math.max(0, Number(now) - base) : Infinity;
+  return { expired: ageMs > ttlMs, age_ms: ageMs, ttl_ms: ttlMs, candle_minutes: candleMinutes };
+}
+
 function toDecision(plan) {
   return {
     decision: 'PLACE_PENDING',
@@ -22,8 +34,22 @@ function toDecision(plan) {
 export async function activatePlanCandidate(planId, source = 'MANUAL') {
   const plan = await getPlanCandidate(planId);
   if (!plan) return { ok: false, code: 'PLAN_NOT_FOUND' };
-  if (!['CANDIDATE','AWAITING_APPROVAL','AI_REVIEW'].includes(plan.status)) {
+  if (!ACTIVE_PLAN_STATUSES.has(plan.status)) {
     return { ok: false, code: 'PLAN_NOT_ACTIVATABLE', status: plan.status };
+  }
+
+  const expiry = planExpiryInfo(plan);
+  if (expiry.expired) {
+    const expired = await updatePlanCandidateStatus(planId, 'EXPIRED', {
+      review: {
+        ...(plan.review ?? {}),
+        status: 'EXPIRED',
+        source: 'LIFECYCLE_ENGINE',
+        reasons: ['TTL_EXPIRED'],
+        expiry
+      }
+    });
+    return { ok: false, code: 'PLAN_EXPIRED', expiry, plan: expired };
   }
 
   const snapshot = await getLatestSnapshot(plan.symbol || 'XAUUSD');
@@ -33,10 +59,16 @@ export async function activatePlanCandidate(planId, source = 'MANUAL') {
   const risk = validateTradeIntent(decision, snapshot);
   const review = reviewPendingDecision(decision, risk, { manual: source === 'MANUAL' });
   if (!review || review.status !== 'APPROVED') {
-    const rejected = await updatePlanCandidateStatus(planId, 'REJECTED', {
-      review: { ...review, source: source === 'MANUAL' ? 'MANUAL_REVIEW' : 'AUTO_REVIEW', risk }
+    const invalidated = await updatePlanCandidateStatus(planId, 'INVALIDATED', {
+      review: {
+        ...review,
+        status: 'INVALIDATED',
+        source: source === 'MANUAL' ? 'MANUAL_RECHECK' : 'AUTO_RECHECK',
+        reasons: Array.isArray(review?.reasons) && review.reasons.length ? review.reasons : ['RISK_RECHECK_FAILED'],
+        risk
+      }
     });
-    return { ok: false, code: 'PLAN_REJECTED', risk, review, plan: rejected };
+    return { ok: false, code: 'PLAN_INVALIDATED', risk, review, plan: invalidated };
   }
 
   const deterministic = String(plan.source_model || '').startsWith('deterministic-');
@@ -68,7 +100,8 @@ export async function activatePlanCandidate(planId, source = 'MANUAL') {
       strategy_state: plan.review?.strategy_state ?? null,
       strategy_fingerprint: plan.review?.fingerprint ?? null,
       zone: plan.review?.zone ?? null,
-      reward_risk: Number(plan.review?.reward_risk ?? risk?.metrics?.reward_risk ?? 0)
+      reward_risk: Number(plan.review?.reward_risk ?? risk?.metrics?.reward_risk ?? 0),
+      expiration_timeframe: deterministic ? 'M5' : 'M1'
     }
   });
 
@@ -85,7 +118,7 @@ export async function activatePlanCandidate(planId, source = 'MANUAL') {
 export async function rejectPlanCandidate(planId, source = 'MANUAL') {
   const plan = await getPlanCandidate(planId);
   if (!plan) return { ok: false, code: 'PLAN_NOT_FOUND' };
-  if (!['CANDIDATE','AWAITING_APPROVAL','AI_REVIEW'].includes(plan.status)) {
+  if (!ACTIVE_PLAN_STATUSES.has(plan.status)) {
     return { ok: false, code: 'PLAN_NOT_REJECTABLE', status: plan.status };
   }
   const rejected = await updatePlanCandidateStatus(planId, 'REJECTED', {
