@@ -119,7 +119,7 @@ export function enrichEmergingWatches(snapshot, analysis, watches = []) {
     const watch = { ...original };
     const type = String(watch.type || '');
     let projection = null;
-    let visual = { ...visualBase };
+    let visual = { ...visualBase, ...(watch.visual || {}) };
 
     if (type === 'SUPPORT_PROXIMITY' && finite(watch.level) !== null) {
       const level = Number(watch.level);
@@ -154,7 +154,9 @@ export function enrichEmergingWatches(snapshot, analysis, watches = []) {
     }
 
     if (type === 'DESCENDING_RESISTANCE_TRENDLINE' || type === 'ASCENDING_SUPPORT_TRENDLINE') {
-      const geometry = trendlineGeometry(m15, type, digits);
+      const geometry = watch.geometry?.trendline
+        ? { trendline: watch.geometry.trendline, level: finite(watch.level) ?? finite(watch.geometry.trendline.end) }
+        : trendlineGeometry(m15, type, digits);
       if (geometry) {
         const side = type.startsWith('DESCENDING') ? 'BUY' : 'SELL';
         const level = geometry.level;
@@ -169,7 +171,15 @@ export function enrichEmergingWatches(snapshot, analysis, watches = []) {
     }
 
     if (type.startsWith('CHANNEL_')) {
-      const geometry = channelGeometry(m15, digits);
+      const geometry = watch.geometry?.upper && watch.geometry?.lower
+        ? {
+            upper: watch.geometry.upper,
+            lower: watch.geometry.lower,
+            upperNow: Number(watch.geometry.upper.end),
+            lowerNow: Number(watch.geometry.lower.end),
+            slope: ((Number(watch.geometry.upper.end) - Number(watch.geometry.upper.start)) + (Number(watch.geometry.lower.end) - Number(watch.geometry.lower.start))) / Math.max((m15.length - 1) * 2, 1)
+          }
+        : channelGeometry(m15, digits);
       if (geometry) {
         const direction = type.replace('CHANNEL_', '');
         const side = direction === 'DOWN' ? 'SELL' : direction === 'UP' ? 'BUY' : (trend === 'BEARISH' ? 'SELL' : 'BUY');
@@ -193,12 +203,24 @@ export function enrichEmergingWatches(snapshot, analysis, watches = []) {
     const detected = watch.detected_at || detectedAt;
     const patternInfo = catalogEntry(type);
     const familyInfo = familyForPattern(type);
-    const quality = qualityProfile({
+    const baseQuality = qualityProfile({
       quality: watch.quality,
       trendStrength: analysis?.trend_m15?.strength,
       distanceAtr: watch.distance_atr,
       status: watch.status
     });
+    const qc = watch.quality_components || {};
+    const quality = {
+      ...baseQuality,
+      quality: finite(watch.quality) !== null ? clamp(Number(watch.quality) / 100, 0, 1) : baseQuality.quality,
+      clarity: finite(qc.clarity) !== null ? clamp(qc.clarity, 0, 1) : baseQuality.clarity,
+      initial_trend: finite(qc.initial_trend) !== null ? clamp(qc.initial_trend, 0, 1) : baseQuality.initial_trend,
+      uniformity: finite(qc.uniformity) !== null ? clamp(qc.uniformity, 0, 1) : baseQuality.uniformity,
+      touch_quality: finite(qc.touch_quality) !== null ? clamp(qc.touch_quality, 0, 1) : null,
+      containment: finite(qc.containment) !== null ? clamp(qc.containment, 0, 1) : null,
+      breakout: watch.breakout_metrics?.valid ? clamp((Number(watch.breakout_metrics.displacement || 0) / 0.55) * 0.5 + Number(watch.breakout_metrics.closeExtreme || 0) * 0.5, 0, 1) : baseQuality.breakout,
+      readiness: String(watch.status || '').toUpperCase() === 'CONFIRMED' ? 1 : baseQuality.readiness
+    };
     const enrichedWatch = { ...watch, projection, visual: projection ? visual : watch.visual ?? null, detected_at: detected };
     const drawing = projection ? buildPatternDrawing({
       watch: enrichedWatch,
@@ -210,7 +232,20 @@ export function enrichEmergingWatches(snapshot, analysis, watches = []) {
     }) : null;
     return {
       ...enrichedWatch,
-      knowledge: { version: KNOWLEDGE_VERSION, family: familyInfo.id, family_label: familyInfo.label, pattern: patternInfo, quality },
+      knowledge: {
+        version: KNOWLEDGE_VERSION,
+        family: familyInfo.id,
+        family_label: familyInfo.label,
+        pattern: patternInfo,
+        quality,
+        diagnostics: {
+          touches: watch.touches ?? null,
+          distance_atr: watch.distance_atr ?? null,
+          trigger_failed: watch.trigger_failed ?? null,
+          breakout_metrics: watch.breakout_metrics ?? null,
+          rr: watch.rr ?? null
+        }
+      },
       drawing
     };
   });
