@@ -34,11 +34,12 @@ export async function activatePlanCandidate(planId, source = 'MANUAL') {
   const review = reviewPendingDecision(decision, risk, { manual: source === 'MANUAL' });
   if (!review || review.status !== 'APPROVED') {
     const rejected = await updatePlanCandidateStatus(planId, 'REJECTED', {
-      review: { ...review, source: source === 'MANUAL' ? 'MANUAL_REVIEW' : 'AI_AUTO_REVIEW', risk }
+      review: { ...review, source: source === 'MANUAL' ? 'MANUAL_REVIEW' : 'AUTO_REVIEW', risk }
     });
     return { ok: false, code: 'PLAN_REJECTED', risk, review, plan: rejected };
   }
 
+  const deterministic = String(plan.source_model || '').startsWith('deterministic-');
   const tradeId = `plan-${plan.plan_id}`;
   await saveDecision({
     ...decision,
@@ -57,14 +58,23 @@ export async function activatePlanCandidate(planId, source = 'MANUAL') {
       invalidation: plan.invalidation,
       risk_review: risk,
       review_agent: review,
-      ai_model: plan.source_model || null,
-      ai_generated: true
+      source_model: plan.source_model || null,
+      ai_model: deterministic ? null : (plan.source_model || null),
+      ai_generated: !deterministic,
+      deterministic_engine: deterministic,
+      engine_version: deterministic ? plan.source_model : null,
+      setup_score: Number(plan.review?.setup_score ?? plan.entry_confidence * 100),
+      score_components: plan.review?.score_components ?? null,
+      strategy_state: plan.review?.strategy_state ?? null,
+      strategy_fingerprint: plan.review?.fingerprint ?? null,
+      zone: plan.review?.zone ?? null,
+      reward_risk: Number(plan.review?.reward_risk ?? risk?.metrics?.reward_risk ?? 0)
     }
   });
 
   const approvedStatus = source === 'MANUAL' ? 'MANUAL_APPROVED' : 'AUTO_APPROVED';
   const approved = await updatePlanCandidateStatus(planId, approvedStatus, {
-    review: { ...review, source: source === 'MANUAL' ? 'MANUAL_USER' : 'AI_AUTO', risk },
+    review: { ...review, source: source === 'MANUAL' ? 'MANUAL_USER' : 'AUTO_ENGINE', risk },
     linked_trade_id: tradeId,
     approved_at: new Date().toISOString()
   });
@@ -79,7 +89,7 @@ export async function rejectPlanCandidate(planId, source = 'MANUAL') {
     return { ok: false, code: 'PLAN_NOT_REJECTABLE', status: plan.status };
   }
   const rejected = await updatePlanCandidateStatus(planId, 'REJECTED', {
-    review: { status: 'REJECTED', source: source === 'MANUAL' ? 'MANUAL_USER' : 'AI_AUTO', reasons: ['USER_REJECTED'] },
+    review: { status: 'REJECTED', source: source === 'MANUAL' ? 'MANUAL_USER' : 'AUTO_ENGINE', reasons: ['USER_REJECTED'] },
     rejected_at: new Date().toISOString()
   });
   return { ok: true, plan: rejected };
