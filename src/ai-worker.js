@@ -12,6 +12,7 @@ import { reviewPendingDecision } from './review-agent.js';
 import { autoActivateBestCandidate, planExpiryInfo } from './plan-service.js';
 import { detectSbrRbsSetup } from './structure-engine.js';
 import { detectChannelTrendlinePatterns } from './pattern-engine.js';
+import { analyzeMarketStructure } from './analysis-engine.js';
 
 const ENGINE_VERSION = 'deterministic-pattern-suite-v1';
 const SBR_ENGINE = 'deterministic-sbr-rbs-v1';
@@ -90,6 +91,106 @@ function mergeConfluence(candidates) {
   return out.sort((a,b)=>Number(b.setup_score||0)-Number(a.setup_score||0)||Number(b.rr||0)-Number(a.rr||0)).slice(0,5);
 }
 
+function regimeFromBias(bias) {
+  if (String(bias).startsWith('BULLISH')) return 'TREND_UP';
+  if (String(bias).startsWith('BEARISH')) return 'TREND_DOWN';
+  return 'RANGE';
+}
+
+function fiveMinuteBucket(timestamp) {
+  const parsed = Date.parse(timestamp || '');
+  const ms = Number.isFinite(parsed) ? parsed : Date.now();
+  return Math.floor(ms / 300000) * 300000;
+}
+
+async function persistLiveAnalysis(snapshot, analysis, patternWatches = []) {
+  const bucket = fiveMinuteBucket(snapshot.timestamp);
+  const mergedWatches = [...(analysis.watches || [])];
+  for (const watch of patternWatches || []) {
+    if (mergedWatches.some(item => item.type === watch.type && item.timeframe === watch.timeframe)) continue;
+    mergedWatches.push({
+      type: watch.type,
+      timeframe: watch.timeframe || 'M15',
+      status: watch.status || 'FORMING',
+      quality: Number(watch.quality || 50),
+      level: watch.level ?? null,
+      thesis: `${String(watch.type || 'Pattern').replaceAll('_',' ')} is ${String(watch.status || 'forming').toLowerCase()} on ${watch.timeframe || 'M15'}. Tradevice is waiting for a confirmed structural trigger before creating an Offering.`
+    });
+  }
+
+  const reasons = [
+    `BIAS_${analysis.bias || 'NEUTRAL'}`,
+    `M5_${analysis.trend_m5?.label || 'UNKNOWN'}`,
+    `M15_${analysis.trend_m15?.label || 'UNKNOWN'}`,
+    `WATCHES_${mergedWatches.length}`
+  ];
+  const trendStrength = Math.round(((Number(analysis.trend_m5?.strength || 0) + Number(analysis.trend_m15?.strength || 0)) / 2));
+
+  await saveDecision({
+    trade_id: `analysis-scan-${bucket}`,
+    mode: 'shadow',
+    decision: 'WAIT',
+    setup: 'MARKET_STRUCTURE_SCAN',
+    regime: regimeFromBias(analysis.bias),
+    confidence: trendStrength / 100,
+    reason_codes: reasons,
+    review: { status: 'NOT_REQUIRED', source: 'DETERMINISTIC_SCAN', reasons: [], reviewed_at: new Date().toISOString() },
+    context: {
+      ai_generated: false,
+      astra_called: false,
+      deterministic_engine: true,
+      engine_version: ENGINE_VERSION,
+      analysis_type: 'MARKET_STRUCTURE_SCAN',
+      strategy_state: analysis.state,
+      market_timestamp: snapshot.timestamp,
+      decision_confidence: trendStrength / 100,
+      entry_confidence: null,
+      thesis: analysis.summary,
+      invalidation: 'No trade is armed by the market scan itself. An Offering is created only after a strategy detector reaches CONFIRMED and passes risk validation.',
+      current_price: analysis.price,
+      spread_points: analysis.spread_points,
+      atr_m5: analysis.atr_m5,
+      atr_m15: analysis.atr_m15,
+      trend_m5: analysis.trend_m5,
+      trend_m15: analysis.trend_m15,
+      levels: analysis.levels,
+      watch_count: mergedWatches.length
+    }
+  });
+
+  for (const watch of mergedWatches.slice(0, 5)) {
+    const watchKey = watch.fingerprint || `${String(watch.type).replaceAll(' ','_')}-${watch.timeframe || 'M15'}`;
+    const quality = Math.max(0, Math.min(100, Number(watch.quality || 50)));
+    const levelText = Number.isFinite(Number(watch.level)) ? ` near ${Number(watch.level).toFixed(3)}` : '';
+    await saveDecision({
+      trade_id: `analysis-watch-${watchKey}-${bucket}`,
+      mode: 'shadow',
+      decision: 'WAIT',
+      setup: String(watch.type || 'STRUCTURE_WATCH'),
+      regime: regimeFromBias(analysis.bias),
+      confidence: quality / 100,
+      reason_codes: [String(watch.status || 'FORMING'), String(watch.timeframe || 'M15'), `QUALITY_${Math.round(quality)}`],
+      review: { status: 'NOT_REQUIRED', source: 'DETERMINISTIC_SCAN', reasons: [], reviewed_at: new Date().toISOString() },
+      context: {
+        ai_generated: false,
+        astra_called: false,
+        deterministic_engine: true,
+        engine_version: ENGINE_VERSION,
+        analysis_type: 'SETUP_WATCH',
+        strategy_state: watch.status || 'FORMING',
+        market_timestamp: snapshot.timestamp,
+        decision_confidence: quality / 100,
+        entry_confidence: null,
+        thesis: watch.thesis || `${String(watch.type || 'Structure').replaceAll('_',' ')} is being monitored${levelText}.`,
+        invalidation: 'Watch state only. No pending order is created until the detector confirms the required break/retest or rejection conditions.',
+        watch: { ...watch }
+      }
+    });
+  }
+
+  return mergedWatches;
+}
+
 async function persistCandidate(candidate, snapshot, approvalMode) {
   const planId = `structure-${candidate.fingerprint}`;
   const existing = await getPlanCandidate(planId);
@@ -155,20 +256,22 @@ export async function runAiDecision(snapshot) {
   const expiredPlans = await expireStalePlans(nowMs);
   const sbrScan = detectSbrRbsSetup(snapshot);
   const patternScan = detectChannelTrendlinePatterns(snapshot);
+  const marketAnalysis = analyzeMarketStructure(snapshot);
   const raw = [];
   if (sbrScan.candidate) raw.push(withDefaults(sbrScan.candidate, snapshot, sbrScan.atr_m5));
   for (const candidate of patternScan.candidates || []) raw.push(withDefaults(candidate, snapshot, sbrScan.atr_m5));
   const candidates = mergeConfluence(raw);
+  const analysisWatches = await persistLiveAnalysis(snapshot, marketAnalysis, patternScan.watches || []);
 
   await setRuntimeSetting('structure_engine_state', {
-    engine: ENGINE_VERSION, state: candidates.length ? 'CONFIRMED' : (patternScan.state === 'FORMING' ? 'FORMING' : sbrScan.state),
+    engine: ENGINE_VERSION, state: candidates.length ? 'CONFIRMED' : (analysisWatches.some(w => w.status === 'ARMED') ? 'ARMED' : analysisWatches.length ? 'FORMING' : sbrScan.state),
     scanned_at: snapshot.timestamp, atr_m5: sbrScan.atr_m5 ?? null, atr_m15: patternScan.atr_m15 ?? null,
-    zones: sbrScan.zones ?? null, watches: patternScan.watches || [], expired_plans: expiredPlans,
+    zones: sbrScan.zones ?? null, watches: analysisWatches, live_analysis: marketAnalysis, expired_plans: expiredPlans,
     candidates: candidates.map(c => ({fingerprint:c.fingerprint,setup:c.setup,pattern_name:c.pattern_name,side:c.side,setup_score:c.setup_score,rr:c.rr,timeframe:c.timeframe,confluence:c.confluence||[]}))
   });
 
   if (!candidates.length) {
-    return { skipped:'NO_STRUCTURE_EVENT', engine:ENGINE_VERSION, astra_called:false, state:patternScan.state || sbrScan.state, expired_plans:expiredPlans.length, watches:(patternScan.watches||[]).length, zones:sbrScan.zones??null };
+    return { skipped:'NO_CONFIRMED_OFFER', engine:ENGINE_VERSION, astra_called:false, state:marketAnalysis.state, expired_plans:expiredPlans.length, watches:analysisWatches.length, zones:sbrScan.zones??null };
   }
 
   const approvalMode = String(await getRuntimeSetting('approval_mode', 'manual')).toLowerCase() === 'ai' ? 'ai' : 'manual';
@@ -179,8 +282,8 @@ export async function runAiDecision(snapshot) {
   if (approvalMode === 'ai' && eligible.length) autoApproval = await autoActivateBestCandidate(eligible);
 
   return {
-    engine:ENGINE_VERSION, astra_called:false, events:candidates.map(c=>c.state),
+    engine:ENGINE_VERSION, astra_called:false, events:candidates.map(c=>c.state), analysis_state:marketAnalysis.state,
     plans:persisted.map(x=>({plan_id:x.plan?.plan_id,status:x.plan?.status,created:x.created,setup_score:x.candidate.setup_score,pattern:x.candidate.pattern_name,confluence:x.candidate.confluence||[]})),
-    expired_plans:expiredPlans.length, auto_approval:autoApproval
+    watches:analysisWatches.length, expired_plans:expiredPlans.length, auto_approval:autoApproval
   };
 }
