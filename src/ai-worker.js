@@ -13,6 +13,7 @@ import { autoActivateBestCandidate, planExpiryInfo } from './plan-service.js';
 import { detectSbrRbsSetup } from './structure-engine.js';
 import { detectChannelTrendlinePatterns } from './pattern-engine.js';
 import { analyzeMarketStructure } from './analysis-engine.js';
+import { enrichEmergingWatches } from './emerging-analysis.js';
 
 const ENGINE_VERSION = 'deterministic-pattern-suite-v1';
 const SBR_ENGINE = 'deterministic-sbr-rbs-v1';
@@ -105,18 +106,20 @@ function fiveMinuteBucket(timestamp) {
 
 async function persistLiveAnalysis(snapshot, analysis, patternWatches = []) {
   const bucket = fiveMinuteBucket(snapshot.timestamp);
-  const mergedWatches = [...(analysis.watches || [])];
+  const rawMergedWatches = [...(analysis.watches || [])];
   for (const watch of patternWatches || []) {
-    if (mergedWatches.some(item => item.type === watch.type && item.timeframe === watch.timeframe)) continue;
-    mergedWatches.push({
+    if (rawMergedWatches.some(item => item.type === watch.type && item.timeframe === watch.timeframe)) continue;
+    rawMergedWatches.push({
+      ...watch,
       type: watch.type,
       timeframe: watch.timeframe || 'M15',
       status: watch.status || 'FORMING',
       quality: Number(watch.quality || 50),
       level: watch.level ?? null,
-      thesis: `${String(watch.type || 'Pattern').replaceAll('_',' ')} is ${String(watch.status || 'forming').toLowerCase()} on ${watch.timeframe || 'M15'}. Tradevice is waiting for a confirmed structural trigger before creating an Offering.`
+      thesis: watch.thesis || `${String(watch.type || 'Pattern').replaceAll('_',' ')} is ${String(watch.status || 'forming').toLowerCase()} on ${watch.timeframe || 'M15'}. Tradevice is waiting for a confirmed structural trigger before creating an Offering.`
     });
   }
+  const mergedWatches = enrichEmergingWatches(snapshot, analysis, rawMergedWatches);
 
   const reasons = [
     `BIAS_${analysis.bias || 'NEUTRAL'}`,
@@ -182,7 +185,7 @@ async function persistLiveAnalysis(snapshot, analysis, patternWatches = []) {
         decision_confidence: quality / 100,
         entry_confidence: null,
         thesis: watch.thesis || `${String(watch.type || 'Structure').replaceAll('_',' ')} is being monitored${levelText}.`,
-        invalidation: 'Watch state only. No pending order is created until the detector confirms the required break/retest or rejection conditions.',
+        invalidation: watch.projection?.note || 'Watch state only. No pending order is created until the detector confirms the required break/retest or rejection conditions.',
         watch: { ...watch }
       }
     });
