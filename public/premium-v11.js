@@ -5,14 +5,6 @@
   const num = (v,d=3) => Number.isFinite(Number(v)) ? Number(v).toFixed(d) : '—';
   const isDeterministic = plan => String(plan?.source_model || '').startsWith('deterministic-');
 
-  function expiryInfo(plan){
-    const base = Date.parse(plan.market_timestamp || plan.created_at || '');
-    const candleSeconds = isDeterministic(plan) ? 300 : 60;
-    const ttl = Math.max(1, Number(plan.expiration_candles || 3)) * candleSeconds + 30;
-    const age = Number.isFinite(base) ? Math.max(0, (Date.now() - base) / 1000) : Infinity;
-    return { stale: age > ttl, age, ttl };
-  }
-
   function decorateDeterministicPlan(plan, card){
     if (!isDeterministic(plan) || !card) return;
     card.classList.add('deterministicPlan');
@@ -29,37 +21,19 @@
     }
   }
 
-  function markPlanFreshness(plan){
-    const card = document.querySelector(`[data-plan-id="${CSS.escape(String(plan.plan_id))}"]`);
-    if (!card) return;
-    decorateDeterministicPlan(plan, card);
-    const info = expiryInfo(plan);
-    card.classList.toggle('planStale', info.stale);
-    let badge = card.querySelector('.freshnessBadge:not(.ruleEngineBadge)');
-    if (!badge) {
-      badge = document.createElement('span');
-      badge.className = 'freshnessBadge';
-      card.querySelector('.offerMetaRight')?.prepend(badge);
-    }
-    if (badge) {
-      badge.classList.toggle('stale', info.stale);
-      badge.textContent = info.stale ? 'STALE' : `${Math.max(0, Math.ceil(info.ttl-info.age))}s`;
-    }
-    const approve = card.querySelector('[data-action="approve"]');
-    if (approve && info.stale) {
-      approve.disabled = true;
-      approve.dataset.originalText ||= approve.textContent;
-      approve.textContent = 'Expired · Re-analyze';
-      approve.setAttribute('aria-disabled','true');
+  function decoratePlans(plans){
+    for (const plan of plans || []) {
+      const card = document.querySelector(`[data-plan-id="${CSS.escape(String(plan.plan_id))}"]`);
+      if (card) decorateDeterministicPlan(plan, card);
     }
   }
 
-  async function refreshFreshness(){
+  async function refreshDecorations(){
     try {
       const res = await fetch('/api/v1/plans?limit=30',{cache:'no-store'});
       if (!res.ok) return;
       const data = await res.json();
-      (data.plans || []).forEach(markPlanFreshness);
+      decoratePlans(data.plans || []);
     } catch {}
   }
 
@@ -93,7 +67,7 @@
     } catch {}
   }
 
-  function refresh(){ refreshFreshness(); refreshPreview(); }
+  function refresh(){ refreshDecorations(); refreshPreview(); }
   document.addEventListener('DOMContentLoaded',()=>{ refresh(); setInterval(refresh,3000); });
   document.addEventListener('click',e=>{ if(e.target.closest('[data-action="approve"],[data-action="reject"]')) setTimeout(refresh,500); });
 })();
