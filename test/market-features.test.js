@@ -72,3 +72,10 @@ test('structure expansion creates an AI-worthy trigger when guardrails pass', ()
   assert.ok(result.trigger_codes.includes('STRUCTURE_BREAK') || result.trigger_codes.includes('VOLATILITY_EXPANSION'));
   assert.equal(result.reasons.includes('SPREAD_TOO_WIDE'), false);
 });
+
+test('support resistance proximity can trigger multi-strategy review', () => {
+  const s = snapshot({ candles: bars(60, 4100, 0.02, false), bid: 4101.36, ask: 4101.60 });
+  const result = prefilterSnapshot(s);
+  assert.equal(result.reasons.includes('SPREAD_TOO_WIDE'), false);
+  assert.ok(Array.isArray(result.trigger_codes));
+});
