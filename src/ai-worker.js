@@ -3,14 +3,17 @@ import {
   savePlanCandidate,
   getPlanCandidate,
   getRuntimeSetting,
-  setRuntimeSetting
+  setRuntimeSetting,
+  listPlanCandidates,
+  updatePlanCandidateStatus
 } from './store.js';
 import { validateTradeIntent } from './risk.js';
 import { reviewPendingDecision } from './review-agent.js';
-import { autoActivateBestCandidate } from './plan-service.js';
+import { autoActivateBestCandidate, planExpiryInfo } from './plan-service.js';
 import { detectSbrRbsSetup } from './structure-engine.js';
 
 const ENGINE_VERSION = 'deterministic-sbr-rbs-v1';
+const ACTIVE_PLAN_STATUSES = new Set(['CANDIDATE','AWAITING_APPROVAL','AI_REVIEW']);
 
 export function aiWorkerEnabled() {
   return String(process.env.STRUCTURE_ENGINE_ENABLED || 'true').toLowerCase() !== 'false';
@@ -33,10 +36,33 @@ function asDecision(candidate) {
   };
 }
 
+async function expireStalePlans(nowMs) {
+  const plans = await listPlanCandidates(100);
+  const expired = [];
+  for (const plan of plans) {
+    if (!ACTIVE_PLAN_STATUSES.has(plan.status)) continue;
+    const info = planExpiryInfo(plan, nowMs);
+    if (!info.expired) continue;
+    await updatePlanCandidateStatus(plan.plan_id, 'EXPIRED', {
+      review: {
+        ...(plan.review ?? {}),
+        status: 'EXPIRED',
+        source: 'LIFECYCLE_ENGINE',
+        reasons: ['TTL_EXPIRED'],
+        expiry: info
+      }
+    });
+    expired.push(plan.plan_id);
+  }
+  return expired;
+}
+
 export async function runAiDecision(snapshot) {
   if (!aiWorkerEnabled()) return { skipped: 'STRUCTURE_ENGINE_DISABLED' };
   if (snapshot?.timeframe !== 'M1') return { skipped: 'NOT_M1' };
 
+  const nowMs = Number.isFinite(Date.parse(snapshot.timestamp)) ? Date.parse(snapshot.timestamp) : Date.now();
+  const expiredPlans = await expireStalePlans(nowMs);
   const scan = detectSbrRbsSetup(snapshot);
   await setRuntimeSetting('structure_engine_state', {
     engine: ENGINE_VERSION,
@@ -44,6 +70,7 @@ export async function runAiDecision(snapshot) {
     scanned_at: scan.scanned_at ?? snapshot.timestamp,
     atr_m5: scan.atr_m5 ?? null,
     zones: scan.zones ?? null,
+    expired_plans: expiredPlans,
     candidate: scan.candidate ? {
       fingerprint: scan.candidate.fingerprint,
       setup: scan.candidate.setup,
@@ -60,6 +87,7 @@ export async function runAiDecision(snapshot) {
       skipped: 'NO_STRUCTURE_EVENT',
       engine: ENGINE_VERSION,
       state: scan.state,
+      expired_plans: expiredPlans.length,
       zones: scan.zones ?? null
     };
   }
@@ -84,7 +112,7 @@ export async function runAiDecision(snapshot) {
   const valid = risk.approved === true && review?.status === 'APPROVED';
   const status = valid
     ? (approvalMode === 'manual' ? 'AWAITING_APPROVAL' : 'AI_REVIEW')
-    : 'REJECTED';
+    : 'INVALIDATED';
 
   const groupId = `structure-${candidate.fingerprint}`;
   const plan = await savePlanCandidate({
@@ -108,6 +136,7 @@ export async function runAiDecision(snapshot) {
     status,
     review: {
       ...review,
+      status: valid ? review.status : 'INVALIDATED',
       source: 'DETERMINISTIC_STRUCTURE_ENGINE',
       risk,
       setup_score: candidate.setup_score,
@@ -166,6 +195,7 @@ export async function runAiDecision(snapshot) {
     setup_score: candidate.setup_score,
     plan_id: plan.plan_id,
     plan_status: plan.status,
+    expired_plans: expiredPlans.length,
     auto_approval: autoApproval
   };
 }
