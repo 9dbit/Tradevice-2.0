@@ -4,7 +4,7 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
 <meta name="theme-color" content="#000000" />
-<title>Tradevice 2.0 · XAUUSD AI Trading Desk</title>
+<title>Tradevice 2.0 · XAUUSD Trading Desk</title>
 <link rel="stylesheet" href="/offering-v2.css?v=5" />
 <link rel="stylesheet" href="/premium-v6.css?v=1" />
 <link rel="stylesheet" href="/premium-v7.css?v=1" />
@@ -16,7 +16,7 @@
 <body>
 <div class="app"><main class="shell">
 <header class="topbar" id="dashboard">
-  <div class="brandBlock"><div class="logoMark">T</div><div><div class="brandName">Tradevice <span>2.0</span></div><div class="brandSub">XAUUSD AI Trading Desk</div></div></div>
+  <div class="brandBlock"><div class="logoMark">T</div><div><div class="brandName">Tradevice <span>2.0</span></div><div class="brandSub">XAUUSD Structure Trading Desk</div></div></div>
   <div class="topActions"><span class="statusDot" id="servicePill">● CONNECTING</span><a class="iconBtn" href="/workflow/" aria-label="System">⚙</a></div>
 </header>
 <section class="walletCard">
@@ -34,14 +34,14 @@
 </section>
 <section class="controlRow">
   <div class="approvalBox">
-    <div class="seg"><button id="manualMode" data-mode="manual">Manual Approve</button><button id="aiMode" data-mode="ai">AI Approve</button></div>
+    <div class="seg"><button id="manualMode" data-mode="manual">Manual Approve</button><button id="aiMode" data-mode="ai">Auto Approve</button></div>
     <button class="unlock" id="unlockBtn">Unlock</button>
     <button class="unlock" id="observerDownloadBtn" type="button">Download Observer</button>
   </div>
   <div class="marketCard">
     <div class="marketSymbol"><span class="goldIcon">◆</span><div><strong>XAUUSD</strong><span><i></i><b id="feedState">—</b></span></div></div>
     <div class="marketPrice"><strong id="bid">—</strong><span>Bid</span></div>
-    <div class="marketTiny"><span>Ask <b id="ask">—</b></span><span>Spread <b id="spread">—</b></span><span>Astra <b id="aiWorker">—</b></span></div>
+    <div class="marketTiny"><span>Ask <b id="ask">—</b></span><span>Spread <b id="spread">—</b></span><span>Scanner <b id="aiWorker">—</b></span></div>
   </div>
 </section>
 <section class="chartPanel">
@@ -57,7 +57,7 @@
   <section class="compactSection tradeStateCard positionSection"><div class="sectionHead"><div><strong>Open Positions</strong><span>Floating positions · live P/L focus</span></div><span class="stateCount" id="openPositionsCount">0 open</span></div><div class="tradeCards" id="openPositionsWrap"></div></section>
   <section class="compactSection tradeStateCard orderSection"><div class="sectionHead"><div><strong>Pending Orders</strong><span>Active shadow pending orders</span></div><span class="stateCount" id="pendingOrdersCount">0 active</span></div><div class="tradeCards" id="pendingOrdersWrap"></div></section>
 </div>
-<section class="compactSection" id="analysis"><div class="sectionHead"><div><strong>AI Analysis</strong><span>Decision log</span></div></div><div class="tableWrap" id="analysisWrap"></div></section>
+<section class="compactSection" id="analysis"><div class="sectionHead"><div><strong>Strategy Analysis</strong><span>Structure engine log</span></div></div><div class="tableWrap" id="analysisWrap"></div></section>
 <nav class="mobileNav" aria-label="Tradevice navigation">
   <span class="navLens" aria-hidden="true"></span>
   <a class="active" data-nav="0" href="#dashboard" aria-label="Dashboard"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 11.2 12 4l9 7.2v8.3a.5.5 0 0 1-.5.5H15v-6H9v6H3.5a.5.5 0 0 1-.5-.5z"/></svg><span>Dashboard</span></a>
@@ -72,7 +72,7 @@
 <script src="/premium-v8.js?v=1"></script>
 <script src="/premium-v9.js?v=2"></script>
 <script src="/premium-v10.js?v=1"></script>
-<script src="/premium-v11.js?v=1"></script>
+<script src="/premium-v11.js?v=2"></script>
 <script src="/observer-download.js?v=2"></script>
 </main></div>
 </body>
