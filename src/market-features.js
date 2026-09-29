@@ -2,7 +2,7 @@ export const PIPELINE_VERSIONS = Object.freeze({
   strategy: 'multi-strategy-v2',
   prompt: 'xau-m1-p2',
   features: 'xau-features-v1',
-  prefilter: 'xau-prefilter-v1',
+  prefilter: 'xau-prefilter-v2',
   risk_policy: 'risk-v1'
 });
 
@@ -140,9 +140,35 @@ export function prefilterSnapshot(snapshot, features = extractMarketFeatures(sna
   if (features.swings.sweep_high || features.swings.sweep_low) triggerCodes.push('LIQUIDITY_SWEEP');
   if (features.swings.break_high || features.swings.break_low) triggerCodes.push('STRUCTURE_BREAK');
   if (features.range_atr_ratio !== null && features.range_atr_ratio >= 1.15) triggerCodes.push('VOLATILITY_EXPANSION');
+
+  const a1 = finite(features.atr?.m1);
+  const close = finite(features.latest_candle?.close);
+  const swingHigh = finite(features.swings?.swing_high);
+  const swingLow = finite(features.swings?.swing_low);
+  const body = finite(features.latest_candle?.body);
+  const range = finite(features.latest_candle?.range);
+  const upperWick = finite(features.latest_candle?.upper_wick);
+  const lowerWick = finite(features.latest_candle?.lower_wick);
+
+  if (a1 && close !== null) {
+    const nearHigh = swingHigh !== null && Math.abs(close - swingHigh) <= a1 * 0.45;
+    const nearLow = swingLow !== null && Math.abs(close - swingLow) <= a1 * 0.45;
+    if (nearHigh || nearLow) triggerCodes.push('SUPPORT_RESISTANCE_PROXIMITY');
+
+    const rejectionWick = Math.max(upperWick ?? 0, lowerWick ?? 0);
+    if (range !== null && body !== null && range >= a1 * 0.55 && rejectionWick >= Math.max(body * 1.5, a1 * 0.18)) {
+      triggerCodes.push('PRICE_REJECTION_PATTERN');
+    }
+
+    if (body !== null && range !== null && body >= a1 * 0.65 && range >= a1 * 0.90) {
+      triggerCodes.push('SUPPLY_DEMAND_DISPLACEMENT');
+    }
+  }
+
   if (features.trend_alignment === 'UP' || features.trend_alignment === 'DOWN') {
     const d = Math.abs(features.distance_to_ema12 ?? Infinity);
-    if (features.atr.m1 && d <= features.atr.m1 * 0.55) triggerCodes.push('TREND_PULLBACK_ZONE');
+    if (a1 && d <= a1 * 0.55) triggerCodes.push('TREND_PULLBACK_ZONE');
+    else if (a1 && d <= a1 * 0.90) triggerCodes.push('TRENDLINE_CHANNEL_CONTEXT');
   }
   if (!triggerCodes.length) reasons.push('NO_SETUP_TRIGGER');
 
