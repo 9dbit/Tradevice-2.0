@@ -1,3 +1,6 @@
+import { buildPatternDrawing } from './drawing-engine.js';
+import { catalogEntry, familyForPattern, qualityProfile, KNOWLEDGE_VERSION } from './knowledge/technical-pattern-knowledge.js';
+
 const finite = value => Number.isFinite(Number(value)) ? Number(value) : null;
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
 const round = (value, digits = 3) => Number(Number(value).toFixed(digits));
@@ -187,11 +190,28 @@ export function enrichEmergingWatches(snapshot, analysis, watches = []) {
       }
     }
 
-    return {
-      ...watch,
+    const detected = watch.detected_at || detectedAt;
+    const patternInfo = catalogEntry(type);
+    const familyInfo = familyForPattern(type);
+    const quality = qualityProfile({
+      quality: watch.quality,
+      trendStrength: analysis?.trend_m15?.strength,
+      distanceAtr: watch.distance_atr,
+      status: watch.status
+    });
+    const enrichedWatch = { ...watch, projection, visual: projection ? visual : watch.visual ?? null, detected_at: detected };
+    const drawing = projection ? buildPatternDrawing({
+      watch: enrichedWatch,
       projection,
-      visual: projection ? visual : watch.visual ?? null,
-      detected_at: watch.detected_at || detectedAt
+      candles: visual.candles || [],
+      detectedAt: detected,
+      intervalMinutes: 15,
+      patternFamily: familyInfo.id
+    }) : null;
+    return {
+      ...enrichedWatch,
+      knowledge: { version: KNOWLEDGE_VERSION, family: familyInfo.id, family_label: familyInfo.label, pattern: patternInfo, quality },
+      drawing
     };
   });
 }
