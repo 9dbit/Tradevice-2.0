@@ -15,7 +15,7 @@ const candidateSchema = {
   properties: {
     side: { type: 'string', enum: ['BUY', 'SELL'] },
     order_type: { type: 'string', enum: ['BUY_LIMIT', 'SELL_LIMIT', 'BUY_STOP', 'SELL_STOP'] },
-    setup: { type: 'string', enum: ['TREND_PULLBACK', 'BREAKOUT_RETEST', 'LIQUIDITY_SWEEP'] },
+    setup: { type: 'string', enum: ['TREND_PULLBACK', 'BREAKOUT_RETEST', 'LIQUIDITY_SWEEP', 'SUPPORT_RESISTANCE', 'SUPPLY_DEMAND', 'TRENDLINE_CHANNEL', 'PRICE_PATTERN'] },
     regime: { type: 'string', enum: ['TREND_UP', 'TREND_DOWN', 'RANGE', 'BREAKOUT', 'HIGH_VOLATILITY'] },
     entry: { type: 'number' },
     stop_loss: { type: 'number' },
@@ -39,7 +39,7 @@ const envelopeSchema = {
     regime: { type: 'string', enum: ['TREND_UP','TREND_DOWN','RANGE','BREAKOUT','HIGH_VOLATILITY','CHAOTIC','NO_TRADE'] },
     reason_codes: { type: 'array', items: { type: 'string' }, maxItems: 12 },
     thesis: { type: 'string' },
-    candidate_plans: { type: 'array', maxItems: 3, items: candidateSchema }
+    candidate_plans: { type: 'array', maxItems: 5, items: candidateSchema }
   },
   required: ['market_decision','decision_confidence','regime','reason_codes','thesis','candidate_plans']
 };
@@ -121,6 +121,16 @@ async function savePrefilterWait(snapshot, model, decisionKey, prefilter) {
   return { skipped: 'PREFILTER_BLOCKED', trade_id: tradeId, reasons: prefilter.reasons, trigger_codes: prefilter.trigger_codes };
 }
 
+function candidateRankScore(candidate, risk) {
+  const entry = Number(candidate?.entry_confidence || 0);
+  const decision = Number(candidate?.decision_confidence || 0);
+  const rr = Number(risk?.metrics?.reward_risk || 0);
+  const evidence = Array.isArray(candidate?.reason_codes) ? candidate.reason_codes.length : 0;
+  const rrScore = Math.min(Math.max(rr, 0), 3) / 3;
+  const evidenceScore = Math.min(evidence, 6) / 6;
+  return entry * 0.45 + decision * 0.30 + rrScore * 0.20 + evidenceScore * 0.05;
+}
+
 function candidateDecision(candidate) {
   return {
     decision: 'PLACE_PENDING',
@@ -163,13 +173,15 @@ export async function runAiDecision(snapshot) {
         'You are the Tradevice XAUUSD M1 candidate-plan engine in shadow research mode.',
         `Strategy version: ${PIPELINE_VERSIONS.strategy}. Prompt version: ${PIPELINE_VERSIONS.prompt}.`,
         'Use M5/M15 as context and M1 as execution timing.',
-        'Return zero to three distinct structurally valid pending-order candidates. Never fabricate a candidate just to fill the list.',
-        'Allowed setup families: TREND_PULLBACK, BREAKOUT_RETEST, LIQUIDITY_SWEEP.',
+        'Return zero to five distinct structurally valid pending-order candidates. Never fabricate a candidate just to fill the list.',
+        'Allowed setup families: TREND_PULLBACK, BREAKOUT_RETEST, LIQUIDITY_SWEEP, SUPPORT_RESISTANCE, SUPPLY_DEMAND, TRENDLINE_CHANNEL, PRICE_PATTERN.',
+        'Evaluate multiple strategy lenses independently: support/resistance, supply/demand, trendline or channel structure, price patterns, trend pullback, breakout/retest, and liquidity sweep.',
+        'When several lenses support the same price area, mention that confluence explicitly in reason_codes and thesis. Do not create duplicate candidates for the same entry zone.',
         'Candidates may be below the automatic approval threshold so they can still be offered for manual review.',
         `AI automatic approval threshold is entry_confidence >= ${entryThreshold.toFixed(2)}. A candidate below that threshold must never be auto-approved.`,
         'decision_confidence is confidence in the candidate thesis. entry_confidence is confidence that the proposed entry is executable with edge now.',
         'Each candidate must contain a pending order type, entry, structural stop loss, take profit, setup, regime, expiration, thesis and invalidation.',
-        'Prefer plans that differ meaningfully by setup, timing or order type. Avoid duplicate price plans.',
+        'Prefer plans that differ meaningfully by setup, timing or order type. Avoid duplicate price plans. Rank the strongest candidate first using structural quality, entry confidence, reward/risk and confluence.',
         'If there is no structurally valid plan, return market_decision WAIT with an empty candidate_plans array.',
         'If candidate_plans is non-empty, market_decision must be OFFER.',
         'Do not choose lot size or monetary risk. Return only the structured response.'
@@ -183,13 +195,17 @@ export async function runAiDecision(snapshot) {
     if (parsed.market_decision === 'OFFER' && !parsed.candidate_plans.length) throw new Error('MODEL_CONTRACT_VIOLATION: OFFER_WITHOUT_CANDIDATES');
 
     const groupId = `grp-${decisionKey}`;
-    const savedPlans = [];
-    for (let i = 0; i < parsed.candidate_plans.length; i++) {
-      const candidate = parsed.candidate_plans[i];
+    const evaluated = parsed.candidate_plans.map(candidate => {
       const decision = candidateDecision(candidate);
       const risk = validateTradeIntent(decision, snapshot);
       const preview = reviewPendingDecision(decision, risk, { manual: approvalMode === 'manual' });
       const valid = risk.approved === true && preview.status === 'APPROVED';
+      return { candidate, risk, preview, valid, rank_score: candidateRankScore(candidate, risk) };
+    }).sort((a,b) => b.rank_score - a.rank_score);
+
+    const savedPlans = [];
+    for (let i = 0; i < evaluated.length; i++) {
+      const { candidate, risk, preview, valid, rank_score } = evaluated[i];
       const status = valid ? (approvalMode === 'manual' ? 'AWAITING_APPROVAL' : 'AI_REVIEW') : 'REJECTED';
       const plan = await savePlanCandidate({
         plan_id: `plan-${decisionKey}-${i + 1}`,
@@ -198,7 +214,7 @@ export async function runAiDecision(snapshot) {
         market_timestamp: snapshot.timestamp,
         ...candidate,
         status,
-        review: { ...preview, risk },
+        review: { ...preview, risk, rank_score },
         source_model: model
       });
       savedPlans.push(plan);
