@@ -90,9 +90,8 @@
   }
 
   function ensureEmergingHost() {
-    const offers = document.getElementById('offers');
     const grid = document.getElementById('planGrid');
-    if (!offers || !grid) return null;
+    if (!grid) return null;
     let host = document.getElementById('emergingOfferHost');
     if (!host) {
       host = document.createElement('div');
@@ -106,16 +105,18 @@
   function renderEmergingOffers(watches) {
     const host = ensureEmergingHost();
     if (!host) return;
-    const signature = JSON.stringify(watches.map(item => [item.trade_id,item.market_timestamp,item.watch?.status,item.watch?.projection]));
+    const signature = JSON.stringify(watches.map(item => [item.trade_id,item.market_timestamp,item.watch?.status,item.watch?.projection,item.watch?.visual]));
     if (signature === offerSignature) return;
     offerSignature = signature;
     if (!watches.length) { host.innerHTML = ''; return; }
     host.innerHTML = `<div class="emergingSectionHead"><div><strong>Emerging Analysis</strong><span>Pre-offering structures · approval remains locked</span></div><b>${watches.length}</b></div><div class="preOfferGrid">${watches.slice(0,5).map(compactEmergingCard).join('')}</div>`;
   }
 
+  function currentAnalysisHost() {
+    return document.getElementById('strategyAnalysisWrap') || document.getElementById('analysisWrap');
+  }
+
   async function refresh() {
-    const host = document.getElementById('strategyAnalysisWrap');
-    if (!host) return;
     try {
       const response = await fetch('/api/v1/analysis/live', { cache:'no-store' });
       if (!response.ok) return;
@@ -129,26 +130,35 @@
         const time = new Date(item.market_timestamp || item.created_at || 0).getTime();
         return !summaryTime || Math.abs(summaryTime - time) <= 10 * 60 * 1000;
       }).slice(0,5);
+
+      renderEmergingOffers(watches);
+
+      const host = currentAnalysisHost();
+      if (!host) return;
+      if (host.id === 'analysisWrap') {
+        host.id = 'strategyAnalysisWrap';
+        host.dataset.analysisOwner = 'v15';
+      }
       const signature = JSON.stringify({summary:summary && [summary.trade_id,summary.market_timestamp,summary.thesis],watches:watches.map(item=>[item.trade_id,item.market_timestamp,item.confidence,item.watch])});
       if (signature !== lastSignature) {
         lastSignature = signature;
         host.innerHTML = `<div class="strategyAnalysisLive">${summary ? summaryCard(summary,watches.length) : '<article class="strategySummaryCard"><div class="strategySummaryHead"><div><small>Current market read</small><h3>Initializing scanner</h3></div><span class="strategyPulse">● WAITING</span></div></article>'}<div class="strategySubHead"><div><strong>Setup Watchlist</strong><span>Autochartist-style emerging pattern intelligence</span></div><b>${watches.length}</b></div>${watches.length ? `<div class="emergingAnalysisGrid">${watches.map(analysisWatchCard).join('')}</div>` : '<div class="strategyEmpty">No emerging structure is close enough right now. Scanner remains active.</div>'}</div>`;
       }
-      renderEmergingOffers(watches);
     } catch (error) {
       console.error('v15 analysis render failed', error);
     }
   }
 
   function boot() {
-    const legacy = document.getElementById('analysisWrap');
-    if (!legacy) return;
-    legacy.id = 'strategyAnalysisWrap';
-    legacy.dataset.analysisOwner = 'v15';
+    const host = currentAnalysisHost();
+    if (host && host.id === 'analysisWrap') {
+      host.id = 'strategyAnalysisWrap';
+      host.dataset.analysisOwner = 'v15';
+    }
     refresh();
     setInterval(refresh, 5200);
   }
 
-  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot, { once:true });
   else boot();
 })();
