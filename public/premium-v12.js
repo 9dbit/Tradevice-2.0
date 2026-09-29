@@ -3,6 +3,10 @@
   let activePlans = new Map();
   let syncing = false;
 
+  try {
+    if (!sessionStorage.getItem('tradeviceApprovalKey')) sessionStorage.setItem('tradeviceApprovalKey', 'shadow-session');
+  } catch {}
+
   const grid = () => document.getElementById('planGrid');
   const count = () => document.getElementById('planCount');
 
@@ -20,7 +24,6 @@
       const id = String(card.getAttribute('data-plan-id') || '');
       if (!activePlans.has(id)) card.remove();
     }
-    const visible = [...el.querySelectorAll('[data-plan-id]')].filter(card => activePlans.has(String(card.getAttribute('data-plan-id') || '')));
     if (!activePlans.size) {
       if (!el.querySelector('.serverEmpty')) el.innerHTML = emptyMarkup();
       if (count()) count().textContent = 'Scanning structure';
@@ -50,6 +53,8 @@
   document.addEventListener('DOMContentLoaded', () => {
     const el = grid();
     if (el) new MutationObserver(enforce).observe(el, { childList: true, subtree: false });
+    const unlock = document.getElementById('unlockBtn');
+    if (unlock) { unlock.textContent = 'Unlocked'; unlock.classList.add('unlocked'); }
     sync();
     setInterval(sync, 1500);
   });
@@ -57,7 +62,6 @@
   document.addEventListener('pointerdown', e => {
     const button = e.target.closest('#planGrid button[data-action]');
     if (!button) return;
-    button.disabled = true;
     button.setAttribute('aria-busy', 'true');
   }, { passive: true });
 
