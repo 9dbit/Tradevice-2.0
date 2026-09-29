@@ -74,48 +74,7 @@ function nearestLevels(bars, price, atrValue, digits) {
   };
 }
 
-function lineWatch(bars, atrValue, digits) {
-  const prior = (bars || []).slice(-14, -1);
-  const last = bars?.at(-1);
-  if (prior.length < 10 || !last || !atrValue) return [];
-  const highFit = regression(prior.map(bar => bar.high));
-  const lowFit = regression(prior.map(bar => bar.low));
-  if (!highFit || !lowFit) return [];
-  const x = prior.length;
-  const close = finite(last.close);
-  if (close === null) return [];
-  const tolerance = atrValue * 0.28;
-  const highTouches = prior.filter((bar, index) => Math.abs(finite(bar.high) - highFit.at(index)) <= tolerance).length;
-  const lowTouches = prior.filter((bar, index) => Math.abs(finite(bar.low) - lowFit.at(index)) <= tolerance).length;
-  const watches = [];
-
-  if (highFit.slope < -atrValue * 0.012 && highTouches >= 2) {
-    const level = highFit.at(x);
-    const distanceAtr = Math.abs(level - close) / atrValue;
-    if (distanceAtr <= 1.25) watches.push({
-      type: 'DESCENDING_RESISTANCE_TRENDLINE', timeframe: 'M15',
-      status: distanceAtr <= 0.32 ? 'ARMED' : 'FORMING',
-      quality: Math.round(clamp(48 + highTouches * 8 - (highFit.rmse / atrValue) * 12 - distanceAtr * 8, 0, 95)),
-      level: round(level, digits), distance_atr: round(distanceAtr, 2), touches: highTouches,
-      thesis: `Descending M15 resistance trendline has ${highTouches} validated touches. Price is ${round(distanceAtr, 2)} ATR from the projected line at ${round(level, digits)}. A close above the line with displacement is required before a bullish breakout offering can be created.`
-    });
-  }
-
-  if (lowFit.slope > atrValue * 0.012 && lowTouches >= 2) {
-    const level = lowFit.at(x);
-    const distanceAtr = Math.abs(close - level) / atrValue;
-    if (distanceAtr <= 1.25) watches.push({
-      type: 'ASCENDING_SUPPORT_TRENDLINE', timeframe: 'M15',
-      status: distanceAtr <= 0.32 ? 'ARMED' : 'FORMING',
-      quality: Math.round(clamp(48 + lowTouches * 8 - (lowFit.rmse / atrValue) * 12 - distanceAtr * 8, 0, 95)),
-      level: round(level, digits), distance_atr: round(distanceAtr, 2), touches: lowTouches,
-      thesis: `Ascending M15 support trendline has ${lowTouches} validated touches. Price is ${round(distanceAtr, 2)} ATR from the projected line at ${round(level, digits)}. A close below the line with displacement is required before a bearish breakout offering can be created.`
-    });
-  }
-  return watches;
-}
-
-function srWatches(levels, price) {
+function srWatches(levels) {
   const watches = [];
   if (levels.support && levels.support.distance_atr <= 0.75) watches.push({
     type: 'SUPPORT_PROXIMITY', timeframe: 'M15', status: levels.support.distance_atr <= 0.3 ? 'ARMED' : 'FORMING',
@@ -149,10 +108,10 @@ export function analyzeMarketStructure(snapshot) {
   const trendM5 = trendState(m5, atrM5, 10);
   const trendM15 = trendState(m15, atrM15, 8);
   const levels = atrM15 && m15.length >= 8 ? nearestLevels(m15, price, atrM15, digits) : { support: null, resistance: null };
-  const watches = [
-    ...(atrM15 ? lineWatch(m15, atrM15, digits) : []),
-    ...(atrM15 ? srWatches(levels, price) : [])
-  ].sort((a, b) => b.quality - a.quality).slice(0, 5).map(watch => ({ ...watch, fingerprint: watchFingerprint(watch) }));
+  const watches = (atrM15 ? srWatches(levels) : [])
+    .sort((a, b) => b.quality - a.quality)
+    .slice(0, 5)
+    .map(watch => ({ ...watch, fingerprint: watchFingerprint(watch) }));
 
   let bias = 'NEUTRAL';
   if (trendM5.label === 'BULLISH' && trendM15.label === 'BULLISH') bias = 'BULLISH';
@@ -162,7 +121,7 @@ export function analyzeMarketStructure(snapshot) {
 
   const armed = watches.filter(watch => watch.status === 'ARMED').length;
   const forming = watches.filter(watch => watch.status === 'FORMING').length;
-  const summary = `XAUUSD structure scan: M5 ${trendM5.label.toLowerCase()}, M15 ${trendM15.label.toLowerCase()}, overall bias ${bias.replaceAll('_', ' ').toLowerCase()}. ${armed ? `${armed} setup watch${armed === 1 ? '' : 'es'} armed.` : forming ? `${forming} structure${forming === 1 ? '' : 's'} forming.` : 'No actionable structure is close enough yet.'}`;
+  const summary = `XAUUSD structure scan: M5 ${trendM5.label.toLowerCase()}, M15 ${trendM15.label.toLowerCase()}, overall bias ${bias.replaceAll('_', ' ').toLowerCase()}. ${armed ? `${armed} key-level watch${armed === 1 ? '' : 'es'} armed.` : forming ? `${forming} key-level structure${forming === 1 ? '' : 's'} forming.` : 'No actionable key-level structure is close enough yet.'}`;
 
   return {
     state: armed ? 'ARMED' : watches.length ? 'FORMING' : 'SCANNING',
