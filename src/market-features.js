@@ -1,6 +1,6 @@
 export const PIPELINE_VERSIONS = Object.freeze({
-  strategy: 'shadow-v1',
-  prompt: 'xau-m1-p1',
+  strategy: 'multi-strategy-v2',
+  prompt: 'xau-m1-p2',
   features: 'xau-features-v1',
   prefilter: 'xau-prefilter-v1',
   risk_policy: 'risk-v1'
