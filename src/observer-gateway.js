@@ -9,6 +9,8 @@ const internalPort = Number(process.env.TRADEVICE_INTERNAL_PORT || 3101);
 const apiKey = String(process.env.TRADEVICE_API_KEY || '').trim();
 const observerKey = String(process.env.TRADEVICE_OBSERVER_KEY || '').trim();
 const approvalKey = String(process.env.TRADEVICE_APPROVAL_KEY || '').trim();
+const tradingMode = String(process.env.TRADING_MODE || 'shadow').toLowerCase();
+const shadowKeylessApproval = tradingMode !== 'live' && tradingMode !== 'real';
 const chatDownloadTokenHash = 'a533233463e013575fe4d5e2ea081f86de503e0a21fec66c2996c5bebbc0e68d';
 const chatDownloadExpiresAt = Date.parse('2026-09-29T20:00:00Z');
 const sessionToken = approvalKey && observerKey
@@ -39,6 +41,12 @@ function isApprovalHeader(req) {
   return Boolean(approvalKey) && String(req.headers['x-approval-key'] || '').trim() === approvalKey;
 }
 
+function isShadowApprovalPath(pathname) {
+  if (pathname === '/api/v1/approval/verify') return true;
+  if (pathname === '/api/v1/settings/approval-mode') return true;
+  return /^\/api\/v1\/plans\/[^/]+\/(approve|reject)$/.test(pathname);
+}
+
 function hasValidChatDownloadToken(req) {
   if (Date.now() > chatDownloadExpiresAt) return false;
   const token = requestUrl(req).searchParams.get('download_token') || '';
@@ -49,9 +57,10 @@ function hasValidChatDownloadToken(req) {
   return actual.length === expected.length && crypto.timingSafeEqual(actual, expected);
 }
 
-function proxy(req, res, authOverride = null) {
+function proxy(req, res, overrides = {}) {
   const headers = { ...req.headers, host: `127.0.0.1:${internalPort}` };
-  if (authOverride) headers.authorization = authOverride;
+  if (overrides.authorization) headers.authorization = overrides.authorization;
+  if (overrides.approvalKey) headers['x-approval-key'] = overrides.approvalKey;
   const upstream = http.request({ hostname: '127.0.0.1', port: internalPort, path: req.url, method: req.method, headers }, incoming => {
     const responseHeaders = { ...incoming.headers };
     if (pathOnly(req) === '/api/v1/approval/verify' && incoming.statusCode === 204 && sessionToken) {
@@ -105,7 +114,10 @@ const handleRequest = async (req, res) => {
         res.writeHead(401, { 'content-type': 'application/json' });
         return res.end(JSON.stringify({ error: 'observer_unauthorized' }));
       }
-      return proxy(req, res, apiKey ? `Bearer ${apiKey}` : null);
+      return proxy(req, res, { authorization: apiKey ? `Bearer ${apiKey}` : null });
+    }
+    if (shadowKeylessApproval && approvalKey && isShadowApprovalPath(pathname)) {
+      return proxy(req, res, { approvalKey });
     }
     return proxy(req, res);
   } catch (error) {
