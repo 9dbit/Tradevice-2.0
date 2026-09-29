@@ -77,6 +77,52 @@ function proxy(req, res, overrides = {}) {
   req.pipe(upstream);
 }
 
+function internalJson(pathname) {
+  return new Promise((resolve, reject) => {
+    const headers = apiKey ? { authorization: `Bearer ${apiKey}` } : {};
+    const request = http.request({ hostname: '127.0.0.1', port: internalPort, path: pathname, method: 'GET', headers }, incoming => {
+      let body = '';
+      incoming.setEncoding('utf8');
+      incoming.on('data', chunk => { body += chunk; });
+      incoming.on('end', () => {
+        if ((incoming.statusCode || 500) >= 400) return reject(new Error(`internal_${incoming.statusCode}`));
+        try { resolve(JSON.parse(body || 'null')); } catch (error) { reject(error); }
+      });
+    });
+    request.on('error', reject);
+    request.end();
+  });
+}
+
+async function liveAnalysis(res) {
+  const rows = await internalJson('/api/v1/decisions/recent?limit=220');
+  const list = Array.isArray(rows) ? rows : [];
+  const analyses = list
+    .filter(row => String(row?.trade_id || '').startsWith('analysis-'))
+    .map(row => ({
+      trade_id: row.trade_id,
+      created_at: row.created_at ?? null,
+      decision: row.decision ?? 'WAIT',
+      setup: row.setup ?? null,
+      regime: row.regime ?? null,
+      confidence: Number.isFinite(Number(row.confidence)) ? Number(row.confidence) : null,
+      reason_codes: Array.isArray(row.reason_codes) ? row.reason_codes : [],
+      market_timestamp: row.context?.market_timestamp ?? null,
+      thesis: row.context?.thesis ?? null,
+      invalidation: row.context?.invalidation ?? null,
+      analysis_type: row.context?.analysis_type ?? null,
+      strategy_state: row.context?.strategy_state ?? null,
+      current_price: Number.isFinite(Number(row.context?.current_price)) ? Number(row.context.current_price) : null,
+      trend_m5: row.context?.trend_m5 ?? null,
+      trend_m15: row.context?.trend_m15 ?? null,
+      levels: row.context?.levels ?? null,
+      watch_count: Number(row.context?.watch_count ?? 0),
+      watch: row.context?.watch ?? null
+    }));
+  res.writeHead(200, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' });
+  res.end(JSON.stringify({ generated_at: new Date().toISOString(), analyses }));
+}
+
 async function preparedObserver(req, res) {
   if (!observerKey) {
     res.writeHead(503, { 'content-type': 'application/json' });
@@ -106,6 +152,7 @@ const handleRequest = async (req, res) => {
   try {
     const pathname = pathOnly(req);
     if (pathname === '/downloads/TradeviceObserver.mq5') return await preparedObserver(req, res);
+    if (pathname === '/api/v1/analysis/live' && req.method === 'GET') return await liveAnalysis(res);
     if (syncPaths.has(pathname)) {
       const auth = String(req.headers.authorization || '');
       const observerAllowed = observerKey && auth === `Bearer ${observerKey}`;
