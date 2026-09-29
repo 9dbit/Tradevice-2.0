@@ -5,8 +5,21 @@
     const date = new Date(value || 0);
     return Number.isNaN(date.getTime()) ? '—' : date.toLocaleString([], { hour:'2-digit', minute:'2-digit', day:'2-digit', month:'short' });
   };
-  let suppressUntil = 0;
-  let timer = null;
+  let lastAnalysisSignature = '';
+  let lastOfferSignature = '';
+
+  function claimAnalysisHost() {
+    let host = document.getElementById('strategyAnalysisWrap');
+    if (host) return host;
+    host = document.getElementById('analysisWrap');
+    if (!host) return null;
+    host.id = 'strategyAnalysisWrap';
+    host.dataset.renderer = 'strategy-v14';
+    window.__tradeviceStrategyAnalysisOwner = 'v14';
+    return host;
+  }
+
+  claimAnalysisHost();
 
   function stateClass(state) {
     const value = String(state || '').toUpperCase();
@@ -66,11 +79,24 @@
     </article>`;
   }
 
+  function offerSignature(summary, watches) {
+    return JSON.stringify({
+      summary: summary ? [summary.trade_id, summary.market_timestamp, summary.thesis] : null,
+      watches: watches.slice(0,5).map(item => [item.trade_id, item.market_timestamp, item.setup, item.confidence, item.thesis])
+    });
+  }
+
   function renderEmergingOffers(summary, watches) {
     const grid = document.getElementById('planGrid');
     if (!grid || !summary) return;
     const hasActionable = grid.querySelector('.planCard[data-plan-id]:not(.placeholder)');
-    if (hasActionable) return;
+    if (hasActionable) {
+      lastOfferSignature = '';
+      return;
+    }
+    const signature = offerSignature(summary, watches);
+    if (signature === lastOfferSignature && (watches.length ? grid.querySelector('[data-emerging="1"]') : grid.querySelector('.serverEmpty'))) return;
+    lastOfferSignature = signature;
     if (watches.length) {
       grid.innerHTML = watches.slice(0,5).map(emergingOfferCard).join('');
       const count = document.getElementById('planCount');
@@ -85,8 +111,16 @@
     if (p) p.textContent = 'Live structure analysis is active. No nearby forming or confirmed setup is available at this moment.';
   }
 
+  function analysisSignature(summary, watches, confirmed) {
+    return JSON.stringify({
+      summary: summary ? [summary.trade_id, summary.market_timestamp, summary.confidence, summary.thesis, summary.reason_codes] : null,
+      watches: watches.map(item => [item.trade_id, item.market_timestamp, item.setup, item.confidence, item.regime, item.thesis, item.reason_codes]),
+      confirmed: confirmed.map(item => [item.trade_id, item.market_timestamp, item.setup, item.confidence])
+    });
+  }
+
   async function renderStrategyAnalysis() {
-    const host = document.getElementById('analysisWrap');
+    const host = claimAnalysisHost();
     if (!host) return;
     try {
       const response = await fetch('/api/v1/orders/ledger?limit=160', { cache:'no-store' });
@@ -103,6 +137,11 @@
       }).slice(0,5);
       const confirmed = analyses.filter(item => item.decision === 'OFFER' && !String(item.trade_id || '').startsWith('analysis-')).slice(0,4);
 
+      renderEmergingOffers(summary, watches);
+
+      const signature = analysisSignature(summary, watches, confirmed);
+      if (signature === lastAnalysisSignature && host.dataset.renderer === 'strategy-v14') return;
+
       let html = '<div class="strategyAnalysisLive">';
       if (summary) html += summaryCard(summary, watches.length);
       else html += '<article class="strategySummaryCard"><div class="strategySummaryHead"><div><small>Current market read</small><h3>Initializing scanner</h3></div><span class="strategyPulse">● WAITING</span></div><p>Waiting for the next closed M1 snapshot to publish deterministic market analysis.</p></article>';
@@ -110,27 +149,21 @@
       html += watches.length ? `<div class="strategyWatchGrid">${watches.map(watchCard).join('')}</div>` : '<div class="strategyEmpty">No nearby structure watch right now. Scanner remains active every closed M1 candle.</div>';
       if (confirmed.length) html += `<div class="strategySubHead confirmedHead"><div><strong>Recent Confirmed Events</strong><span>Events that reached offering criteria</span></div></div><div class="strategyConfirmedList">${confirmed.map(confirmedCard).join('')}</div>`;
       html += '</div>';
-      suppressUntil = Date.now() + 300;
       host.innerHTML = html;
-      renderEmergingOffers(summary, watches);
+      host.dataset.renderer = 'strategy-v14';
+      lastAnalysisSignature = signature;
     } catch (error) {
       console.error('strategy analysis render failed', error);
     }
   }
 
   function boot() {
-    const host = document.getElementById('analysisWrap');
+    const host = claimAnalysisHost();
     if (!host) return;
-    const observer = new MutationObserver(() => {
-      if (Date.now() < suppressUntil) return;
-      clearTimeout(timer);
-      timer = setTimeout(renderStrategyAnalysis, 70);
-    });
-    observer.observe(host, { childList:true, subtree:false });
     renderStrategyAnalysis();
     setInterval(renderStrategyAnalysis, 5200);
   }
 
-  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot, { once:true });
   else boot();
 })();
