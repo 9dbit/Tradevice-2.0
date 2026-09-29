@@ -13,6 +13,12 @@ function newestCandle(snapshot) {
   return [...candles].sort((a, b) => timeValue(b.timestamp) - timeValue(a.timestamp))[0];
 }
 
+function newestM5(snapshot) {
+  const candles = Array.isArray(snapshot?.features?.m5_candles) ? snapshot.features.m5_candles : [];
+  if (!candles.length) return null;
+  return [...candles].sort((a, b) => timeValue(b.timestamp) - timeValue(a.timestamp))[0];
+}
+
 function touched(candle, price) {
   return Number(candle.low) <= price && price <= Number(candle.high);
 }
@@ -32,6 +38,45 @@ function excursion(side, entry, candle, point) {
   };
 }
 
+async function closeUnfilled(trade, state, snapshot, status, reason) {
+  state.status = status;
+  await updateDecisionContext(trade.trade_id, { shadow_state: state });
+  await recordOutcome(trade.trade_id, {
+    status,
+    pnl_r: 0,
+    mfe_points: 0,
+    mae_points: 0,
+    duration_seconds: 0,
+    closed_at: snapshot.timestamp,
+    meta: { simulated: true, filled: false, reason }
+  });
+}
+
+function deterministicInvalidation(trade, snapshot, candle, entry, tp) {
+  if (trade?.context?.deterministic_engine !== true) return null;
+
+  if (!touched(candle, entry)) {
+    if (trade.side === 'SELL' && Number(candle.low) <= tp) return 'TARGET_REACHED_BEFORE_RETEST';
+    if (trade.side === 'BUY' && Number(candle.high) >= tp) return 'TARGET_REACHED_BEFORE_RETEST';
+  }
+
+  const zone = trade?.context?.zone;
+  const m5 = newestM5(snapshot);
+  const eventMs = timeValue(trade?.context?.market_timestamp ?? trade.created_at);
+  const m5Ms = timeValue(m5?.timestamp);
+  const isLaterM5 = Number.isFinite(eventMs) && Number.isFinite(m5Ms) && m5Ms > eventMs - 5 * 60 * 1000;
+  if (!zone || !m5 || !isLaterM5) return null;
+
+  const m5Close = Number(m5.close);
+  if (trade.setup === 'SBR_RETEST' && Number.isFinite(Number(zone.high)) && m5Close > Number(zone.high)) {
+    return 'SBR_M5_CLOSED_BACK_ABOVE_ZONE';
+  }
+  if (trade.setup === 'RBS_RETEST' && Number.isFinite(Number(zone.low)) && m5Close < Number(zone.low)) {
+    return 'RBS_M5_CLOSED_BACK_BELOW_ZONE';
+  }
+  return null;
+}
+
 export async function evaluateShadowSnapshot(snapshot) {
   if (snapshot?.timeframe !== 'M1') return { evaluated: 0, closed: 0, expired: 0, skipped: 'NOT_M1' };
   const candle = newestCandle(snapshot);
@@ -42,6 +87,7 @@ export async function evaluateShadowSnapshot(snapshot) {
   let evaluated = 0;
   let closed = 0;
   let expired = 0;
+  let cancelled = 0;
 
   for (const trade of active) {
     if (trade?.context?.risk_review?.approved !== true) continue;
@@ -68,6 +114,13 @@ export async function evaluateShadowSnapshot(snapshot) {
     let filledThisBar = false;
 
     if (state.status === 'PENDING') {
+      const invalidation = deterministicInvalidation(trade, snapshot, candle, entry, tp);
+      if (invalidation) {
+        await closeUnfilled(trade, state, snapshot, 'CANCELLED', invalidation);
+        cancelled += 1;
+        continue;
+      }
+
       if (touched(candle, entry)) {
         state.status = 'FILLED';
         state.fill_time = String(candle.timestamp);
@@ -76,17 +129,18 @@ export async function evaluateShadowSnapshot(snapshot) {
       } else {
         state.bars_seen += 1;
         const expiry = Math.max(1, Number(trade.expiration_candles ?? 3));
-        if (state.bars_seen >= expiry) {
-          await updateDecisionContext(trade.trade_id, { shadow_state: state });
-          await recordOutcome(trade.trade_id, {
-            status: 'EXPIRED',
-            pnl_r: 0,
-            mfe_points: 0,
-            mae_points: 0,
-            duration_seconds: 0,
-            closed_at: snapshot.timestamp,
-            meta: { simulated: true, filled: false }
-          });
+        const deterministic = trade?.context?.deterministic_engine === true;
+        let isExpired = false;
+        if (deterministic) {
+          const eventMs = timeValue(trade?.context?.market_timestamp ?? trade.created_at);
+          const currentMs = timeValue(candle.timestamp);
+          isExpired = Number.isFinite(eventMs) && Number.isFinite(currentMs) && currentMs - eventMs >= expiry * 5 * 60 * 1000;
+        } else {
+          isExpired = state.bars_seen >= expiry;
+        }
+
+        if (isExpired) {
+          await closeUnfilled(trade, state, snapshot, 'EXPIRED', deterministic ? 'M5_EXPIRATION_REACHED' : 'M1_EXPIRATION_REACHED');
           expired += 1;
           continue;
         }
@@ -145,5 +199,5 @@ export async function evaluateShadowSnapshot(snapshot) {
     await updateDecisionContext(trade.trade_id, { shadow_state: state });
   }
 
-  return { evaluated, closed, expired, candle_timestamp: String(candle.timestamp) };
+  return { evaluated, closed, expired, cancelled, candle_timestamp: String(candle.timestamp) };
 }
