@@ -1,137 +1,22 @@
-import crypto from 'crypto';
-import OpenAI from 'openai';
-import { saveDecision, getRecentDecisions, savePlanCandidate, getRuntimeSetting } from './store.js';
+import {
+  saveDecision,
+  savePlanCandidate,
+  getPlanCandidate,
+  getRuntimeSetting,
+  setRuntimeSetting
+} from './store.js';
 import { validateTradeIntent } from './risk.js';
 import { reviewPendingDecision } from './review-agent.js';
 import { autoActivateBestCandidate } from './plan-service.js';
-import { extractMarketFeatures, prefilterSnapshot, PIPELINE_VERSIONS } from './market-features.js';
+import { detectSbrRbsSetup } from './structure-engine.js';
 
-let client = null;
-const inFlight = new Set();
-
-const candidateSchema = {
-  type: 'object',
-  additionalProperties: false,
-  properties: {
-    side: { type: 'string', enum: ['BUY', 'SELL'] },
-    order_type: { type: 'string', enum: ['BUY_LIMIT', 'SELL_LIMIT', 'BUY_STOP', 'SELL_STOP'] },
-    setup: { type: 'string', enum: ['TREND_PULLBACK', 'BREAKOUT_RETEST', 'LIQUIDITY_SWEEP', 'SUPPORT_RESISTANCE', 'SUPPLY_DEMAND', 'TRENDLINE_CHANNEL', 'PRICE_PATTERN'] },
-    regime: { type: 'string', enum: ['TREND_UP', 'TREND_DOWN', 'RANGE', 'BREAKOUT', 'HIGH_VOLATILITY'] },
-    entry: { type: 'number' },
-    stop_loss: { type: 'number' },
-    take_profit: { type: 'number' },
-    expiration_candles: { type: 'integer', minimum: 1, maximum: 10 },
-    decision_confidence: { type: 'number', minimum: 0, maximum: 1 },
-    entry_confidence: { type: 'number', minimum: 0, maximum: 1 },
-    reason_codes: { type: 'array', items: { type: 'string' }, maxItems: 10 },
-    thesis: { type: 'string' },
-    invalidation: { type: 'string' }
-  },
-  required: ['side','order_type','setup','regime','entry','stop_loss','take_profit','expiration_candles','decision_confidence','entry_confidence','reason_codes','thesis','invalidation']
-};
-
-const envelopeSchema = {
-  type: 'object',
-  additionalProperties: false,
-  properties: {
-    market_decision: { type: 'string', enum: ['WAIT', 'OFFER'] },
-    decision_confidence: { type: 'number', minimum: 0, maximum: 1 },
-    regime: { type: 'string', enum: ['TREND_UP','TREND_DOWN','RANGE','BREAKOUT','HIGH_VOLATILITY','CHAOTIC','NO_TRADE'] },
-    reason_codes: { type: 'array', items: { type: 'string' }, maxItems: 12 },
-    thesis: { type: 'string' },
-    candidate_plans: { type: 'array', maxItems: 5, items: candidateSchema }
-  },
-  required: ['market_decision','decision_confidence','regime','reason_codes','thesis','candidate_plans']
-};
+const ENGINE_VERSION = 'deterministic-sbr-rbs-v1';
 
 export function aiWorkerEnabled() {
-  return String(process.env.AI_DECISION_ENABLED || 'false').toLowerCase() === 'true';
+  return String(process.env.STRUCTURE_ENGINE_ENABLED || 'true').toLowerCase() !== 'false';
 }
 
-function getClient() {
-  if (!process.env.OPENAI_API_KEY) throw new Error('OPENAI_API_KEY is not configured');
-  if (!client) client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-  return client;
-}
-
-function compactSnapshot(snapshot, marketFeatures) {
-  return {
-    symbol: snapshot.symbol,
-    timeframe: snapshot.timeframe,
-    timestamp: snapshot.timestamp,
-    bid: snapshot.bid,
-    ask: snapshot.ask,
-    spread_points: snapshot.spread_points,
-    m1_candles: snapshot.candles,
-    m5_candles: snapshot.features?.m5_candles ?? [],
-    m15_candles: snapshot.features?.m15_candles ?? [],
-    point_size: snapshot.features?.point_size ?? null,
-    deterministic_features: marketFeatures
-  };
-}
-
-function snapshotDecisionKey(snapshot, model) {
-  const last = snapshot?.candles?.[snapshot.candles.length - 1];
-  const source = JSON.stringify({
-    symbol: snapshot?.symbol,
-    timeframe: snapshot?.timeframe,
-    snapshot_timestamp: snapshot?.timestamp,
-    last_closed_bar: last?.timestamp ?? null,
-    model,
-    versions: PIPELINE_VERSIONS
-  });
-  return crypto.createHash('sha256').update(source).digest('hex').slice(0, 24);
-}
-
-function regimeFromFeatures(features) {
-  if (features.volatility === 'EXTREME') return 'HIGH_VOLATILITY';
-  if (features.trend_alignment === 'UP') return 'TREND_UP';
-  if (features.trend_alignment === 'DOWN') return 'TREND_DOWN';
-  return 'NO_TRADE';
-}
-
-async function alreadyProcessed(decisionKey) {
-  const recent = await getRecentDecisions(500);
-  return recent.find(row => row?.context?.decision_key === decisionKey) ?? null;
-}
-
-async function savePrefilterWait(snapshot, model, decisionKey, prefilter) {
-  const tradeId = `pf-${decisionKey}`;
-  const waitDecision = {
-    trade_id: tradeId,
-    mode: 'shadow',
-    decision: 'WAIT',
-    regime: regimeFromFeatures(prefilter.features),
-    confidence: 1,
-    reason_codes: prefilter.reasons.map(x => `PREFILTER_${x}`).slice(0, 12),
-    review: { status: 'NOT_REQUIRED', source: 'PREFILTER', reasons: prefilter.reasons, reviewed_at: new Date().toISOString() },
-    context: {
-      ai_generated: false,
-      decision_confidence: 1,
-      entry_confidence: 0,
-      ai_model: model,
-      decision_key: decisionKey,
-      market_timestamp: snapshot.timestamp,
-      pipeline_versions: PIPELINE_VERSIONS,
-      prefilter,
-      market_features: prefilter.features
-    }
-  };
-  await saveDecision(waitDecision);
-  return { skipped: 'PREFILTER_BLOCKED', trade_id: tradeId, reasons: prefilter.reasons, trigger_codes: prefilter.trigger_codes };
-}
-
-function candidateRankScore(candidate, risk) {
-  const entry = Number(candidate?.entry_confidence || 0);
-  const decision = Number(candidate?.decision_confidence || 0);
-  const rr = Number(risk?.metrics?.reward_risk || 0);
-  const evidence = Array.isArray(candidate?.reason_codes) ? candidate.reason_codes.length : 0;
-  const rrScore = Math.min(Math.max(rr, 0), 3) / 3;
-  const evidenceScore = Math.min(evidence, 6) / 6;
-  return entry * 0.45 + decision * 0.30 + rrScore * 0.20 + evidenceScore * 0.05;
-}
-
-function candidateDecision(candidate) {
+function asDecision(candidate) {
   return {
     decision: 'PLACE_PENDING',
     side: candidate.side,
@@ -149,123 +34,138 @@ function candidateDecision(candidate) {
 }
 
 export async function runAiDecision(snapshot) {
-  if (!aiWorkerEnabled()) return { skipped: 'AI_DECISION_DISABLED' };
+  if (!aiWorkerEnabled()) return { skipped: 'STRUCTURE_ENGINE_DISABLED' };
   if (snapshot?.timeframe !== 'M1') return { skipped: 'NOT_M1' };
 
-  const model = process.env.AI_MODEL || 'UNCONFIGURED';
-  const marketFeatures = extractMarketFeatures(snapshot);
-  const prefilter = prefilterSnapshot(snapshot, marketFeatures);
-  const decisionKey = snapshotDecisionKey(snapshot, model);
+  const scan = detectSbrRbsSetup(snapshot);
+  await setRuntimeSetting('structure_engine_state', {
+    engine: ENGINE_VERSION,
+    state: scan.state,
+    scanned_at: scan.scanned_at ?? snapshot.timestamp,
+    atr_m5: scan.atr_m5 ?? null,
+    zones: scan.zones ?? null,
+    candidate: scan.candidate ? {
+      fingerprint: scan.candidate.fingerprint,
+      setup: scan.candidate.setup,
+      side: scan.candidate.side,
+      setup_score: scan.candidate.setup_score,
+      rr: scan.candidate.rr,
+      zone: scan.candidate.zone,
+      break_candle_timestamp: scan.candidate.break_candle_timestamp
+    } : null
+  });
 
-  const existing = await alreadyProcessed(decisionKey);
-  if (existing) return { skipped: 'DUPLICATE_SNAPSHOT', trade_id: existing.trade_id, decision_key: decisionKey };
-  if (inFlight.has(decisionKey)) return { skipped: 'IN_FLIGHT_DUPLICATE', decision_key: decisionKey };
-  if (!prefilter.should_call_ai) return savePrefilterWait(snapshot, model, decisionKey, prefilter);
-
-  inFlight.add(decisionKey);
-  try {
-    const approvalMode = String(await getRuntimeSetting('approval_mode', 'manual')).toLowerCase() === 'ai' ? 'ai' : 'manual';
-    const entryThreshold = Number(process.env.ENTRY_PENDING_THRESHOLD || 0.80);
-    const openai = getClient();
-    const response = await openai.responses.create({
-      model,
-      instructions: [
-        'You are the Tradevice XAUUSD M1 candidate-plan engine in shadow research mode.',
-        `Strategy version: ${PIPELINE_VERSIONS.strategy}. Prompt version: ${PIPELINE_VERSIONS.prompt}.`,
-        'Use M5/M15 as context and M1 as execution timing.',
-        'Return zero to five distinct structurally valid pending-order candidates. Never fabricate a candidate just to fill the list.',
-        'Allowed setup families: TREND_PULLBACK, BREAKOUT_RETEST, LIQUIDITY_SWEEP, SUPPORT_RESISTANCE, SUPPLY_DEMAND, TRENDLINE_CHANNEL, PRICE_PATTERN.',
-        'Evaluate multiple strategy lenses independently: support/resistance, supply/demand, trendline or channel structure, price patterns, trend pullback, breakout/retest, and liquidity sweep.',
-        'When several lenses support the same price area, mention that confluence explicitly in reason_codes and thesis. Do not create duplicate candidates for the same entry zone.',
-        'Candidates may be below the automatic approval threshold so they can still be offered for manual review.',
-        `AI automatic approval threshold is entry_confidence >= ${entryThreshold.toFixed(2)}. A candidate below that threshold must never be auto-approved.`,
-        'decision_confidence is confidence in the candidate thesis. entry_confidence is confidence that the proposed entry is executable with edge now.',
-        'Each candidate must contain a pending order type, entry, structural stop loss, take profit, setup, regime, expiration, thesis and invalidation.',
-        'Prefer plans that differ meaningfully by setup, timing or order type. Avoid duplicate price plans. Rank the strongest candidate first using structural quality, entry confidence, reward/risk and confluence.',
-        'If there is no structurally valid plan, return market_decision WAIT with an empty candidate_plans array.',
-        'If candidate_plans is non-empty, market_decision must be OFFER.',
-        'Do not choose lot size or monetary risk. Return only the structured response.'
-      ].join('\n'),
-      input: JSON.stringify(compactSnapshot(snapshot, marketFeatures)),
-      text: { format: { type: 'json_schema', name: 'tradevice_candidate_plans', strict: true, schema: envelopeSchema } }
-    });
-
-    const parsed = JSON.parse(response.output_text);
-    if (parsed.market_decision === 'WAIT' && parsed.candidate_plans.length) throw new Error('MODEL_CONTRACT_VIOLATION: WAIT_WITH_CANDIDATES');
-    if (parsed.market_decision === 'OFFER' && !parsed.candidate_plans.length) throw new Error('MODEL_CONTRACT_VIOLATION: OFFER_WITHOUT_CANDIDATES');
-
-    const groupId = `grp-${decisionKey}`;
-    const evaluated = parsed.candidate_plans.map(candidate => {
-      const decision = candidateDecision(candidate);
-      const risk = validateTradeIntent(decision, snapshot);
-      const preview = reviewPendingDecision(decision, risk, { manual: approvalMode === 'manual' });
-      const valid = risk.approved === true && preview.status === 'APPROVED';
-      return { candidate, risk, preview, valid, rank_score: candidateRankScore(candidate, risk) };
-    }).sort((a,b) => b.rank_score - a.rank_score);
-
-    const savedPlans = [];
-    for (let i = 0; i < evaluated.length; i++) {
-      const { candidate, risk, preview, valid, rank_score } = evaluated[i];
-      const status = valid ? (approvalMode === 'manual' ? 'AWAITING_APPROVAL' : 'AI_REVIEW') : 'REJECTED';
-      const plan = await savePlanCandidate({
-        plan_id: `plan-${decisionKey}-${i + 1}`,
-        group_id: groupId,
-        symbol: snapshot.symbol || 'XAUUSD',
-        market_timestamp: snapshot.timestamp,
-        ...candidate,
-        status,
-        review: { ...preview, risk, rank_score },
-        source_model: model
-      });
-      savedPlans.push(plan);
-    }
-
-    const maxEntryConfidence = savedPlans.length ? Math.max(...savedPlans.map(p => Number(p.entry_confidence || 0))) : 0;
-    const summaryTradeId = `ai-${decisionKey}`;
-    await saveDecision({
-      trade_id: summaryTradeId,
-      mode: 'shadow',
-      decision: savedPlans.length ? 'OFFER' : 'WAIT',
-      regime: parsed.regime,
-      confidence: parsed.decision_confidence,
-      reason_codes: parsed.reason_codes,
-      review: { status: 'NOT_REQUIRED', source: 'AI_CANDIDATE_ENGINE', reasons: [], reviewed_at: new Date().toISOString() },
-      context: {
-        ai_generated: true,
-        ai_model: model,
-        ai_response_id: response.id,
-        decision_confidence: parsed.decision_confidence,
-        entry_confidence: maxEntryConfidence,
-        entry_pending_threshold: entryThreshold,
-        approval_mode: approvalMode,
-        candidate_group_id: groupId,
-        candidate_plan_ids: savedPlans.map(p => p.plan_id),
-        decision_key: decisionKey,
-        market_timestamp: snapshot.timestamp,
-        pipeline_versions: PIPELINE_VERSIONS,
-        prefilter,
-        market_features: marketFeatures,
-        thesis: parsed.thesis
-      }
-    });
-
-    let autoApproval = null;
-    if (approvalMode === 'ai' && savedPlans.length) {
-      autoApproval = await autoActivateBestCandidate(savedPlans.filter(p => p.status === 'AI_REVIEW'));
-    }
-
+  if (!scan.candidate) {
     return {
-      trade_id: summaryTradeId,
-      decision: savedPlans.length ? 'OFFER' : 'WAIT',
-      decision_confidence: parsed.decision_confidence,
-      entry_confidence: maxEntryConfidence,
-      approval_mode: approvalMode,
-      candidates: savedPlans.map(p => ({ plan_id: p.plan_id, status: p.status, entry_confidence: Number(p.entry_confidence) })),
-      auto_approval: autoApproval,
-      trigger_codes: prefilter.trigger_codes,
-      model
+      skipped: 'NO_STRUCTURE_EVENT',
+      engine: ENGINE_VERSION,
+      state: scan.state,
+      zones: scan.zones ?? null
     };
-  } finally {
-    inFlight.delete(decisionKey);
   }
+
+  const candidate = scan.candidate;
+  const planId = `structure-${candidate.fingerprint}`;
+  const existing = await getPlanCandidate(planId);
+  if (existing) {
+    return {
+      skipped: 'DUPLICATE_STRUCTURE_EVENT',
+      engine: ENGINE_VERSION,
+      fingerprint: candidate.fingerprint,
+      plan_id: planId,
+      status: existing.status
+    };
+  }
+
+  const approvalMode = String(await getRuntimeSetting('approval_mode', 'manual')).toLowerCase() === 'ai' ? 'ai' : 'manual';
+  const decision = asDecision(candidate);
+  const risk = validateTradeIntent(decision, snapshot);
+  const review = reviewPendingDecision(decision, risk, { manual: approvalMode === 'manual' });
+  const valid = risk.approved === true && review?.status === 'APPROVED';
+  const status = valid
+    ? (approvalMode === 'manual' ? 'AWAITING_APPROVAL' : 'AI_REVIEW')
+    : 'REJECTED';
+
+  const groupId = `structure-${candidate.fingerprint}`;
+  const plan = await savePlanCandidate({
+    plan_id: planId,
+    group_id: groupId,
+    symbol: snapshot.symbol || 'XAUUSD',
+    market_timestamp: snapshot.timestamp,
+    side: candidate.side,
+    order_type: candidate.order_type,
+    setup: candidate.setup,
+    regime: candidate.regime,
+    entry: candidate.entry,
+    stop_loss: candidate.stop_loss,
+    take_profit: candidate.take_profit,
+    expiration_candles: candidate.expiration_candles,
+    decision_confidence: candidate.decision_confidence,
+    entry_confidence: candidate.entry_confidence,
+    reason_codes: candidate.reason_codes,
+    thesis: candidate.thesis,
+    invalidation: candidate.invalidation,
+    status,
+    review: {
+      ...review,
+      source: 'DETERMINISTIC_STRUCTURE_ENGINE',
+      risk,
+      setup_score: candidate.setup_score,
+      score_components: candidate.score_components,
+      strategy_state: candidate.state,
+      fingerprint: candidate.fingerprint,
+      zone: candidate.zone,
+      reward_risk: candidate.rr
+    },
+    source_model: ENGINE_VERSION
+  });
+
+  await saveDecision({
+    trade_id: `structure-event-${candidate.fingerprint}`,
+    mode: 'shadow',
+    decision: valid ? 'OFFER' : 'WAIT',
+    regime: candidate.regime,
+    confidence: candidate.decision_confidence,
+    reason_codes: candidate.reason_codes,
+    review: {
+      status: 'NOT_REQUIRED',
+      source: 'DETERMINISTIC_STRUCTURE_ENGINE',
+      reasons: valid ? [] : (risk.reasons || []),
+      reviewed_at: new Date().toISOString()
+    },
+    context: {
+      ai_generated: false,
+      deterministic_engine: true,
+      engine_version: ENGINE_VERSION,
+      strategy_fingerprint: candidate.fingerprint,
+      setup: candidate.setup,
+      setup_score: candidate.setup_score,
+      score_components: candidate.score_components,
+      strategy_state: candidate.state,
+      zone: candidate.zone,
+      reward_risk: candidate.rr,
+      decision_confidence: candidate.decision_confidence,
+      entry_confidence: candidate.entry_confidence,
+      market_timestamp: snapshot.timestamp,
+      thesis: candidate.thesis,
+      invalidation: candidate.invalidation,
+      astra_called: false
+    }
+  });
+
+  let autoApproval = null;
+  if (approvalMode === 'ai' && valid) {
+    autoApproval = await autoActivateBestCandidate([plan]);
+  }
+
+  return {
+    engine: ENGINE_VERSION,
+    astra_called: false,
+    event: candidate.state,
+    fingerprint: candidate.fingerprint,
+    setup_score: candidate.setup_score,
+    plan_id: plan.plan_id,
+    plan_status: plan.status,
+    auto_approval: autoApproval
+  };
 }
