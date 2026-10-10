@@ -1,17 +1,21 @@
-"use client";
-import { useEffect, useState } from "react";
-import { createClient, type SupabaseClient } from "@supabase/supabase-js";
-const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const key = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
-const supabase: SupabaseClient | null = url && key ? createClient(url, key) : null;
-export default function Home() {
- const [email,setEmail]=useState(""); const [password,setPassword]=useState("");
- const [session,setSession]=useState(false); const [message,setMessage]=useState("");
- useEffect(()=>{if(!supabase)return;void supabase.auth.getUser().then(({data})=>setSession(!!data.user)); const {data}=supabase.auth.onAuthStateChange((_event,s)=>setSession(!!s));return()=>data.subscription.unsubscribe()},[]);
- async function auth(mode:"signIn"|"signUp"){if(!supabase){setMessage("Supabase is not configured");return;}const {error}=mode==="signIn"?await supabase.auth.signInWithPassword({email,password}):await supabase.auth.signUp({email,password});setMessage(error?.message??(mode==="signUp"?"Check your email for confirmation.":"Signed in."))}
- return <main style={{maxWidth:1000,margin:"auto",padding:32}}>
- <header style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}><h1>Tradevice Copy</h1><span style={{color:"#75e0ac"}}>PAPER / RESEARCH ONLY</span></header>
- <p>AI-assisted trading research portal. Live copy trading and funding are disabled.</p>
- {!session?<section style={{maxWidth:420,display:"grid",gap:12,marginTop:32}}><h2>Member Access</h2><input aria-label="Email" placeholder="Email" value={email} onChange={e=>setEmail(e.target.value)}/><input aria-label="Password" type="password" placeholder="Password" value={password} onChange={e=>setPassword(e.target.value)}/><button onClick={()=>auth("signIn")}>Sign in</button><button onClick={()=>auth("signUp")}>Create account</button><p>{message}</p></section>:<section><h2>Member Dashboard</h2><p>Connected to Supabase Auth. Brokerage account linking is not yet enabled.</p><div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(180px,1fr))",gap:16}}>{["Equity: Not connected","Trades: Not connected","Copy Status: Disabled","Funding: Broker only","Referral: Pending broker approval"].map(x=><article key={x} style={{padding:20,border:"1px solid #40516b",borderRadius:12}}>{x}</article>)}</div><button style={{marginTop:24}} onClick={()=>supabase?.auth.signOut()}>Sign out</button></section>}
- </main>;
+'use client';
+import { useEffect, useState } from 'react';
+import { createClient, type SupabaseClient } from '@supabase/supabase-js';
+type Config={configured:boolean;supabaseUrl:string|null;publishableKey:string|null;signupEnabled:boolean;liveExecution:boolean};
+const menu=['Overview','Accounts','Strategies','Trading','Funding','Referral'] as const;
+export default function Home(){
+ const [cfg,setCfg]=useState<Config|null>(null),[api,setApi]=useState('Checking'),[user,setUser]=useState<string|null>(null);
+ const [client,setClient]=useState<SupabaseClient|null>(null),[email,setEmail]=useState(''),[password,setPassword]=useState(''),[msg,setMsg]=useState('');
+ const [page,setPage]=useState<string>('Overview'),[accounts,setAccounts]=useState<unknown[]>([]),[strategies,setStrategies]=useState<unknown[]>([]);
+ useEffect(()=>{let active=true;fetch('/api/runtime',{cache:'no-store'}).then(r=>r.json()).then(async (c:Config)=>{
+ if(!active)return;setCfg(c);if(c.configured&&c.supabaseUrl&&c.publishableKey){const supabase=createClient(c.supabaseUrl,c.publishableKey);setClient(supabase);const {data}=await supabase.auth.getUser();if(active)setUser(data.user?.id||null);}
+ }).catch(()=>setMsg('Configuration unavailable'));fetch('/api/status',{cache:'no-store'}).then(r=>r.json()).then(d=>{if(active)setApi(d.status)}).catch(()=>setApi('Offline'));return()=>{active=false}},[]);
+ useEffect(()=>{if(!client||!user)return;let active=true;client.auth.getSession().then(async ({data})=>{if(!data.session?.access_token)return;const read=async(path:string)=>{const r=await fetch('/api/member/'+path,{headers:{Authorization:'Bearer '+data.session!.access_token},cache:'no-store'});if(!r.ok)throw new Error('Member API unavailable');return r.json()};try{const [a,s]=await Promise.all([read('accounts'),read('strategies')]);if(active){setAccounts(a.items);setStrategies(s.items)}}catch{if(active)setMsg('Member data unavailable; no values inferred')}});return()=>{active=false}},[client,user]);
+ async function authenticate(signup:boolean){if(!client||!cfg)return;setMsg('');const r=signup?await client.auth.signUp({email,password}):await client.auth.signInWithPassword({email,password});if(r.error)setMsg(r.error.message);else if(signup)setMsg('Check email to confirm account');else {const v=await client.auth.getUser();setUser(v.data.user?.id||null);setPassword('')}}
+ return <main><header><div><h1>TRADEVICE COPY</h1><small>Member research portal • Staging</small></div><span className="pill">PAPER ONLY</span></header>
+ <section className="panel"><h2>Trading Engine Foundation</h2><p>Live execution is disabled. Funds remain with approved brokers. Results below are never simulated as actual profits.</p><p className="muted">API: {api} | Supabase: {cfg?.configured?'Configured':'Not connected'}</p></section>
+ <nav className="tabs">{menu.map(t=><button key={t} onClick={()=>setPage(t)} aria-pressed={page===t}>{t}</button>)}</nav>
+ <div className="panel"><h2>{page}</h2>{page==='Overview'?<div className="tiles">{['Account Equity','Profit / Loss','Drawdown','Copy Status'].map(k=><div className="tile" key={k}><span>{k}</span><strong>{k==='Copy Status'?'Disabled':'Not available'}</strong></div>)}</div>:page==='Accounts'?<p>{user?`${accounts.length} read-only linked accounts`:'Sign in to view your broker accounts.'}</p>:page==='Strategies'?<p>{user?`${strategies.length} research strategies available`:'Sign in to view strategies.'}</p>:page==='Funding'?<p>Deposit and withdrawal are unavailable. Funding must occur directly at the broker after broker authorization.</p>:page==='Referral'?<p>IB attribution and commissions are not enabled.</p>:<p>Trade history will display broker-verified or paper-labelled data only. Live copy execution is disabled.</p>}</div>
+ <div className="panel"><h2>Member Access</h2>{user?<><p>Authenticated member: {user.slice(0,8)}…</p><button onClick={async()=>{await client?.auth.signOut();setUser(null);setAccounts([]);setStrategies([])}}>Sign out</button></>:<div className="auth"><label>Email<input type="email" value={email} onChange={e=>setEmail(e.target.value)}/></label><label>Password<input type="password" value={password} onChange={e=>setPassword(e.target.value)}/></label><button disabled={!cfg?.configured||!email||!password} onClick={()=>authenticate(false)}>Sign in</button><button disabled={!cfg?.signupEnabled||!email||!password} onClick={()=>authenticate(true)}>Sign up</button></div>}{msg&&<p role="status" className="warning">{msg}</p>}</div>
+ <footer className="muted">Research only. No live orders, no deposits, no withdrawals.</footer></main>
 }
