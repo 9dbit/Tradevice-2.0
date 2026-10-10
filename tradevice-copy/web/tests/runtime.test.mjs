@@ -1,0 +1,18 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { publicConfig, apiOrigin, memberPath, memberQuery } from '../lib/runtime.mjs';
+const ref='abcdefghijklmnopqrst';
+const env={SUPABASE_PROJECT_REF:ref,SUPABASE_URL:`https://${ref}.supabase.co`,SUPABASE_PUBLISHABLE_KEY:'sb_publishable_test'};
+test('missing config fails closed',()=>assert.equal(publicConfig({}).configured,false));
+test('valid public config',()=>assert.equal(publicConfig(env).configured,true));
+for(const key of ['sb_secret_bad','eyJlegacy-token','sb_publishable_'])test('reject key '+key,()=>assert.equal(publicConfig({...env,SUPABASE_PUBLISHABLE_KEY:key}).publishableKey,null));
+test('project mismatch denied',()=>assert.equal(publicConfig({...env,SUPABASE_PROJECT_REF:'wrong'}).configured,false));
+test('server secrets excluded',()=>assert.ok(!JSON.stringify(publicConfig({...env,SUPABASE_SERVICE_ROLE_KEY:'NEVER'})).includes('NEVER')));
+test('signup off by default',()=>assert.equal(publicConfig(env).signupEnabled,false));
+test('signup requires complete config',()=>assert.equal(publicConfig({MEMBER_SIGNUP_ENABLED:'true'}).signupEnabled,false));
+for(const url of ['https://evil.example','https://tradevice-api-production.up.railway.app','http://169.254.169.254','https://copy-api-staging-4c33.up.railway.app@evil.example'])test('deny destination '+url,()=>assert.equal(apiOrigin({COPY_API_ORIGIN:url}),null));
+test('localhost denied in production runtime',()=>assert.equal(apiOrigin({NODE_ENV:'production',COPY_API_ORIGIN:'http://127.0.0.1:8000'}),null));
+for(const path of [['..','admin'],['funding','withdrawal-intents'],['paper','orders'],['accounts','bad-id']])test('deny unsupported path '+path,()=>assert.equal(memberPath(path),null));
+test('allow owned resource path for API validation',()=>assert.ok(memberPath(['accounts','11111111-1111-4111-8111-111111111111','risk'])));
+for(const query of ['?offset=-1','?offset=10001','?user_id=other','?offset=0&offset=1'])test('reject query '+query,()=>assert.equal(memberQuery(query),null));
+test('bounded pagination',()=>assert.equal(memberQuery('?offset=0050'),'?offset=50'));
