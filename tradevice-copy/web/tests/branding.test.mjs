@@ -36,7 +36,14 @@ test('final black-white style replaces orange gradients',()=>{
   assert.match(css.slice(m), /--brand-orange:#FF7900/);
   assert.match(demoCss.slice(d), /--d-green:#FF7900/);
   assert.ok(css.slice(m).includes('.app-shell .hero-link,.app-shell .primary-button{background:#F7F7F7'));
-  assert.doesNotMatch(css.slice(m), /linear-gradient|radial-gradient/);
+  // The original minimal member theme remains gradient-free; the new separate
+  // glass header deliberately uses restrained orange ambient gradients.
+  const minimalBlock = css.slice(m, css.indexOf('TRADEVICE_ORANGE_GLASS_V3'));
+  assert.doesNotMatch(minimalBlock, /linear-gradient|radial-gradient/);
+  const glass = css.slice(css.indexOf('TRADEVICE_ORANGE_GLASS_V3'));
+  assert.match(glass, /backdrop-filter:blur\(24px\)/);
+  assert.match(glass, /\.app-shell \.glass-nav-item\.is-active/);
+  assert.match(glass, /radial-gradient/);
   assert.doesNotMatch(demoCss.slice(d), /linear-gradient|radial-gradient/);
 });
 test('branding does not unlock live trading or funding',()=>{
