@@ -42,3 +42,9 @@ test('branding does not unlock live trading or funding',()=>{
   assert.match(demo, /DATA SINTETIS/);
   assert.doesNotMatch(page, /fetch\([^\n]*(deposit-intents|withdrawal-intents|paper\/orders)/);
 });
+
+test('standalone Railway Docker image includes the public SVG brand asset',()=>{
+  const docker=read('Dockerfile');
+  assert.match(docker, /COPY --from=build --chown=node:node \/app\/public \.\/public/);
+  assert.match(docker, /COPY --from=build --chown=node:node \/app\/\.next\/static \.\/\.next\/static/);
+});
