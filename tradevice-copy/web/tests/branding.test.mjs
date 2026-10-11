@@ -1,0 +1,44 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+const read = (p) => readFileSync(new URL('../'+p, import.meta.url), 'utf8');
+const svg=read('public/brand/tradevice-arrow.svg');
+const icon=read('app/icon.svg');
+const page=read('app/page.tsx');
+const demo=read('app/demo/page.tsx');
+const css=read('app/globals.css');
+const demoCss=read('app/demo/demo.css');
+const layout=read('app/layout.tsx');
+
+test('orange brand vector matches approved upward arrow',()=>{
+  assert.match(svg, /Tradevice upward arrow/);
+  assert.match(svg, /M104 6\.4 33\.5 6/);
+  assert.match(svg, /#FF6B00/);
+  assert.doesNotMatch(page, /className="brand-sign" aria-hidden="true"><span\/><span\/><span\/>/);
+  assert.doesNotMatch(demo, /className="dmark"><i\/><i\/><i\/>/);
+});
+test('member desktop/mobile/hero and demo share logo component',()=>{
+  assert.match(page, /brand\/tradevice-arrow\.svg\?v=orange-20261012/);
+  assert.match(demo, /brand\/tradevice-arrow\.svg\?v=orange-20261012/);
+  assert.match(page, /<Brand\/>/);
+  assert.match(demo, /<Mark\/>/);
+});
+test('favicon uses orange arrow and iOS safe theme',()=>{
+  assert.match(icon, /#FF6B00/);
+  assert.match(layout, /icon\.svg\?v=orange-20261012/);
+  assert.match(layout, /themeColor: '#0D0F14'/);
+});
+test('final active theme wins over old monochrome CSS',()=>{
+  const m=css.indexOf('TRADEVICE_ORANGE_BRAND_V1');
+  const d=demoCss.indexOf('TRADEVICE_ORANGE_BRAND_V1');
+  assert.ok(m>css.indexOf('Shared minimal black/white'));
+  assert.ok(d>20000);
+  assert.match(css.slice(m), /--brand-orange:#FF7900/);
+  assert.match(demoCss.slice(d), /--d-green:#FF890D/);
+  assert.match(css.slice(m), /\.app-shell \.primary-button\{background:var\(--gradient\)/);
+});
+test('branding does not unlock live trading or funding',()=>{
+  assert.match(page, /PAPER-ONLY TEST ENVIRONMENT/);
+  assert.match(demo, /DATA SINTETIS/);
+  assert.doesNotMatch(page, /fetch\([^\n]*(deposit-intents|withdrawal-intents|paper\/orders)/);
+});
