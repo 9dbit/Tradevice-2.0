@@ -1,0 +1,13 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+const css = readFileSync(new URL('../app/globals.css', import.meta.url), 'utf8');
+const page = readFileSync(new URL('../app/page.tsx', import.meta.url), 'utf8');
+const layout = readFileSync(new URL('../app/layout.tsx', import.meta.url), 'utf8');
+test('mobile safe area on iOS',()=>{ assert.match(layout,/viewportFit:\s*'cover'/); assert.match(css,/env\(safe-area-inset-bottom\)/); });
+test('mobile navigation always visible at phone widths',()=>{assert.match(css,/@media\(max-width:780px\)/);assert.match(css,/\.bottom-nav\{position:fixed/);assert.match(page,/aria-label="Navigasi mobile"/);});
+test('funding actions are disabled even on mobile',()=>{assert.match(page,/<button type="button" disabled>Deposit melalui broker/);assert.match(page,/<button type="button" disabled>Withdraw melalui broker/);});
+test('member data is authenticated and scoped to API proxy',()=>{assert.match(page,/\/api\/member\//);assert.match(page,/session\.access_token/);assert.match(page,/canApplySessionResult/);});
+test('no invented profit or equity',()=>{assert.match(page,/Belum tersedia/);assert.doesNotMatch(page,/\$1,000|\+12\.5%|0\.00%/);});
+test('touch targets and small screens supported',()=>{assert.match(css,/min-height:54px/);assert.match(css,/@media\(max-width:355px\)/);assert.match(css,/min-width:320px/);});
+test('reduced-motion and keyboard navigation supported',()=>{assert.match(css,/prefers-reduced-motion/);assert.match(page,/event\.key === 'Escape'/);assert.match(page,/className="skip-link"/);});
