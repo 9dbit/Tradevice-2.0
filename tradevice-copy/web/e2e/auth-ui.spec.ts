@@ -62,7 +62,7 @@ test('[mock-auth] database failure never fabricates member account counts', asyn
   await expect(page.getByText('Akses pilot terverifikasi', { exact: true })).toHaveCount(0);
   await expect(page.getByText('MOCK-PAPER-A', { exact: false })).toHaveCount(0);
 });
-test('[mock-auth] logout removes previous user's protected data', async ({ page }) => {
+test('[mock-auth] logout removes previous member data', async ({ page }) => {
   await fixture(page);
   await login(page);
   await expect(page.getByText('Akses pilot terverifikasi', { exact: true })).toBeVisible();
