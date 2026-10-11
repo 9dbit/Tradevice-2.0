@@ -258,6 +258,7 @@ export default function Home() {
             <h1>{session?.user.email ? 'Selamat datang.' : 'Trading yang terukur.'}<br/><span>{session?.user.email ? 'Semua tetap terkendali.' : 'Risiko dalam kendali.'}</span></h1>
             <p>Portal riset copy trading dengan akses member terpisah. Tidak ada order live atau dana yang disimpan di Tradevice.</p>
             {!session && <button type="button" className="hero-link" onClick={() => document.getElementById('member-access')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}>Akses member <Icon name="arrow"/></button>}
+            <a className="hero-link demo-link" href="/demo">Lihat demo admin <Icon name="arrow"/></a>
           </div>
           <div className="hero-mark" aria-hidden="true"><span className="hero-mark-ring"><Brand/></span><strong>SIMULATION</strong><small>Execution locked</small></div>
         </section>

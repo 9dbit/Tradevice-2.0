@@ -6,3 +6,7 @@
 @media(max-width:550px){.content{padding:23px 15px calc(100px + env(safe-area-inset-bottom))}.topbar{padding:0 15px}.hero h1{font-size:30px;letter-spacing:-.9px}.stat-card{padding:14px 12px}.stat-card strong{font-size:13px}.stat-top{font-size:10px}.stat-card small{font-size:9px}.section-title{align-items:flex-end}.quiet-label{max-width:90px;font-size:9px}.panel-heading h2{font-size:15px}.member-column{grid-template-columns:1fr}.double-cards{gap:13px}.chart-placeholder{min-height:226px}.chart-placeholder .empty-state{min-height:220px}.hero-link{width:auto}.footer{padding-left:15px;padding-right:15px}.strategy-row{flex-wrap:wrap}.strategy-copy{flex-basis:calc(100% - 55px)}.strategy-row button{margin-left:55px}.risk-grid>div{padding:13px}.risk-grid strong{font-size:14px}}
 @media(max-width:355px){.mobile-brand small{display:none}.paper-chip{padding:5px 7px;font-size:8px}.top-actions{gap:5px}.content{padding-left:12px;padding-right:12px}.stat-top svg{width:13px;height:13px}.stat-card strong{font-size:12px}.bottom-item{font-size:9px}}
 @media(prefers-reduced-motion:reduce){*,*::before,*::after{scroll-behavior:auto!important;transition:none!important;animation:none!important}}
+
+/* Separate client-only demo preview CTA, never creates a privileged account. */
+.hero-link.demo-link{margin-left:10px;background:#102719;color:#b7ffc4;border:1px solid #367b47}
+@media(max-width:355px){.hero-link.demo-link{margin-left:0}}
