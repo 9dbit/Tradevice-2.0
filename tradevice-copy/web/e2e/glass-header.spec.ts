@@ -10,9 +10,22 @@ test('floating header preserves orange branding and shows paper-only mode', asyn
   await expect(page.getByRole('link', { name: /Lihat demo admin/i })).toHaveCount(0);
   const top = await page.locator('.topbar').evaluate(e => {
     const s = getComputedStyle(e);
-    return { blur: s.backdropFilter || (s as CSSStyleDeclaration & {webkitBackdropFilter:string}).webkitBackdropFilter, radius: parseFloat(s.borderRadius), background: s.backgroundColor };
+    const cssSupportsBlur = CSS.supports('backdrop-filter', 'blur(1px)') ||
+      CSS.supports('-webkit-backdrop-filter', 'blur(1px)');
+    return {
+      blur: s.backdropFilter || (s as CSSStyleDeclaration & {webkitBackdropFilter:string}).webkitBackdropFilter,
+      radius: parseFloat(s.borderRadius),
+      background: s.backgroundColor,
+      cssSupportsBlur,
+    };
   });
-  expect(top.blur).toContain('blur');
+  // Chromium on headless CI images may disable backdrop filtering. The CSS
+  // provides a solid fallback; require actual blur only when supported.
+  if (top.cssSupportsBlur) {
+    expect(top.blur).toContain('blur');
+  } else {
+    expect(top.background).not.toBe('rgba(0, 0, 0, 0)');
+  }
   expect(top.radius).toBeGreaterThan(18);
   await page.screenshot({ path: 'test-results/glass-desktop.png', fullPage: true });
 });
