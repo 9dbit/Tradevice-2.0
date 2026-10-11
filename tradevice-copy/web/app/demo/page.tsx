@@ -135,7 +135,7 @@ export default function DemoPage() {
       <div className="demo-top-right"><span className="demo-top-live"><i/> DEMO</span><span className="demo-avatar">A</span><button type="button" className="demo-mobile-logout" aria-label="Keluar dari demo" onClick={logout}><Icon name="logout" size={19}/></button></div>
     </header>
     <main id="demo-main" className="demo-main" tabIndex={-1}>
-      <div className="demo-welcome"><div><span className="demo-kicker">DASHBOARD / ADMIN DEMO</span><h1>{page==='overview'?'Welcome back, Admin.':items.find(i=>i.key===page)?.label}<br/>{page==='overview'&&<em>Your trading overview.</em>}</h1><p>Akun <strong>{demoAccount.id}</strong> · Semua statistik di bawah menggunakan contoh data sintetis.</p></div><div className="demo-welcome-art" aria-hidden="true"><Mark/><span>SIMULATOR<br/>ACTIVE</span></div></div>
+      <div className="demo-welcome"><div><span className="demo-kicker">DASHBOARD / ADMIN DEMO</span><h1>{page==='overview'?'Halo, Admin.':items.find(i=>i.key===page)?.label}<br/>{page==='overview'&&<em>Ringkasan trading kamu.</em>}</h1><p>Akun <strong>{demoAccount.id}</strong> · Semua statistik di bawah menggunakan contoh data sintetis.</p></div><div className="demo-welcome-art" aria-hidden="true"><Mark/><span>SIMULATOR<br/>ACTIVE</span></div></div>
       <DemoNotice/>
       {page==='overview'&&<>
         <div className="demo-section-head demo-overview-head"><div><div className="demo-kicker">PERFORMANCE / SAMPLE DATA</div><h2>Portfolio overview</h2></div><span className="demo-period">28 SEP - 10 OKT 2026</span></div>

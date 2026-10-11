@@ -1,0 +1,14 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {readFileSync} from 'node:fs';
+const demoCss=readFileSync(new URL('../app/demo/demo.css',import.meta.url),'utf8');
+const mainCss=readFileSync(new URL('../app/globals.css',import.meta.url),'utf8');
+const page=readFileSync(new URL('../app/demo/page.tsx',import.meta.url),'utf8');
+const layout=readFileSync(new URL('../app/layout.tsx',import.meta.url),'utf8');
+test('iPhone 15 Pro uses native width and safe areas',()=>{assert.match(layout,/width: 'device-width'/);assert.match(layout,/viewportFit: 'cover'/);assert.match(demoCss,/env\(safe-area-inset-bottom\)/);assert.match(demoCss,/@media\(max-width:400px\)/);assert.match(demoCss,/@media\(max-width:360px\)/);});
+test('no minimum-width flex or grid traps on mobile',()=>{assert.match(demoCss,/grid-template-columns:repeat\(2,minmax\(0,1fr\)\)/);assert.match(demoCss,/grid-template-columns:repeat\(5,minmax\(0,1fr\)\)/);assert.match(demoCss,/\.demo-topbar\{width:100%;min-width:0;max-width:100%/);assert.match(demoCss,/\.demo-section-head\{align-items:flex-start;flex-wrap:wrap/);assert.match(demoCss,/\.demo-account-head\{gap:12px;flex-wrap:wrap/);assert.match(demoCss,/\.demo-chart-svg\{display:block;max-width:100%;width:100%/);});
+test('primary actions are white pill buttons',()=>{assert.match(demoCss,/\.demo-login-btn\{\s*width:100%;\s*min-height:52px;\s*background:#fff;/);assert.match(demoCss,/border-radius:999px/);assert.match(demoCss,/\.demo-bottom-nav button.selected\{background:#f5f5f5;color:#101010\}/);});
+test('black surfaces, subtle rules, limited green',()=>{assert.match(demoCss,/--d-bg:#000;/);assert.match(demoCss,/--d-border:#303030;/);assert.match(demoCss,/\.demo-card,\.demo-chart\{\s*background:transparent;\s*border:0;\s*border-top:1px solid #2c2c2c;/);assert.match(demoCss,/\.demo-stat\{\s*background:none;\s*border:0;\s*border-top:1px solid #2b2b2b;/);});
+test('iPhone text fields stay at 16px to avoid Safari focus zoom',()=>{assert.match(demoCss,/\.demo-login-form input\{\s*border-radius:999px;\s*height:52px;\s*font-size:16px;/);});
+test('member portal inherits minimal style too',()=>{assert.match(mainCss,/\.app-shell \.surface\{background:transparent;border:0;/);assert.match(mainCss,/\.app-shell \.bottom-item\.is-active\{background:#f5f5f5;color:#080808\}/);});
+test('synthetic demo never gets privileged access',()=>{assert.match(page,/sessionStorage/);assert.match(page,/password === 'admin'/);assert.match(page,/DATA SINTETIS/);assert.match(page,/No live trading/);assert.doesNotMatch(page,/\/api\/member|SUPABASE_SERVICE_ROLE_KEY/);});
