@@ -246,11 +246,16 @@ export default function Home() {
     </aside>
 
     <div className="workspace">
-      <header className="topbar">
+      <header className="topbar glass-surface" aria-label="Tradevice Copy, mode simulasi">
+        <a className="header-brand" href="/" aria-label="Tradevice Copy, beranda"><Brand/><strong>tradevice<span className="brand-accent">.</span></strong><small>COPY</small></a>
         <div className="mobile-brand"><Brand/><strong>tradevice<span className="brand-accent">.</span></strong><small>COPY</small></div>
-        <div className="desktop-top-label"><span>TRADEVICE / MEMBER PORTAL</span><strong>{title}</strong></div>
-        <div className="top-actions"><span className="paper-chip"><span className="status-dot"/> PAPER</span><button type="button" className="icon-button" aria-label="Muat ulang data" title="Muat ulang" onClick={() => setRefresh(x => x + 1)} disabled={loading}><Icon name="refresh"/></button></div>
+        <div className="top-actions"><span className="paper-chip" role="status" aria-label="Mode paper aktif, eksekusi live nonaktif" title="Simulasi saja. Tidak ada eksekusi live"><span className="status-dot"/> PAPER</span><button type="button" className="icon-button" aria-label="Muat ulang data" title="Muat ulang" onClick={() => setRefresh(x => x + 1)} disabled={loading}><Icon name="refresh"/></button></div>
       </header>
+      <nav className="glass-nav glass-surface" aria-label="Navigasi cepat">
+        {navigation.map(item => <button key={item.key} type="button" className={'glass-nav-item' + (page === item.key ? ' is-active' : '')} aria-current={page === item.key ? 'page' : undefined} onClick={() => visit(item.key)}>
+          <Icon name={item.icon}/><span>{item.label}</span>
+        </button>)}
+      </nav>
 
       <main id="main-content" className="content" tabIndex={-1}>
         <section className="hero" aria-label="Ringkasan workspace">
@@ -258,7 +263,7 @@ export default function Home() {
             <h1>{session?.user.email ? 'Selamat datang.' : 'Trading yang terukur.'}<br/><span>{session?.user.email ? 'Semua tetap terkendali.' : 'Risiko dalam kendali.'}</span></h1>
             <p>Portal riset copy trading dengan akses member terpisah. Tidak ada order live atau dana yang disimpan di Tradevice.</p>
             {!session && <button type="button" className="hero-link" onClick={() => document.getElementById('member-access')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}>Akses member <Icon name="arrow"/></button>}
-            <a className="hero-link demo-link" href="/demo">Lihat demo admin <Icon name="arrow"/></a>
+
           </div>
           <div className="hero-mark" aria-hidden="true"><span className="hero-mark-ring"><Brand/></span><strong>SIMULATION</strong><small>Execution locked</small></div>
         </section>
