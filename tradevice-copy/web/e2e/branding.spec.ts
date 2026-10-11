@@ -25,8 +25,9 @@ test('orange brand is visible on iPhone with no horizontal overflow',async({page
 test('public demo uses same brand and orange sign-in CTA',async({page})=>{
   await page.goto('/demo');
   await expect(page.locator('.demo-gate-brand .dmark img')).toBeVisible();
-  const background=await page.locator('.demo-login-btn').evaluate(e=>getComputedStyle(e).backgroundImage);
-  expect(background).toContain('linear-gradient');
+  const style=await page.locator('.demo-login-btn').evaluate(e=>({image:getComputedStyle(e).backgroundImage,color:getComputedStyle(e).backgroundColor}));
+  expect(style.image).toBe('none');
+  expect(style.color).toBe('rgb(247, 247, 247)');
   await page.getByLabel('Username demo').fill('admin');
   await page.getByLabel('Password demo').fill('admin');
   await page.getByRole('button',{name:/Masuk ke demo/}).click();

@@ -51,9 +51,9 @@ function PerformanceChart() {
   return <div className="demo-chart">
     <div className="demo-chart-top"><div><div className="demo-kicker">EQUITY OVERVIEW</div><h2>Pertumbuhan portofolio</h2><p>Contoh 12 transaksi sintetis · 28 Sep–10 Okt</p></div><span className="demo-chip">SIMULATED</span></div>
     <svg className="demo-chart-svg" viewBox="0 0 800 225" role="img" aria-label="Grafik equity simulasi dari 1000 dolar ke 1112 dolar 40 sen">
-      <defs><linearGradient id="demo-area" x1="0" x2="0" y1="0" y2="1"><stop offset="0%" stopColor="#ff8a0a" stopOpacity=".22"/><stop offset="100%" stopColor="#ff8a0a" stopOpacity="0"/></linearGradient></defs>
+      
       {[28,82,136,190].map(y=><line key={y} x1="0" y1={y} x2="800" y2={y} stroke="#573a29" strokeWidth=".8" strokeDasharray="3 8"/>)}
-      <polyline points={area} fill="url(#demo-area)" stroke="none"/>
+      <polyline points={area} fill="#FF7900" fillOpacity=".06" stroke="none"/>
       <polyline points={line} fill="none" stroke="#ff8a0a" strokeWidth="3.2" strokeLinecap="round" strokeLinejoin="round"/>
       <circle cx={mapped[mapped.length-1].x} cy={mapped[mapped.length-1].y} r="6" fill="#ffb45e" stroke="#522e1b" strokeWidth="5"/>
     </svg>

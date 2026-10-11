@@ -28,14 +28,16 @@ test('favicon uses orange arrow and iOS safe theme',()=>{
   assert.match(layout, /icon\.svg\?v=orange-20261012/);
   assert.match(layout, /themeColor: '#0D0F14'/);
 });
-test('final active theme wins over old monochrome CSS',()=>{
-  const m=css.indexOf('TRADEVICE_ORANGE_BRAND_V1');
-  const d=demoCss.indexOf('TRADEVICE_ORANGE_BRAND_V1');
+test('final black-white style replaces orange gradients',()=>{
+  const m=css.indexOf('TRADEVICE_MINIMAL_ORANGE_V2');
+  const d=demoCss.indexOf('TRADEVICE_MINIMAL_ORANGE_V2');
   assert.ok(m>css.indexOf('Shared minimal black/white'));
   assert.ok(d>20000);
   assert.match(css.slice(m), /--brand-orange:#FF7900/);
-  assert.match(demoCss.slice(d), /--d-green:#FF890D/);
-  assert.match(css.slice(m), /\.app-shell \.primary-button\{background:var\(--gradient\)/);
+  assert.match(demoCss.slice(d), /--d-green:#FF7900/);
+  assert.match(css.slice(m), /\\.app-shell \\.primary-button\\{background:#F7F7F7/);
+  assert.doesNotMatch(css.slice(m), /linear-gradient|radial-gradient/);
+  assert.doesNotMatch(demoCss.slice(d), /linear-gradient|radial-gradient/);
 });
 test('branding does not unlock live trading or funding',()=>{
   assert.match(page, /PAPER-ONLY TEST ENVIRONMENT/);
