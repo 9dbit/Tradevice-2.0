@@ -35,7 +35,7 @@ test('final black-white style replaces orange gradients',()=>{
   assert.ok(d>20000);
   assert.match(css.slice(m), /--brand-orange:#FF7900/);
   assert.match(demoCss.slice(d), /--d-green:#FF7900/);
-  assert.match(css.slice(m), /\\.app-shell \\.primary-button\\{background:#F7F7F7/);
+  assert.ok(css.slice(m).includes('.app-shell .hero-link,.app-shell .primary-button{background:#F7F7F7'));
   assert.doesNotMatch(css.slice(m), /linear-gradient|radial-gradient/);
   assert.doesNotMatch(demoCss.slice(d), /linear-gradient|radial-gradient/);
 });
