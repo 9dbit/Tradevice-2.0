@@ -90,3 +90,14 @@ After GitHub commit, read this file back from the branch to confirm persistence.
 1. Verify current branch HEAD and `PROJECT_STATE.md` content first.
 2. Use GitHub Actions or an authorized network-capable CI runner to run `npm test`, `npm run build`, Playwright staging public/mobile tests, and Python `pytest`; record exact run links and counts. Do not commit a PASS status without the logs.
 3. For Phase 2, check whether two **invited test accounts** already exist; if not, plan a secure pilot-invite workflow. Never write passwords or access tokens to GitHub markdown or logs. Require real two-user authenticated E2E before accepting isolation gate.
+
+## Milestone: 2026-10-12 WIB - fix Phase 1 CI visual regression
+
+- Initial verified checkpoint commit: `af96b3ed3a7e5bb33f315044e7b01ee5a897e204`.
+- Real CI evidence: GitHub Actions run [38165729513](https://github.com/9dbit/Tradevice-2.0/actions/runs/38165729513) on that SHA **FAILED** only in browser E2E: **31 passed, 1 failed, 1 skipped**. Python regression step **40 passed**; Node unit tests, Next.js production build and typecheck steps **SUCCESS**. Do not classify the entire run as PASS.
+- Cause: `tradevice-copy/web/e2e/responsive-overflow.spec.ts` asserted obsolete **orange linear-gradient** login CTA, conflicting with deployed **solid white button** design. The current theme was intentional; application UI code was not changed.
+- Fix commit: `c0b1af3b2e5905de6be8b75e50b0a87873cb7994`; only the visual Playwright spec changed to expect solid white (`rgb(247,247,247)`) background, no gradient, dark (`rgb(17,17,17)`) text, and pill radius.
+- New GitHub Actions run: [38166064024](https://github.com/9dbit/Tradevice-2.0/actions/runs/38166064024), **in_progress** on last poll. Its result MUST be verified before declaring Phase 1 CI green. New documentation commit may start an additional run; record its result separately.
+- Separate staging Supabase SQL read: `auth.users=0`, `public.copy_profiles=0`, `public.copy_accounts=0`; Phase 2 two-real-member authentication and isolation remains **blocked by absent pilot accounts**. No users were created, no secrets generated, no tables changed.
+- Railway environment read: web deployment `014b1fc2-e278-46bb-83ac-dcad1b40e72d` is **SUCCESS**, API deployment `807486d2-6faa-440e-9e30-08918c2f7a81` is **SUCCESS**; both services 1/1 running. A failed **historical** web release is still present in the 24h failures count.
+- Next: poll CI 38166064024 to terminal state; inspect browser failure if any. Once green, configure two invited staging-only verified pilot users securely and run the existing `pilot-login.spec.ts` and API RLS cross-tenant negative tests. Do not insert real credentials in repository. No production or live trading changes authorized.
