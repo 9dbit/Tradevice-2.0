@@ -32,7 +32,7 @@ function Icon({ name, size = 21 }: { name: string; size?: number }) {
     {name === 'check' && <path d="m5 12 4 4 10-10"/>}
   </svg>;
 }
-function Mark() { return <span aria-hidden="true" className="dmark"><i/><i/><i/></span>; }
+function Mark() { return <span aria-hidden="true" className="dmark"><img src="/brand/tradevice-arrow.svg?v=orange-20261012" width={39} height={39} alt="" draggable={false}/></span>; }
 function DemoNotice() {
   return <div className="demo-notice" role="note"><Icon name="shield"/><div><strong>DATA SINTETIS · DEMO READ-ONLY</strong><span>Semua saldo, grafik, trade, dan performa pada halaman ini hanyalah contoh tampilan, bukan hasil engine nyata.</span></div></div>;
 }
@@ -51,11 +51,11 @@ function PerformanceChart() {
   return <div className="demo-chart">
     <div className="demo-chart-top"><div><div className="demo-kicker">EQUITY OVERVIEW</div><h2>Pertumbuhan portofolio</h2><p>Contoh 12 transaksi sintetis · 28 Sep–10 Okt</p></div><span className="demo-chip">SIMULATED</span></div>
     <svg className="demo-chart-svg" viewBox="0 0 800 225" role="img" aria-label="Grafik equity simulasi dari 1000 dolar ke 1112 dolar 40 sen">
-      <defs><linearGradient id="demo-area" x1="0" x2="0" y1="0" y2="1"><stop offset="0%" stopColor="#54fa84" stopOpacity=".22"/><stop offset="100%" stopColor="#54fa84" stopOpacity="0"/></linearGradient></defs>
-      {[28,82,136,190].map(y=><line key={y} x1="0" y1={y} x2="800" y2={y} stroke="#20422a" strokeWidth=".8" strokeDasharray="3 8"/>)}
+      <defs><linearGradient id="demo-area" x1="0" x2="0" y1="0" y2="1"><stop offset="0%" stopColor="#ff8a0a" stopOpacity=".22"/><stop offset="100%" stopColor="#ff8a0a" stopOpacity="0"/></linearGradient></defs>
+      {[28,82,136,190].map(y=><line key={y} x1="0" y1={y} x2="800" y2={y} stroke="#573a29" strokeWidth=".8" strokeDasharray="3 8"/>)}
       <polyline points={area} fill="url(#demo-area)" stroke="none"/>
-      <polyline points={line} fill="none" stroke="#5cff86" strokeWidth="3.2" strokeLinecap="round" strokeLinejoin="round"/>
-      <circle cx={mapped[mapped.length-1].x} cy={mapped[mapped.length-1].y} r="6" fill="#65ff8a" stroke="#183f25" strokeWidth="5"/>
+      <polyline points={line} fill="none" stroke="#ff8a0a" strokeWidth="3.2" strokeLinecap="round" strokeLinejoin="round"/>
+      <circle cx={mapped[mapped.length-1].x} cy={mapped[mapped.length-1].y} r="6" fill="#ffb45e" stroke="#522e1b" strokeWidth="5"/>
     </svg>
     <div className="demo-chart-foot"><span>28 SEP 2026</span><span>04 OKT</span><span>10 OKT 2026</span></div>
   </div>;

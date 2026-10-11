@@ -296,3 +296,38 @@
   .demo-bottom-nav button{font-size:9px}
   .demo-main{padding-left:12px;padding-right:12px}
 }
+
+/* TRADEVICE_ORANGE_BRAND_V1: both demo and member portal share this orange identity. */
+.demo-gate,.demo-app{--d-bg:#0C0D12;--d-card:#15151B;--d-alt:#1B1A1D;--d-border:#3C3029;--d-green:#FF890D;--d-text:#FFF8F0;--d-muted:#B4ABA5}
+.demo-gate .dmark,.demo-app .dmark{display:grid;place-items:center;transform:none;gap:0;width:39px;height:39px;flex-shrink:0}
+.demo-gate .dmark img,.demo-app .dmark img{display:block;width:100%;height:100%;object-fit:contain;filter:drop-shadow(0 5px 14px #FF78002B)}
+.demo-gate .demo-gate-brand strong span,.demo-app .demo-brand strong span,.demo-app .demo-mobile-brand strong span{color:#FFA03F}
+.demo-gate .demo-login-btn{background:linear-gradient(120deg,#FFB04C,#FF7800);border:1px solid #FF8B0A;border-radius:999px;color:#271204}
+.demo-gate .demo-login-btn:hover{background:linear-gradient(120deg,#FFBE68,#FF901F)}
+.demo-gate .demo-chip,.demo-app .demo-chip{border-color:#694324;color:#FFC38A;background:#271A13}
+.demo-gate .demo-back-link{color:#FFAD65!important;text-decoration-color:#C8793F!important}
+.demo-gate .demo-gate-art{background:radial-gradient(circle at center,#462817 0%,#181215 50%,#0C0D12 100%);border-color:#643A23}
+.demo-gate .demo-gate-art:before,.demo-gate .demo-gate-art:after{border-color:#91532A}
+.demo-gate .demo-art-circle{border-color:#A35B25;background:#321C12;box-shadow:0 0 65px #FF7B0033}
+.demo-gate .demo-gate-box h1 span{color:#FFAA54}
+.demo-gate .demo-login-form input{background:#1C1A1B;border-color:#684329}
+.demo-gate .demo-login-form input:focus-visible{border-color:#FF8B0A;outline-color:#FFB052}
+.demo-app .demo-sidebar{background:#0B0C11;border-color:#302722}
+.demo-app .demo-side-nav button.selected{background:linear-gradient(105deg,#442717,#281A13);border-color:#854B24;color:#FFCCA0;box-shadow:inset 3px 0 0 #FF8700}
+.demo-app .demo-side-nav button.selected svg{color:#FFB268}
+.demo-app .demo-sidebar-info{border-color:#714523;background:#1D1815}
+.demo-app .demo-topbar{background:#0C0D12;border-color:#443024}
+.demo-app .demo-top-live{border-color:#764623;color:#FFC68E;background:#271C17}
+.demo-app .demo-top-live i{background:#FF890A;box-shadow:0 0 9px #FF890A55}
+.demo-app .demo-avatar{background:#FF951F;color:#211104}
+.demo-app .demo-welcome h1 em,.demo-app .demo-kicker{color:#FFB064}
+.demo-app .demo-notice{background:#231913;border-color:#704429}
+.demo-app .demo-notice svg,.demo-app .demo-notice strong{color:#FFBA77}
+.demo-app .demo-positive{color:#FFB76A!important}
+.demo-app .demo-stat-accent{border-color:#B6642C}
+.demo-app .demo-card,.demo-app .demo-chart{border-top-color:#75492C}
+.demo-app .demo-bottom-nav{background:#0D0D12F5;border-top-color:#784321}
+.demo-app .demo-bottom-nav button.selected{background:#FF8B0A;color:#231005}
+.demo-app .demo-bottom-nav button.selected svg{color:#231005}
+.demo-app .demo-more-sheet{background:#1E1919;border-color:#90532C}
+@media(max-width:860px){.demo-gate .demo-gate-art{display:none}.demo-app .demo-mobile-brand .dmark{width:29px;height:29px}.demo-app .demo-topbar{background:#0C0D12F7}}

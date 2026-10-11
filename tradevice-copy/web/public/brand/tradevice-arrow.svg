@@ -1,0 +1,4 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-label="Tradevice upward arrow">
+<!-- Vector contours traced from Tradevice's approved orange-arrow design. -->
+<defs><linearGradient id="arrow" x1="0" y1="1" x2="1" y2="0"><stop offset="0" stop-color="#FF6B00"/><stop offset="1" stop-color="#FF9E27"/></linearGradient></defs>
+<g fill="url(#arrow)" stroke="url(#arrow)" stroke-width="1.2" stroke-linejoin="round"><path d="M104 6.4 33.5 6 7.7 31.1 7.5 33.3 9.2 34.5 66.2 34.3 67.3 35.4 65 38.8 6.2 93.1 6.2 95.2 26.1 114.2 28.8 114.2 121.6 26.1 121.6 24Z"/><path d="M93.5 58.2 91.2 60.5 91.2 112.9 92.4 114.2 118.8 114 119.9 112.7 119.7 81.9 95.8 58.4Z"/></g></svg>

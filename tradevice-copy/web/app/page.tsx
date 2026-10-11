@@ -34,7 +34,7 @@ function Icon({ name }: { name: string }) {
   </svg>;
 }
 function Brand() {
-  return <span className="brand-sign" aria-hidden="true"><span/><span/><span/></span>;
+  return <span className="brand-sign" aria-hidden="true"><img src="/brand/tradevice-arrow.svg?v=orange-20261012" width={39} height={39} alt="" draggable={false}/></span>;
 }
 function Empty({ heading, note }: { heading: string; note: string }) {
   return <div className="empty-state"><div className="empty-icon"><Icon name="activity"/></div><strong>{heading}</strong><p>{note}</p></div>;
