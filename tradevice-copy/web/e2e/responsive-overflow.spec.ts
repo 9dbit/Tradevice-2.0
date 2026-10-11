@@ -63,14 +63,15 @@ for(const d of dimensions) {
   await noHorizontalOverflow(page,'Referral '+d.label);
  });
 }
-test('login button is monochrome white pill and not green',async ({page})=>{
+test('login button uses orange gradient pill with dark readable label',async ({page})=>{
   await page.setViewportSize({width:393,height:852});
   await page.goto('/demo');
   const style=await page.getByRole('button',{name:/Masuk ke demo/}).evaluate(el=>{
     const c=getComputedStyle(el);
-    return {background:c.backgroundColor,color:c.color,radius:parseFloat(c.borderRadius)};
+    return {gradient:c.backgroundImage,color:c.color,radius:parseFloat(c.borderRadius)};
   });
-  expect(style.background).toBe('rgb(255, 255, 255)');
-  expect(style.color).toBe('rgb(5, 5, 5)');
+  expect(style.gradient).toContain('linear-gradient');
+  expect(style.gradient).toContain('rgb(255, 120, 0)');
+  expect(style.color).toBe('rgb(39, 18, 4)');
   expect(style.radius).toBeGreaterThanOrEqual(24);
 });
