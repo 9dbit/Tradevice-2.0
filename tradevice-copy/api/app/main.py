@@ -46,7 +46,13 @@ async def member(request: Request, credentials: Annotated[HTTPAuthorizationCrede
             raise problem(403, "EMAIL_CONFIRMATION_REQUIRED")
     except (ValueError, TypeError, KeyError, AttributeError):
         raise problem(503, "AUTH_INVALID_RESPONSE") from None
-    return Member(uid, credentials.credentials)
+    identity = Member(uid, credentials.credentials)
+    profiles = await rows(request, identity, "copy_profiles", {
+        "select": "user_id", "user_id": f"eq.{uid}", "limit": "1",
+    })
+    if len(profiles) != 1 or profiles[0].get("user_id") != str(uid):
+        raise problem(403, "PILOT_ACCESS_REQUIRED")
+    return identity
 
 async def rows(request: Request, identity: Member, table: str, params: dict) -> list[dict]:
     """Forward the member JWT, not a service-role key: RLS remains in force."""
