@@ -4,18 +4,32 @@ from dataclasses import dataclass
 from typing import Annotated
 from uuid import UUID
 import hmac
+import psycopg
 import os
 import re
 from fastapi.concurrency import run_in_threadpool
 from .master_telemetry import read_database, allowed_reader_dsn
+from .master_control import allowed_operator_dsn,submit_command,validate_command
 
 import httpx
 from fastapi import Depends, FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from pydantic import BaseModel, ConfigDict
+from typing import Literal
 from .config import Settings
 
 bearer = HTTPBearer(auto_error=False)
+
+class OperatorCommand(BaseModel):
+    model_config=ConfigDict(extra="forbid")
+    actor_id: UUID
+    request_id: UUID
+    action: Literal["START","STOP","CONFIGURE","RESET_SESSION"]
+    cycle_mode: Literal["CONTINUOUS","CUSTOM"] | None = None
+    target_cycles: int | None = None
+    news_policy: Literal["AVOID","ALLOW","ONLY"] | None = None
+
 
 def problem(status: int, code: str) -> HTTPException:
     return HTTPException(status, detail={"code": code})
@@ -141,9 +155,36 @@ def create_app(settings: Settings | None = None, transport: httpx.AsyncBaseTrans
         if not allowed_reader_dsn(dsn):
             raise problem(503, "MASTER_READ_DB_NOT_CONFIGURED")
         try:
-            return await run_in_threadpool(read_database, dsn)
+            payload = await run_in_threadpool(read_database, dsn)
+            payload["control"]["operatorConfigured"] = allowed_operator_dsn(
+                os.getenv("MASTER_OPERATOR_DATABASE_URL",""))
+            return payload
         except Exception:
             raise problem(503, "MASTER_TELEMETRY_UNAVAILABLE") from None
+
+    @application.post("/internal/master/command", status_code=202)
+    async def internal_master_command(request: Request, command: OperatorCommand):
+        # Server-to-server only. No member browser access or live broker SDK.
+        if settings.environment != "staging" or settings.project_ref != "scqzlcivherovlwqypeu":
+            raise problem(503, "MASTER_STAGING_ONLY")
+        expected = os.getenv("MASTER_TELEMETRY_SHARED_SECRET", "")
+        if not re.fullmatch(r"[0-9a-f]{64}", expected):
+            raise problem(503, "MASTER_COMMAND_SECRET_NOT_CONFIGURED")
+        if not hmac.compare_digest(request.headers.get("x-tradevice-master-secret", ""), expected):
+            raise problem(401, "MASTER_INTERNAL_AUTH_REQUIRED")
+        payload = command.model_dump()
+        try:
+            validate_command(payload)
+        except ValueError:
+            raise problem(422, "MASTER_COMMAND_INVALID") from None
+        dsn = os.getenv("MASTER_OPERATOR_DATABASE_URL", "")
+        if not allowed_operator_dsn(dsn):
+            raise problem(503, "MASTER_OPERATOR_NOT_CONFIGURED")
+        try:
+            return await run_in_threadpool(submit_command, dsn, payload)
+        except (psycopg.Error, RuntimeError):
+            raise problem(503, "MASTER_COMMAND_UNAVAILABLE") from None
+
     @application.get("/api/v1/me")
     async def me(identity: Member = Depends(member)):
         return {"id": str(identity.id), "execution_mode": "paper"}

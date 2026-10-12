@@ -63,6 +63,93 @@ def _stop(*args):
     global stop
     stop=True
 
+def command_decision(action, run_status, kill_switch):
+    """Business gates do not trust operator requests as market readiness evidence."""
+    if action == "START":
+        if kill_switch:
+            return "REJECTED", "MANUAL_KILL_ACTIVE"
+        if run_status == "RUNNING":
+            return "REJECTED", "RUN_ALREADY_ACTIVE"
+        # There is no approved quote / broker / calendar adapter yet.
+        # Never equate a 2s supervisor heartbeat with a valid trade cycle.
+        return "REJECTED", "TRUSTED_MARKET_AND_PAPER_BROKER_NOT_READY"
+    if action in ("CONFIGURE", "RESET_SESSION") and run_status == "RUNNING":
+        return "REJECTED", "STOP_TRIAL_FIRST"
+    return "APPLIED", None
+
+
+def process_operator_commands(cur, worker_id, kill_switch):
+    """Apply idempotent, audited commands under the worker's leadership lock.
+
+    No command can release the emergency kill switch, write paper fills,
+    approve a market feed or enable live order execution.
+    """
+    cur.execute("""INSERT INTO master_control.run_state(master_id)
+                   VALUES (%s) ON CONFLICT DO NOTHING""", (MASTER,))
+    cur.execute("""SELECT run_status,session_id,cycle_mode,target_cycles,news_policy
+                   FROM master_control.run_state WHERE master_id=%s FOR UPDATE""", (MASTER,))
+    run = cur.fetchone()
+    cur.execute("""INSERT INTO master_control.run_sessions(id,master_id)
+                   VALUES (%s,%s) ON CONFLICT DO NOTHING""", (run["session_id"], MASTER))
+    cur.execute("""SELECT id,actor_id,action,cycle_mode,target_cycles,news_policy
+                   FROM master_control.operator_commands
+                   WHERE master_id=%s AND status='PENDING'
+                   ORDER BY created_at ASC,id ASC FOR UPDATE SKIP LOCKED LIMIT 16""", (MASTER,))
+    commands = cur.fetchall()
+    for cmd in commands:
+        action = cmd["action"]
+        decision, code = command_decision(action, run["run_status"], kill_switch)
+        if decision == "APPLIED" and action == "RESET_SESSION":
+            cur.execute("""SELECT EXISTS(
+                  SELECT 1 FROM master_control.signal_queue WHERE master_id=%s
+                  AND status IN ('QUEUED','RETRY','ACCEPTED_SIMULATED')
+                ) AS pending""", (MASTER,))
+            if cur.fetchone()["pending"]:
+                decision,code = "REJECTED","PENDING_OR_UNRECONCILED_SIGNALS"
+        if decision == "APPLIED" and action == "CONFIGURE":
+            cur.execute("""UPDATE master_control.run_state
+                 SET cycle_mode=%s,target_cycles=%s,news_policy=%s,
+                     last_rejection=NULL,last_command_id=%s,updated_at=now()
+                 WHERE master_id=%s""",
+                 (cmd["cycle_mode"],cmd["target_cycles"],cmd["news_policy"],cmd["id"],MASTER))
+            run["cycle_mode"] = cmd["cycle_mode"]
+            run["target_cycles"] = cmd["target_cycles"]
+            run["news_policy"] = cmd["news_policy"]
+        elif decision == "APPLIED" and action == "STOP":
+            cur.execute("""UPDATE master_control.run_state
+                 SET run_status='STOPPED',last_rejection=NULL,
+                     last_command_id=%s,updated_at=now()
+                 WHERE master_id=%s""", (cmd["id"],MASTER))
+            run["run_status"] = "STOPPED"
+        elif decision == "APPLIED" and action == "RESET_SESSION":
+            cur.execute("""UPDATE master_control.run_sessions
+                           SET ended_at=now() WHERE id=%s AND ended_at IS NULL""",
+                        (run["session_id"],))
+            new_session = str(uuid4())
+            cur.execute("""INSERT INTO master_control.run_sessions(id,master_id,initiated_by)
+                           VALUES (%s,%s,%s)""", (new_session,MASTER,cmd["actor_id"]))
+            cur.execute("""UPDATE master_control.run_state
+                   SET session_id=%s,run_status='STOPPED',strategy_cycles=0,
+                       last_rejection=NULL,last_command_id=%s,updated_at=now()
+                   WHERE master_id=%s""", (new_session,cmd["id"],MASTER))
+            run["session_id"] = new_session
+            run["run_status"] = "STOPPED"
+        if decision == "REJECTED":
+            cur.execute("""UPDATE master_control.run_state
+                 SET last_rejection=%s,last_command_id=%s,updated_at=now()
+                 WHERE master_id=%s""",(code,cmd["id"],MASTER))
+        cur.execute("""UPDATE master_control.operator_commands
+                    SET status=%s,error_code=%s,processed_at=now() WHERE id=%s""",
+                    (decision,code,cmd["id"]))
+        severity = "warning" if decision == "REJECTED" else "info"
+        message = code if code else (action + " confirmed for paper trial")
+        cur.execute("""INSERT INTO master_control.terminal_events
+            (master_id,session_id,source,severity,event_type,message,command_id)
+            VALUES (%s,%s,'CONTROL',%s,%s,%s,%s)""",
+            (MASTER,run["session_id"],severity,"COMMAND_"+decision,message,cmd["id"]))
+        log.info("operator command %s: %s",action,decision)
+
+
 def transact(conn, worker_id):
     """Database row lock serializes leadership, heartbeat and cycle event atomically."""
     with conn.transaction():
@@ -104,6 +191,7 @@ def transact(conn, worker_id):
             cur.execute("""UPDATE master_control.signal_queue SET status='EXPIRED',
                  last_error='SIGNAL_TTL',updated_at=now()
                  WHERE master_id=%s AND status IN ('QUEUED','RETRY') AND expires_at<=now()""",(MASTER,))
+            process_operator_commands(cur,worker_id,state["kill_switch"])
             return True
 
 def run():

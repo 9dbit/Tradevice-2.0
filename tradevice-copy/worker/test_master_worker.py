@@ -44,3 +44,19 @@ class SafetyTests(unittest.TestCase):
         self.assertEqual(cycle_state(True),("HALTED","MANUAL_KILL"))
 
 if __name__=="__main__": unittest.main()
+
+
+def test_operator_start_fails_closed_without_quote_broker_calendar():
+    from master_worker import command_decision
+    assert command_decision("START","STOPPED",False)==(
+        "REJECTED","TRUSTED_MARKET_AND_PAPER_BROKER_NOT_READY")
+    assert command_decision("START","STOPPED",True)==(
+        "REJECTED","MANUAL_KILL_ACTIVE")
+    assert command_decision("START","RUNNING",False)[0]=="REJECTED"
+
+
+def test_stop_and_configure_leave_supervisor_running():
+    from master_worker import command_decision
+    assert command_decision("STOP","RUNNING",False)==("APPLIED",None)
+    assert command_decision("CONFIGURE","STOPPED",False)==("APPLIED",None)
+    assert command_decision("RESET_SESSION","RUNNING",False)==("REJECTED","STOP_TRIAL_FIRST")

@@ -21,6 +21,7 @@ MIGRATIONS = (
     "202610120001_master_control_private_paper_telemetry.sql",
     "202610120002_master_control_telemetry_reader_rls.sql",
     "202610120003_master_control_worker_least_privilege.sql",
+    "202610120004_master_operator_control.sql",
 )
 ROOT = Path(__file__).resolve().parents[1] / "database" / "migrations"
 
@@ -190,3 +191,73 @@ def test_reader_query_returns_real_worker_heartbeat(dsn):
     assert snapshot["infrastructure"]["masterWorker"] == "ONLINE"
     assert snapshot["activity"][0]["kind"] == "MISSING_TRUSTED_QUOTE"
     assert snapshot["paperExecution"]["fillsVerified"] is False
+
+
+def test_operator_commands_are_idempotent_and_do_not_unlock_trading(dsn):
+    worker=str(uuid4())
+    with as_role(dsn,"tradevice_master_worker") as conn:
+        assert transact(conn,worker)
+    actor,request=str(uuid4()),str(uuid4())
+    with as_role(dsn,"tradevice_master_operator") as conn:
+        row=conn.execute("""INSERT INTO master_control.operator_commands
+           (master_id,actor_id,action,idempotency_key)
+           VALUES (%s,%s,'START',%s) ON CONFLICT(idempotency_key) DO NOTHING""",
+           (MASTER,actor,request))
+        assert row.rowcount==1
+        assert conn.execute("""INSERT INTO master_control.operator_commands
+           (master_id,actor_id,action,idempotency_key)
+           VALUES (%s,%s,'START',%s) ON CONFLICT(idempotency_key) DO NOTHING""",
+           (MASTER,actor,request)).rowcount==0
+        with pytest.raises(psycopg.errors.InsufficientPrivilege):
+            conn.execute("SELECT * FROM master_control.operator_commands")
+        with pytest.raises(psycopg.errors.InsufficientPrivilege):
+            conn.execute("UPDATE master_control.worker_state SET kill_switch=false")
+    with as_role(dsn,"tradevice_master_worker") as conn:
+        assert transact(conn,worker)
+    assert value(dsn,"SELECT status FROM master_control.operator_commands WHERE idempotency_key=%s",(request,))=="REJECTED"
+    assert value(dsn,"SELECT error_code FROM master_control.operator_commands WHERE idempotency_key=%s",(request,))=="TRUSTED_MARKET_AND_PAPER_BROKER_NOT_READY"
+    assert value(dsn,"SELECT run_status FROM master_control.run_state")=="STOPPED"
+    assert value(dsn,"SELECT count(*) FROM master_control.paper_orders")==0
+
+
+def test_configure_stop_and_reset_preserve_auditable_history(dsn):
+    worker=str(uuid4())
+    with as_role(dsn,"tradevice_master_worker") as conn:
+        assert transact(conn,worker)
+    original=value(dsn,"SELECT session_id FROM master_control.run_state")
+    actor=str(uuid4())
+    for action, mode,cycles,news in [
+      ("CONFIGURE","CUSTOM",7,"AVOID"),
+      ("STOP",None,None,None),
+      ("RESET_SESSION",None,None,None),
+    ]:
+        with as_role(dsn,"tradevice_master_operator") as conn:
+            conn.execute("""INSERT INTO master_control.operator_commands
+             (master_id,actor_id,action,idempotency_key,cycle_mode,target_cycles,news_policy)
+             VALUES(%s,%s,%s,%s,%s,%s,%s)""",
+             (MASTER,actor,action,str(uuid4()),mode,cycles,news))
+        with as_role(dsn,"tradevice_master_worker") as conn:
+            assert transact(conn,worker)
+    with as_role(dsn,"tradevice_master_reader") as conn:
+        snapshot=snapshot_from_connection(conn)
+    assert snapshot["control"]["cycleMode"]=="CUSTOM"
+    assert snapshot["control"]["targetCycles"]==7
+    assert snapshot["control"]["strategyCycles"]==0
+    assert snapshot["control"]["runStatus"]=="STOPPED"
+    assert snapshot["control"]["sessionId"]!=str(original)
+    assert len(snapshot["terminal"])==3
+    assert len(snapshot["commands"])==3
+    assert value(dsn,"SELECT count(*) FROM master_control.run_sessions")==2
+    assert value(dsn,"SELECT count(*) FROM master_control.operator_commands")==3
+    assert value(dsn,"SELECT count(*) FROM master_control.cycle_history")==4
+
+
+def test_reader_and_member_cannot_submit_operator_command(dsn):
+    with psycopg.connect(dsn,autocommit=True) as admin:
+        admin.execute("INSERT INTO master_control.worker_state(master_id) VALUES (%s)",(MASTER,))
+    for role in ("tradevice_master_reader","authenticated"):
+        with as_role(dsn,role) as conn:
+            with pytest.raises(psycopg.errors.InsufficientPrivilege):
+                conn.execute("""INSERT INTO master_control.operator_commands
+                  (master_id,actor_id,action,idempotency_key)
+                  VALUES (%s,%s,'STOP',%s)""",(MASTER,str(uuid4()),str(uuid4())))

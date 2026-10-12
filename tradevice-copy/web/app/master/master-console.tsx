@@ -2,11 +2,12 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import './master.css';
+import CompactDashboard from './compact-dashboard';
 
-type Tab = 'overview'|'cycles'|'anomalies'|'risk'|'journal'|'system';
+type Tab = 'dashboard'|'overview'|'cycles'|'anomalies'|'risk'|'journal'|'system';
 type Notice = { id: string; at: string; severity: 'info'|'warning'|'critical'; kind: string; note: string };
 type PaperOrder = { id: string; symbol: string; side: string; state: string; quantity: string; at: string };
-type Snapshot = {
+export type Snapshot = {
   source: string; observedAt: string; executionMode: string;
   master: {id: string|null; state: string; heartbeatAt: string|null; cycles: number|null; healthyCycles: number|null;
            anomalies: number|null; activeSource: string|null; recoveryTicks: number|null;
@@ -17,9 +18,18 @@ type Snapshot = {
   activity: Notice[]; paperOrders: PaperOrder[]; equityCurve: number[];
   queue?: {queued:number;retry:number;expired:number;rejected:number;accepted:number;deadLetter:number};
   paperExecution?: {accepted:number;rejected:number;fillsVerified:boolean};
+  control?: {
+    runStatus:'STOPPED'|'RUNNING'|'COMPLETED'|'HALTED'|'NOT_CONFIGURED';
+    cycleMode:'CONTINUOUS'|'CUSTOM';targetCycles:number|null;strategyCycles:number|null;
+    newsPolicy:'AVOID'|'ALLOW'|'ONLY';sessionId:string|null;lastRejection:string|null;
+    operatorConfigured:boolean;quotesReady:boolean;brokerReady:boolean;newsCalendarReady:boolean;
+  };
+  terminal?: Array<{id:string;at:string;source:string;severity:'info'|'warning'|'critical';kind:string;message:string}>;
+  commands?: Array<{id:string;action:string;status:string;errorCode:string|null;at:string|null}>;
 };
 
 const routes: {key:Tab;label:string;icon:string;caption:string}[] = [
+  {key:'dashboard',label:'Dashboard',icon:'grid',caption:'Unified command center'},
   {key:'overview',label:'Overview',icon:'grid',caption:'Operational summary'},
   {key:'cycles',label:'Cycle Monitor',icon:'pulse',caption:'Heartbeat & recovery'},
   {key:'anomalies',label:'Anomaly Center',icon:'alert',caption:'Risk event history'},
@@ -92,7 +102,7 @@ function SectionHead({eyebrow,title,extra}:{eyebrow:string;title:string;extra?:R
   return <div className="mt-section-head"><div><small>{eyebrow}</small><h2>{title}</h2></div>{extra}</div>;
 }
 export default function MasterConsole() {
-  const [tab,setTab]=useState<Tab>('overview');
+  const [tab,setTab]=useState<Tab>('dashboard');
   const [auth,setAuth]=useState<'loading'|'login'|'checking'|'authorized'|'forbidden'>('loading');
   const [client,setClient]=useState<SupabaseClient|null>(null);
   const [token,setToken]=useState('');
@@ -225,6 +235,8 @@ export default function MasterConsole() {
           <div><strong>{realTelemetry?'READ-ONLY STAGING · VERIFIED WORKER TELEMETRY':'READ-ONLY STAGING · WORKER OFFLINE / STALE'}</strong>
           <span>Monitoring menggunakan heartbeat dan journal dari database staging. Jika worker offline atau stale, order tetap diblokir. P&L dan fill tetap tidak tersedia sampai terverifikasi.</span></div>
         </div>
+        {tab==='dashboard'&&<CompactDashboard data={data} token={token} onNavigate={setTab}
+            onUpdated={()=>setRefreshIndex(i=>i+1)}/>}
         {tab==='overview'&&<>
           <section className="mt-hero">
             <div className="mt-hero-main"><div className="mt-hero-overline"><span className="mt-led"/> MASTER TRADER / SUPERVISOR</div>

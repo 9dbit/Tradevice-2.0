@@ -1,6 +1,9 @@
 /** Fail-closed projection for server-to-server staging master telemetry. No synthetic fallback. */
 const allowedModes=new Set(['ACTIVE','DEGRADED','RECOVERING','HALTED','OFFLINE/STALE']);
 const allowedSeverities=new Set(['info','warning','critical']);
+const allowedRunStatuses=new Set(['STOPPED','RUNNING','COMPLETED','HALTED']);
+const allowedCycleModes=new Set(['CUSTOM','CONTINUOUS']);
+const allowedNewsPolicies=new Set(['AVOID','ALLOW','ONLY']);
 function count(x){return Number.isSafeInteger(x)&&x>=0&&x<=1e12?x:0}
 function dateOrNull(s){return typeof s==='string'&&Number.isFinite(Date.parse(s))?s:null}
 function bounded(s,n=150){return typeof s==='string'?s.slice(0,n):''}
@@ -29,6 +32,24 @@ export function validateWorkerTelemetry(raw, now=Date.now()) {
       symbol:bounded(x.symbol,24),side:x.side==='BUY'||x.side==='SELL'?x.side:'N/A',
       state:bounded(x.state,40),quantity:bounded(x.quantity,16),
     })):[];
+  const control=raw.control&&typeof raw.control==='object'?raw.control:{};
+  const runStatus=allowedRunStatuses.has(control.runStatus)?control.runStatus:'NOT_CONFIGURED';
+  const cycleMode=allowedCycleModes.has(control.cycleMode)?control.cycleMode:'CONTINUOUS';
+  const newsPolicy=allowedNewsPolicies.has(control.newsPolicy)?control.newsPolicy:'AVOID';
+  const targetCycles=cycleMode==='CUSTOM'&&Number.isSafeInteger(control.targetCycles)&&
+    control.targetCycles>=1&&control.targetCycles<=1000000?control.targetCycles:null;
+  const strategyCycles=Number.isSafeInteger(control.strategyCycles)&&control.strategyCycles>=0
+    ?control.strategyCycles:null;
+  const terminal=Array.isArray(raw.terminal)?raw.terminal.slice(0,60).filter(e=>e&&
+    typeof e==='object'&&dateOrNull(e.at)&&allowedSeverities.has(e.severity)).map(e=>({
+    id:bounded(String(e.id??''),60),at:dateOrNull(e.at),source:bounded(e.source,30),
+    severity:e.severity,kind:bounded(e.kind,80),message:bounded(e.message,240),
+  })):[];
+  const commands=Array.isArray(raw.commands)?raw.commands.slice(0,12).filter(c=>c&&
+    typeof c==='object').map(c=>({
+    id:bounded(String(c.id??''),80),action:bounded(c.action,32),status:bounded(c.status,32),
+    errorCode:bounded(c.errorCode,100)||null,at:dateOrNull(c.at),
+  })):[];
   const queue=raw.queue&&typeof raw.queue==='object'?raw.queue:{};
   const paper=raw.paperExecution&&typeof raw.paperExecution==='object'?raw.paperExecution:{};
   return {
@@ -52,6 +73,12 @@ export function validateWorkerTelemetry(raw, now=Date.now()) {
       masterWorker:online?'ONLINE':'OFFLINE/STALE',journal:'CONNECTED',adminAuth:'VERIFIED',
     },
     activity:events,paperOrders:orders,
+    control:{runStatus,cycleMode,targetCycles,strategyCycles,newsPolicy,
+      sessionId:bounded(control.sessionId,80)||null,lastRejection:bounded(control.lastRejection,100)||null,
+      operatorConfigured:control.operatorConfigured===true,
+      quotesReady:control.quotesReady===true && online,
+      brokerReady:false,newsCalendarReady:false},
+    terminal,commands,
     queue:{queued:count(queue.queued),retry:count(queue.retry),expired:count(queue.expired),
       rejected:count(queue.rejected),accepted:count(queue.accepted),deadLetter:count(queue.deadLetter)},
     paperExecution:{accepted:count(paper.accepted),rejected:count(paper.rejected),fillsVerified:false},
