@@ -136,12 +136,13 @@ def test_account_capacity_and_other_member_separation(rig):
 
 def test_restart_and_exactly_once_broker_ack(rig):
     e,b,c,mk=rig
-    e.enqueue(signal(c,key="restart"))
+    original=signal(c,key="restart")
+    e.enqueue(original)
     ready(e,c)
     old=e.db.execute("SELECT order_id FROM signal_inbox").fetchone()[0]
     e.close()
     e2=mk()
-    assert e2.enqueue(signal(c,key="restart"))=="ACCEPTED_SIMULATED"
+    assert e2.enqueue(original)=="ACCEPTED_SIMULATED"
     assert e2.db.execute("SELECT order_id FROM signal_inbox").fetchone()[0]==old
     assert b._db.execute("SELECT count(*) FROM paper_orders").fetchone()[0]==1
     e2.close()
