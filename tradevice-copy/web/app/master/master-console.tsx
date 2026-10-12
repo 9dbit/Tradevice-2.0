@@ -340,6 +340,6 @@ export default function MasterConsole({preview=false}:{preview?:boolean}) {
         <footer className="mt-footer"><span>TRADEVICE / MASTER CONTROL CENTER</span><span>{preview?'SYNTHETIC PREVIEW · NO REAL ORDERS':'STAGING · ADMIN ONLY · READ-ONLY'}</span></footer>
       </main>
     </div>
-    <nav className="mt-mobile-nav" aria-label="Master mobile navigation">{routes.map(route=><button type="button" key={route.key} onClick={()=>setTab(route.key)} className={tab===route.key?'current':''} aria-label={route.label} aria-current={tab===route.key?'page':undefined}><Glyph name={route.icon} size={19}/><span>{route.label.split(' ')[0]}</span></button>)}</nav>
+    <nav className="mt-mobile-nav" data-active={tab} aria-label="Master mobile navigation">{routes.map(route=><button type="button" key={route.key} onClick={()=>setTab(route.key)} className={tab===route.key?'current':''} aria-label={route.label} aria-current={tab===route.key?'page':undefined}><Glyph name={route.icon} size={19}/><span>{route.label.split(' ')[0]}</span></button>)}</nav>
   </div>;
 }
