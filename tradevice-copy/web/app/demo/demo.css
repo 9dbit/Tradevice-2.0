@@ -334,3 +334,24 @@
 .demo-app .demo-bottom-nav button.selected svg{color:#111}
 .demo-app .demo-more-sheet{background:#181818;border-color:#414141}
 @media(max-width:860px){.demo-gate .demo-gate-art{display:none}.demo-app .demo-mobile-brand .dmark{width:29px;height:29px}.demo-app .demo-topbar{background:#050505F7}}
+
+
+/* Verified-only paper workspace: clear empty states, no generated performance line. */
+.demo-app .demo-empty-chart,
+.demo-app .demo-empty-orders{
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  gap:10px;min-height:200px;text-align:center;padding:30px 18px;box-sizing:border-box;
+}
+.demo-app .demo-empty-chart{width:100%;max-width:100%;min-height:210px}
+.demo-app .demo-empty-chart svg,.demo-app .demo-empty-orders svg{color:#FF7900}
+.demo-app .demo-empty-chart strong,.demo-app .demo-empty-orders strong{
+  font-size:15px;line-height:1.45;font-weight:600;color:#EAEAEA;
+}
+.demo-app .demo-empty-chart p,.demo-app .demo-empty-orders p{
+  margin:0;max-width:440px;font-size:13px;line-height:1.65;color:#959595;
+}
+.demo-app .demo-empty-orders{border-top:1px solid #303030}
+.demo-app .demo-sidebar-foot a.demo-logout{text-decoration:none}
+@media(max-width:400px){
+ .demo-app .demo-empty-chart,.demo-app .demo-empty-orders{min-height:168px;padding:23px 12px}
+}

@@ -4,7 +4,6 @@ import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import './master.css';
 
 type Tab = 'overview'|'cycles'|'anomalies'|'risk'|'journal'|'system';
-type Scenario = 'healthy'|'anomaly'|'recovering';
 type Notice = { id: string; at: string; severity: 'info'|'warning'|'critical'; kind: string; note: string };
 type PaperOrder = { id: string; symbol: string; side: string; state: string; quantity: string; at: string };
 type Snapshot = {
@@ -28,39 +27,6 @@ const routes: {key:Tab;label:string;icon:string;caption:string}[] = [
   {key:'journal',label:'Paper Journal',icon:'receipt',caption:'Simulated order records'},
   {key:'system',label:'System Health',icon:'layers',caption:'Service connectivity'},
 ];
-const chartValues = [1000,1006,1004,1010,1007,1015,1013,1022,1018,1028,1025,1032,1028,1038,1032,1043,1041,1052,1048,1058];
-const demoEvents: Notice[] = [
-  {id:'EV-008',at:'09:02:24',severity:'info',kind:'Recovery confirmed',note:'Three clean observations; paper admission restored'},
-  {id:'EV-007',at:'09:02:20',severity:'warning',kind:'Quote stale',note:'Old quote rejected, supervisory heartbeat continued'},
-  {id:'EV-006',at:'09:02:18',severity:'critical',kind:'Spread guard',note:'Spread above configured threshold; no new order admitted'},
-  {id:'EV-005',at:'09:01:47',severity:'info',kind:'Paper order accepted',note:'Journal acknowledgement only, not an executed fill'},
-  {id:'EV-004',at:'09:00:12',severity:'warning',kind:'Duplicate signal',note:'Replay ignored through idempotency key'},
-];
-const demoOrders: PaperOrder[] = [
-  {id:'SIM-2008',symbol:'XAUUSD',side:'BUY',state:'ACCEPTED_SIMULATED',quantity:'0.01',at:'09:01:47'},
-  {id:'SIM-2007',symbol:'XAUUSD',side:'SELL',state:'EXPIRED',quantity:'0.02',at:'08:58:21'},
-  {id:'SIM-2006',symbol:'XAUUSD',side:'BUY',state:'REJECTED',quantity:'0.01',at:'08:56:10'},
-  {id:'SIM-2005',symbol:'XAUUSD',side:'BUY',state:'ACCEPTED_SIMULATED',quantity:'0.01',at:'08:51:08'},
-];
-function demoData(scenario:Scenario): Snapshot {
-  const changed = scenario==='anomaly', recovering=scenario==='recovering';
-  return {
-    source:'SYNTHETIC_PREVIEW', observedAt:'2026-10-12T02:00:00Z', executionMode:'PAPER_ONLY',
-    master:{ id:'MASTER-PAPER-01',state:changed?'DEGRADED':recovering?'RECOVERING':'ACTIVE',
-      heartbeatAt:'2026-10-12T02:00:00Z',cycles:1248,healthyCycles:1235,anomalies:13,
-      activeSource:'primary',recoveryTicks:changed?0:recovering?2:3},
-    risk:{killSwitch:'DISENGAGED',positions:2,equityUsd:1058,pnlUsd:58,drawdownPct:1.24,winRatePct:62.5},
-    infrastructure:{memberApi:'ONLINE',masterWorker:'SYNTHETIC',journal:'SYNTHETIC',adminAuth:'PREVIEW_ONLY'},
-    activity:changed?[
-      {id:'EV-009',at:'09:03:01',severity:'critical',kind:'Feed stale · DEGRADED',note:'Paper order admission paused; heartbeat stays alive'},
-      ...demoEvents,
-    ]:recovering?[
-      {id:'EV-009',at:'09:03:03',severity:'warning',kind:'Recovery checkpoint 2/3',note:'New orders held until additional clean observation'},
-      ...demoEvents,
-    ]:demoEvents,
-    paperOrders:demoOrders,equityCurve:chartValues,
-  };
-}
 function Glyph({name,size=20}:{name:string;size?:number}) {
   const common={fill:'none',stroke:'currentColor',strokeWidth:1.7,strokeLinecap:'round' as const,strokeLinejoin:'round' as const};
   return <svg aria-hidden="true" viewBox="0 0 24 24" width={size} height={size} {...common}>
@@ -91,12 +57,12 @@ function Pill({value}:{value:string}) {
   return <span className={'mt-pill '+(safe?'mt-pill-good':bad?'mt-pill-bad':'mt-pill-muted')}><i/>{value.replaceAll('_',' ')}</span>;
 }
 function Graph({numbers}:{numbers:number[]}) {
-  if(numbers.length<2)return <div className="mt-graph-empty"><Glyph name="pulse" size={27}/><strong>Belum ada data equity master</strong><p>Master worker dan journal belum terhubung. Tidak ada P&amp;L yang dapat diverifikasi.</p></div>;
+  if(numbers.length<2)return <div className="mt-graph-empty"><Glyph name="pulse" size={27}/><strong>Belum ada data equity master</strong><p>Belum ada hasil paper trading terverifikasi. Grafik akan terisi dari data eksekusi yang sah.</p></div>;
   const width=740,height=205,pad=20,min=Math.min(...numbers)-7,max=Math.max(...numbers)+7;
   const pts=numbers.map((v,i)=>({x:pad+i/(numbers.length-1)*(width-pad*2),y:height-pad-(v-min)/(max-min)*(height-pad*2)}));
   const line=pts.map(p=>p.x.toFixed(1)+','+p.y.toFixed(1)).join(' ');
   const area=pts[0].x+','+(height-pad)+' '+line+' '+pts[pts.length-1].x+','+(height-pad);
-  return <svg className="mt-graph" viewBox={'0 0 '+width+' '+height} role="img" aria-label="Grafik equity dari data sintetis, bukan performa trading aktual">
+  return <svg className="mt-graph" viewBox={'0 0 '+width+' '+height} role="img" aria-label="Grafik equity dari eksekusi paper yang telah diverifikasi">
     {[44,93,142,191].map(y=><line key={y} x1={pad} y1={y} x2={width-pad} y2={y} stroke="#2e2e2e" strokeDasharray="3 7"/>)}
     <polyline points={area} fill="#ff7900" fillOpacity=".07"/>
     <polyline points={line} fill="none" stroke="#ff7900" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"/>
@@ -125,9 +91,8 @@ function Orders({rows}:{rows:PaperOrder[]}) {
 function SectionHead({eyebrow,title,extra}:{eyebrow:string;title:string;extra?:React.ReactNode}){
   return <div className="mt-section-head"><div><small>{eyebrow}</small><h2>{title}</h2></div>{extra}</div>;
 }
-export default function MasterConsole({preview=false}:{preview?:boolean}) {
+export default function MasterConsole() {
   const [tab,setTab]=useState<Tab>('overview');
-  const [scenario,setScenario]=useState<Scenario>('healthy');
   const [auth,setAuth]=useState<'loading'|'login'|'checking'|'authorized'|'forbidden'>('loading');
   const [client,setClient]=useState<SupabaseClient|null>(null);
   const [token,setToken]=useState('');
@@ -139,7 +104,6 @@ export default function MasterConsole({preview=false}:{preview?:boolean}) {
   const [refreshIndex,setRefreshIndex]=useState(0);
   const [severity,setSeverity]=useState<'all'|'warning'|'critical'>('all');
   useEffect(()=>{
-    if(preview)return;
     let mounted=true;
     let subscription:{unsubscribe:()=>void}|null=null;
     async function boot(){
@@ -165,9 +129,8 @@ export default function MasterConsole({preview=false}:{preview?:boolean}) {
     }
     void boot();
     return()=>{mounted=false;subscription?.unsubscribe();};
-  },[preview]);
+  },[]);
   useEffect(()=>{
-    if(preview)return;
     if(!token){setSnapshot(null);setAuth(v=>v==='loading'?'loading':'login');return;}
     let active=true;
     async function load(){
@@ -189,7 +152,7 @@ export default function MasterConsole({preview=false}:{preview?:boolean}) {
     setAuth('checking');void load();
     const id=window.setInterval(()=>{void load();},15000);
     return()=>{active=false;window.clearInterval(id);};
-  },[preview,token,refreshIndex]);
+  },[token,refreshIndex]);
   async function signIn(event:FormEvent<HTMLFormElement>){
     event.preventDefault();if(!client)return;
     setBusy(true);setMessage('');
@@ -204,15 +167,15 @@ export default function MasterConsole({preview=false}:{preview?:boolean}) {
     setToken('');setSnapshot(null);setAuth('login');
     if(client)await client.auth.signOut();
   }
-  const data:Snapshot|null=preview?demoData(scenario):snapshot;
+  const data:Snapshot|null=snapshot;
   const mode=data?.master.state||'NOT_CONNECTED';
-  const realTelemetry=!preview && data?.source==='STAGING_WORKER_TELEMETRY';
-  const workerOnline=preview || data?.infrastructure.masterWorker==='ONLINE';
+  const realTelemetry=data?.source==='STAGING_WORKER_TELEMETRY';
+  const workerOnline=data?.infrastructure.masterWorker==='ONLINE';
   const available=!!data;
   const alertRows=(data?.activity||[]).filter(row=>severity==='all'||row.severity===severity);
   const roleTitle=routes.find(route=>route.key===tab)?.label||'Overview';
 
-  if(!preview && auth!=='authorized')return <main className="mt mt-login">
+  if(auth!=='authorized')return <main className="mt mt-login">
     <div className="mt-login-card"><Brand/><div className="mt-login-line"/>
       <div className="mt-eyebrow">PRIVATE OPERATOR CONSOLE / STAGING</div>
       <h1>Master Trader<br/><span>Control Center.</span></h1>
@@ -226,7 +189,7 @@ export default function MasterConsole({preview=false}:{preview?:boolean}) {
         {message&&<p role="alert" className="mt-login-error">{message}</p>}
         <button type="submit" className="mt-primary" disabled={busy||!client}>{busy?'Memverifikasi...':'Masuk sebagai admin'} <Glyph name="arrow" size={18}/></button>
       </form>}
-      <div className="mt-login-foot"><span><Glyph name="lock" size={16}/> Server-verified role</span><a href="/master/preview">Lihat preview sintetis <Glyph name="chevron" size={16}/></a></div>
+      <div className="mt-login-foot"><span><Glyph name="lock" size={16}/> Server-verified role</span><span>Staging · paper only</span></div>
     </div>
     <div className="mt-login-art"><div className="mt-art-grid"/><div className="mt-art-glow"/><div className="mt-art-top">TRADEVICE / OPERATIONS</div>
       <div className="mt-art-value">01<span> / MASTER</span></div><div className="mt-art-bottom">Continuity first.<br/>Execution only when safe.</div>
@@ -249,40 +212,36 @@ export default function MasterConsole({preview=false}:{preview?:boolean}) {
         <div className="mt-mobile-brand"><Brand/></div>
         <div className="mt-top-crumb"><span>MASTER TRADER</span><Glyph name="chevron" size={14}/><strong>{roleTitle}</strong></div>
         <div className="mt-top-actions"><span className="mt-env-tag">STAGING</span><span className="mt-env-paper"><i/> PAPER ONLY</span>
-          {!preview?<button type="button" className="mt-refresh" aria-label="Refresh master status" onClick={()=>setRefreshIndex(i=>i+1)}><Glyph name="refresh" size={18}/></button>:null}
-          {!preview?<button type="button" className="mt-logout" onClick={()=>void signOut()} aria-label="Keluar master admin"><Glyph name="logout" size={18}/></button>:<a className="mt-preview-login" href="/master">Admin login <Glyph name="arrow" size={16}/></a>}</div>
+          <button type="button" className="mt-refresh" aria-label="Refresh master status" onClick={()=>setRefreshIndex(i=>i+1)}><Glyph name="refresh" size={18}/></button>
+          <button type="button" className="mt-logout" onClick={()=>void signOut()} aria-label="Keluar master admin"><Glyph name="logout" size={18}/></button></div>
       </header>
       <main id="mt-main" className="mt-main">
         <div className="mt-page-header"><div><div className="mt-eyebrow">TRADEVICE / COMMAND DESK</div>
           <h1>{tab==='overview'?'Master overview':roleTitle}<span>.</span></h1>
           <p>Monitor continuity, anomaly, risk guardrails, dan audit paper trading dari satu tempat.</p>
-        </div><div className="mt-date"><Glyph name="clock" size={18}/><span>{preview?'Preview snapshot · synthetic':'Operational telemetry · every 15s'}</span></div></div>
-        <div role="note" className={'mt-disclosure '+(preview?'mt-disclosure-preview':'')}>
-          <Glyph name={preview?'alert':'shield'} size={20}/>
-          <div><strong>{preview?'SYNTHETIC PREVIEW · BUKAN DATA TRADING NYATA':realTelemetry?'READ-ONLY STAGING · VERIFIED WORKER TELEMETRY':'READ-ONLY STAGING · WORKER OFFLINE / STALE'}</strong>
-          <span>{preview?'Angka, grafik, event, dan order di halaman ini hanya ilustrasi interaktif. Tidak ada order yang dikirim.':'Monitoring menggunakan heartbeat dan journal dari database staging. Jika worker offline atau stale, order tetap diblokir. P&L dan fill tetap tidak tersedia sampai terverifikasi.'}</span></div>
+        </div><div className="mt-date"><Glyph name="clock" size={18}/><span>Operational telemetry · every 15s</span></div></div>
+        <div role="note" className="mt-disclosure">
+          <Glyph name="shield" size={20}/>
+          <div><strong>{realTelemetry?'READ-ONLY STAGING · VERIFIED WORKER TELEMETRY':'READ-ONLY STAGING · WORKER OFFLINE / STALE'}</strong>
+          <span>Monitoring menggunakan heartbeat dan journal dari database staging. Jika worker offline atau stale, order tetap diblokir. P&L dan fill tetap tidak tersedia sampai terverifikasi.</span></div>
         </div>
-        {preview&&<div className="mt-preview-controls" aria-label="Synthetic anomaly scenarios"><span>SIMULATE CONDITIONS</span>
-          {([{key:'healthy',label:'Normal'},{key:'anomaly',label:'Feed stale'},{key:'recovering',label:'Recovering'}] as const).map(item=>
-            <button type="button" key={item.key} onClick={()=>setScenario(item.key)} aria-pressed={scenario===item.key} className={scenario===item.key?'current':''}>{item.label}</button>)}
-        </div>}
         {tab==='overview'&&<>
           <section className="mt-hero">
             <div className="mt-hero-main"><div className="mt-hero-overline"><span className="mt-led"/> MASTER TRADER / SUPERVISOR</div>
               <h2>{mode==='ACTIVE'?'Cycle running normally.':mode==='DEGRADED'?'Anomaly detected. Cycle protected.':mode==='RECOVERING'?'Revalidating market conditions.':'Engine connection pending.'}</h2>
-              <p>{preview?'Simulated master stays observable during feed disruption while new paper orders are paused.':'The supervisor runs paper-only with fail-closed risk admission. Dashboard reads recorded staging telemetry, never simulated fills.'}</p>
+              <p>The supervisor runs paper-only with fail-closed risk admission. Dashboard reads recorded staging telemetry, never fabricated fills.</p>
               <div className="mt-hero-foot"><Pill value={mode}/><span>Master ID: {data?.master.id||'Not connected'}</span><span>Quote feed: {data?.master.activeSource||'Not connected'}</span></div>
             </div>
             <div className="mt-hero-orbit" aria-hidden="true"><span className="mt-orbit-one"/><span className="mt-orbit-two"/><span className="mt-orbit-center"><Glyph name="pulse" size={33}/></span></div>
           </section>
           <div className="mt-metrics">
-            <Metric label="Master heartbeat" icon="pulse" desc={preview?'Synthetic heartbeat':'Verified when worker is online'}>{workerOnline?'CONNECTED':'OFFLINE / STALE'}</Metric>
-            <Metric label="Cycle count" icon="refresh" desc={preview?'Illustrative cycle counter':'Staging cycle journal only'}><Value value={data?.master.cycles}/></Metric>
-            <Metric label="Paper positions" icon="receipt" desc={preview?'Simulated journal only':'No verified fill reconciliation'}><Value value={data?.risk.positions}/></Metric>
-            <Metric label="Maximum drawdown" icon="shield" desc={preview?'Synthetic realised simulation':'No verified fills or equity'}><Value value={data?.risk.drawdownPct} suffix="%"/></Metric>
+            <Metric label="Master heartbeat" icon="pulse" desc="Verified when worker is online">{workerOnline?'CONNECTED':'OFFLINE / STALE'}</Metric>
+            <Metric label="Cycle count" icon="refresh" desc="Staging cycle journal only"><Value value={data?.master.cycles}/></Metric>
+            <Metric label="Paper positions" icon="receipt" desc="No verified fill reconciliation"><Value value={data?.risk.positions}/></Metric>
+            <Metric label="Maximum drawdown" icon="shield" desc="No verified fills or equity"><Value value={data?.risk.drawdownPct} suffix="%"/></Metric>
           </div>
           <div className="mt-main-grid">
-            <section className="mt-panel mt-performance"><SectionHead eyebrow="PERFORMANCE MONITOR" title="Master equity curve" extra={<Pill value={preview?'SYNTHETIC':'NO DATA'}/>}/>
+            <section className="mt-panel mt-performance"><SectionHead eyebrow="PERFORMANCE MONITOR" title="Master equity curve" extra={<Pill value={data?.equityCurve.length ? "VERIFIED" : "NO DATA"}/>}/>
               <Graph numbers={data?.equityCurve||[]}/><div className="mt-performance-foot"><span>Equity: {typeof data?.risk.equityUsd==='number'?'$'+data.risk.equityUsd.toFixed(2):'Not measured'}</span><span>Win rate: {typeof data?.risk.winRatePct==='number'?data.risk.winRatePct+'%':'Not measured'}</span></div>
             </section>
             <section className="mt-panel mt-cycle-card"><SectionHead eyebrow="ENGINE CONTINUITY" title="Cycle integrity"/>
@@ -326,22 +285,22 @@ export default function MasterConsole({preview=false}:{preview?:boolean}) {
               ['Live execution','DISABLED'],
               ['Deposit / withdrawal','DISABLED'],
               ['Master kill switch',data?.risk.killSwitch||'NOT_CONNECTED'],
-              ['Order replay guard',preview?'ENABLED (synthetic)':'WORKER NOT CONNECTED'],
+              ['Order replay guard',workerOnline?'WORKER GUARDED':'WORKER NOT CONNECTED'],
             ].map(([label,value])=><div className="mt-risk-row" key={label}><span>{label}</span><strong>{value}</strong></div>)}
           </section><section className="mt-panel mt-safety"><div className="mt-safety-icon"><Glyph name="lock" size={28}/></div>
             <h2>Emergency kill switch</h2><p>Kontrol ini hanya dapat diaktifkan setelah worker master yang terautentikasi dan jalur auditnya selesai terintegrasi.</p>
             <button type="button" disabled className="mt-kill-disabled">Kill switch unavailable <Glyph name="lock" size={18}/></button>
             <div className="mt-safety-note">No write command is exposed from this dashboard.</div>
           </section></div>
-          <div className="mt-metrics mt-three"><Metric icon="shield" label="Drawdown" desc="Requires verified closed paper fills"><Value value={data?.risk.drawdownPct} suffix="%"/></Metric><Metric icon="pulse" label="Open positions" desc="Requires reconciliation"><Value value={data?.risk.positions}/></Metric><Metric icon="receipt" label="Net paper P&L" desc="Simulated sample only in preview">{typeof data?.risk.pnlUsd==='number'?'$'+data.risk.pnlUsd.toFixed(2):'—'}</Metric></div>
+          <div className="mt-metrics mt-three"><Metric icon="shield" label="Drawdown" desc="Requires verified closed paper fills"><Value value={data?.risk.drawdownPct} suffix="%"/></Metric><Metric icon="pulse" label="Open positions" desc="Requires reconciliation"><Value value={data?.risk.positions}/></Metric><Metric icon="receipt" label="Net paper P&L" desc="Requires verified paper execution">{typeof data?.risk.pnlUsd==='number'?'$'+data.risk.pnlUsd.toFixed(2):'—'}</Metric></div>
         </>}
-        {tab==='journal'&&<section className="mt-panel"><SectionHead eyebrow="PAPER EXECUTION AUDIT" title="Paper order journal" extra={<Pill value={preview?'SYNTHETIC':'NOT_CONNECTED'}/>}/>
+        {tab==='journal'&&<section className="mt-panel"><SectionHead eyebrow="PAPER EXECUTION AUDIT" title="Paper order journal" extra={<Pill value={data?.paperOrders.length ? "PAPER" : "NO ORDERS"}/>}/>
           <p className="mt-panel-caption">Accepted paper orders are journal acknowledgements, not executed fills. Live trading is disabled.</p>
-          {!preview&&<div className="mt-journal-summary">
+          <div className="mt-journal-summary">
             <span>Accepted paper acknowledgements: <strong>{data?.queue?.accepted??'—'}</strong></span>
             <span>Rejected paper signals: <strong>{data?.queue?.rejected??'—'}</strong></span>
             <span>Verified fills: <strong>NOT MEASURED</strong></span>
-          </div>}
+          </div>
           <Orders rows={data?.paperOrders||[]}/></section>}
         {tab==='system'&&<>
           <section className="mt-panel"><SectionHead eyebrow="INFRASTRUCTURE" title="Connectivity & data provenance"/><div className="mt-system-grid">
@@ -354,7 +313,7 @@ export default function MasterConsole({preview=false}:{preview?:boolean}) {
           </div></section><section className="mt-panel mt-system-source"><SectionHead eyebrow="DATA INTEGRITY" title="Reporting boundaries"/>
             <p>Mode operasional membaca telemetry PostgreSQL melalui API privat, setelah verifikasi Supabase master-admin. Heartbeat dan anomaly journal berasal dari worker aktual. Fill, win rate, dan drawdown tetap tidak diukur sampai ada bukti paper execution yang terverifikasi.</p><span>Data source: {data?.source||'UNAVAILABLE'}</span></section>
         </>}
-        <footer className="mt-footer"><span>TRADEVICE / MASTER CONTROL CENTER</span><span>{preview?'SYNTHETIC PREVIEW · NO REAL ORDERS':'STAGING · ADMIN ONLY · READ-ONLY'}</span></footer>
+        <footer className="mt-footer"><span>TRADEVICE / MASTER CONTROL CENTER</span><span>STAGING · ADMIN ONLY · READ-ONLY</span></footer>
       </main>
     </div>
     <nav className="mt-mobile-nav" data-active={tab} aria-label="Master mobile navigation">{routes.map(route=><button type="button" key={route.key} onClick={()=>setTab(route.key)} className={tab===route.key?'current':''} aria-label={route.label} aria-current={tab===route.key?'page':undefined}><Glyph name={route.icon} size={19}/><span>{route.label.split(' ')[0]}</span></button>)}</nav>

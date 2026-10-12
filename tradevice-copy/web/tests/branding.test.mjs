@@ -49,7 +49,7 @@ test('final black-white style replaces orange gradients',()=>{
 });
 test('branding does not unlock live trading or funding',()=>{
   assert.match(page, /PAPER-ONLY TEST ENVIRONMENT/);
-  assert.match(demo, /DATA SINTETIS/);
+  assert.match(demo, /BELUM ADA DATA TRADING DEMO/);
   assert.doesNotMatch(page, /fetch\([^\n]*(deposit-intents|withdrawal-intents|paper\/orders)/);
 });
 

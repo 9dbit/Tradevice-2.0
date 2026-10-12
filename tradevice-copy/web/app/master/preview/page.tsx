@@ -1,7 +1,11 @@
-import MasterConsole from '../master-console';
+import { redirect } from 'next/navigation';
+
+// Synthetic preview has been retired. Use the authenticated staging console.
+// No fabricated equity, trades, signals, or events are ever rendered here.
 export const metadata = {
-  title:'Master Trader Preview | Tradevice',
-  description:'Clearly-labelled synthetic master operations dashboard preview.',
-  robots:{index:false,follow:false},
+  title: 'Master Trader | Tradevice',
+  robots: { index: false, follow: false },
 };
-export default function MasterPreview(){return <MasterConsole preview/>;}
+export default function RetiredMasterPreview() {
+  redirect('/master');
+}
