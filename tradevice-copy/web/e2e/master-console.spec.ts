@@ -82,7 +82,7 @@ test('master orange report theme uses a capsule island on iPhone without changin
       logoSource:logo.getAttribute('src'),
     };
   });
-  expect(metrics.orange).toBe('#FF7900');
+  expect(metrics.orange.toLowerCase()).toBe('#ff7900');
   expect(metrics.navRadius).toBeGreaterThanOrEqual(metrics.navHeight / 2);
   expect(metrics.indicatorRadius).toBeGreaterThan(20);
   expect(metrics.navPosition).toBe('fixed');
