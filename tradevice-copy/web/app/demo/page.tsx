@@ -163,6 +163,6 @@ export default function DemoPage() {
         {items.slice(4).map(item=><button type="button" key={item.key} onClick={()=>visit(item.key)}><Icon name={item.icon}/>{item.label}<Icon name="arrow" size={17}/></button>)}
         <a className="demo-logout" href="/master">Master login <Icon name="arrow" size={17}/></a>
         <p>NO SAMPLE DATA · Read-only staging workspace</p>
-      </div>}
+      </div></>}
   </div>;
 }
