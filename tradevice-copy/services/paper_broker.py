@@ -52,7 +52,8 @@ class PaperOrder:
 
 
 class PaperBroker:
-    def __init__(self, database: str = ':memory:'):
+    def __init__(self, database: str = ':memory:', clock=None):
+        self._clock = clock or time.time
         self._lock = RLock()
         self._db = sqlite3.connect(database, check_same_thread=False, timeout=10, isolation_level=None)
         self._db.execute('CREATE TABLE IF NOT EXISTS paper_orders (account_id TEXT NOT NULL, request_key TEXT NOT NULL, fingerprint TEXT NOT NULL, payload TEXT NOT NULL, PRIMARY KEY(account_id, request_key))')
@@ -91,7 +92,7 @@ class PaperBroker:
                         raise ValueError('Idempotency key reused with a different payload')
                     order = PaperOrder(**json.loads(previous[1]))
                 else:
-                    if not time.time() < expires_at <= time.time() + 3600:
+                    if not self._clock() < expires_at <= self._clock() + 3600:
                         raise ValueError('Expired or excessively long signal lifetime')
                     order = PaperOrder(id=str(uuid4()), **payload)
                     self._db.execute('INSERT INTO paper_orders VALUES (?,?,?,?)', (account_id, key, fingerprint, json.dumps(asdict(order))))

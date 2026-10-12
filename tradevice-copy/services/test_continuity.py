@@ -30,7 +30,7 @@ def quote(c,n,bid=D("4000"),ask=D("4000.1"),source="primary"):
 @pytest.fixture
 def rig(tmp_path):
     c=Clock()
-    b=PaperBroker(str(tmp_path/"orders.sqlite"))
+    b=PaperBroker(str(tmp_path/"orders.sqlite"),clock=c)
     def mk(**kw):
         return ContinuityEngine(master_id="master-1",broker=b,
           journal_path=str(tmp_path/"cycles.sqlite"),

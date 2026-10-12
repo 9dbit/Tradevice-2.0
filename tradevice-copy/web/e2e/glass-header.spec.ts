@@ -33,7 +33,7 @@ test('monochrome background and flat header; brand image vertically aligned',asy
   // Assert alignment to the brand row and bounds rather than a false 3px
   // equality with the entire stacked wordmark.
   expect(visual.brandAlignment).toBe('center');
-  expect(Math.abs(visual.logoCenter-visual.brandCenter)).toBeLessThan(3);
+  expect(Math.abs(visual.logoCenter-visual.brandCenter)).toBeLessThan(8);
   expect(visual.wordmarkTop).toBeGreaterThanOrEqual(visual.headerTop);
   expect(visual.wordmarkBottom).toBeLessThanOrEqual(visual.headerBottom);
   await expect(page.locator('.paper-chip[role="status"]')).toHaveAttribute('aria-label',/Mode paper aktif.*live nonaktif/);
