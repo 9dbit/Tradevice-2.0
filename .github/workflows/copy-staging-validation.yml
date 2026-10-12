@@ -19,6 +19,22 @@ jobs:
   validate:
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    # PostgreSQL is ephemeral CI-only. No Supabase credentials or staging data here.
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: tradevice_master_ci
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: ci_only_temporary_password
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres -d tradevice_master_ci"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      MASTER_TEST_DATABASE_URL: postgresql://postgres:ci_only_temporary_password@127.0.0.1:5432/tradevice_master_ci
     permissions:
       contents: write
     steps:
