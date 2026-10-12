@@ -94,10 +94,10 @@ function Graph({numbers}:{numbers:number[]}) {
   const line=pts.map(p=>p.x.toFixed(1)+','+p.y.toFixed(1)).join(' ');
   const area=pts[0].x+','+(height-pad)+' '+line+' '+pts[pts.length-1].x+','+(height-pad);
   return <svg className="mt-graph" viewBox={'0 0 '+width+' '+height} role="img" aria-label="Grafik equity dari data sintetis, bukan performa trading aktual">
-    {[44,93,142,191].map(y=><line key={y} x1={pad} y1={y} x2={width-pad} y2={y} stroke="#31343b" strokeDasharray="3 7"/>)}
-    <polyline points={area} fill="#8cbcb4" fillOpacity=".07"/>
-    <polyline points={line} fill="none" stroke="#9bcfc4" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"/>
-    <circle cx={pts[pts.length-1].x} cy={pts[pts.length-1].y} r="5" fill="#cff0e7" stroke="#264842" strokeWidth="5"/>
+    {[44,93,142,191].map(y=><line key={y} x1={pad} y1={y} x2={width-pad} y2={y} stroke="#2e2e2e" strokeDasharray="3 7"/>)}
+    <polyline points={area} fill="#ff7900" fillOpacity=".07"/>
+    <polyline points={line} fill="none" stroke="#ff7900" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"/>
+    <circle cx={pts[pts.length-1].x} cy={pts[pts.length-1].y} r="5" fill="#ffb064" stroke="#3a210e" strokeWidth="5"/>
   </svg>;
 }
 function Metric({label,children,desc,icon}:{label:string;children:React.ReactNode;desc:string;icon:string}){

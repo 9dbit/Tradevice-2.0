@@ -61,3 +61,39 @@ for(const width of [320,375,390,430,768,1024,1440]) {
     }
   });
 }
+
+
+test('master orange report theme uses a capsule island on iPhone without changing navigation safety', async ({page}) => {
+  await page.setViewportSize({width:390,height:844});
+  await page.goto('/master/preview');
+  const metrics = await page.evaluate(() => {
+    const root = document.querySelector('.mt') as HTMLElement;
+    const nav = document.querySelector('.mt-mobile-nav') as HTMLElement;
+    const logo = document.querySelector('.mt-mobile-brand .mt-brand img') as HTMLImageElement;
+    const rect = nav.getBoundingClientRect();
+    const style = getComputedStyle(nav);
+    const indicator = getComputedStyle(nav,'::before');
+    return {
+      orange: getComputedStyle(root).getPropertyValue('--mt-accent').trim(),
+      navWidth:rect.width,navHeight:rect.height,
+      navRadius:parseFloat(style.borderTopLeftRadius),
+      navPosition:style.position,
+      indicatorRadius:parseFloat(indicator.borderTopLeftRadius),
+      logoSource:logo.getAttribute('src'),
+    };
+  });
+  expect(metrics.orange).toBe('#FF7900');
+  expect(metrics.navRadius).toBeGreaterThanOrEqual(metrics.navHeight / 2);
+  expect(metrics.indicatorRadius).toBeGreaterThan(20);
+  expect(metrics.navPosition).toBe('fixed');
+  expect(metrics.navWidth).toBeLessThan(390);
+  expect(metrics.logoSource).toContain('tradevice-arrow.svg');
+  const selected = page.getByRole('button',{name:'Feed stale'});
+  await selected.click();
+  await expect(selected).toHaveCSS('background-color','rgb(255, 121, 0)');
+  const menu = page.getByRole('navigation',{name:'Master mobile navigation'});
+  await menu.getByRole('button',{name:'Paper Journal'}).click();
+  await expect(menu).toHaveAttribute('data-active','journal');
+  await expect(page.getByText('SIM-2008')).toBeVisible();
+  await page.screenshot({path:'test-results/master-report-orange-iphone.png',fullPage:true});
+});

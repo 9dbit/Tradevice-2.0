@@ -29,3 +29,7 @@ New files are under web/app/master/, web/app/api/master/ and web/lib/master-secu
 ## Next runtime integrations
 
 After an approved master supervisor is deployed as a managed, single-leader staging worker, stream read-only telemetry from Postgres (via a carefully scoped server-side service identity), implement auth-checked control commands with idempotency and audit trails, verify freshness of cycles and quote source, then wire the enablement of an emergency stop. Never silently label a missing service as ACTIVE or replace actual metrics with sample numbers.
+
+## Report Orange design revision (2026-10-12)
+
+The dedicated master-only UI switches from excessive outlined cards to an editorial, low-frame, dark ChatGPT-report-inspired layout: more reading space, subtle separators, orange `#FF7900` headings/key actions/graph, original orange Tradevice vector logo, and a centered fully capsule-shaped mobile frosted navigation island with a moving white selected pill. 320–1440px responsive tests plus a dedicated mobile capsule/color Playwright assertion are part of the staging CI. The synthetic preview remains explicitly labelled synthetic; admin access remains server-verified and read-only. No changes to member `app/page.tsx`, `app/globals.css`, or brand SVG.
