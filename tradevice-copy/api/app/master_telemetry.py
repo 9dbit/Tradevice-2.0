@@ -35,9 +35,10 @@ def build_snapshot(state, anomalies, orders, queue, clock):
         raise ValueError("Database clock must have timezone")
     state = state or {}
     heartbeat = state.get("heartbeat_at")
-    lease = state.get("lease_until")
-    online = bool(heartbeat and lease and clock - STALENESS <= heartbeat <= clock + timedelta(seconds=2)
-                  and lease > clock)
+    # Keep PostgreSQL's '-infinity' lease sentinel inside SQL to avoid datetime decoding.
+    lease_valid = state.get("lease_valid") is True
+    online = bool(heartbeat and lease_valid and
+                  clock - STALENESS <= heartbeat <= clock + timedelta(seconds=2))
     raw_mode = state.get("mode")
     safe_state = raw_mode if online and raw_mode in ("ACTIVE","DEGRADED","RECOVERING","HALTED") else "OFFLINE/STALE"
     if safe_state == "ACTIVE" and not state.get("active_source"):
@@ -90,32 +91,39 @@ def build_snapshot(state, anomalies, orders, queue, clock):
       "activity":events,"paperOrders":paper,"equityCurve":[],
     }
 
+def snapshot_from_connection(conn):
+    """Read-only connection already authenticated as dedicated reader.
+
+    Factored for isolated PostgreSQL CI; DSN pinning remains in read_database().
+    """
+    with conn.cursor(row_factory=dict_row) as cur:
+        cur.execute("SELECT current_user AS role, now() AS clock")
+        identity=cur.fetchone()
+        if identity["role"] != "tradevice_master_reader":
+            raise RuntimeError("Dedicated read-only role required")
+        clock=identity["clock"]
+        cur.execute("""SELECT master_id,mode,heartbeat_at,(lease_until>now()) AS lease_valid,started_at,last_cycle_at,
+                           cycles,healthy_cycles,anomalies,active_source,clean_ticks,reason,kill_switch
+                       FROM master_control.worker_state WHERE master_id=%s""",(MASTER_ID,))
+        state=cur.fetchone()
+        cur.execute("""SELECT id,observed_at,severity,code,note
+                       FROM master_control.anomaly_journal
+                       WHERE master_id=%s ORDER BY id DESC LIMIT 30""",(MASTER_ID,))
+        anomalies=cur.fetchall()
+        cur.execute("""SELECT p.id,p.created_at,p.status,
+                       s.payload->>'symbol' AS symbol,s.payload->>'side' AS side,
+                       s.payload->>'quantity' AS quantity
+                       FROM master_control.paper_orders p JOIN master_control.signal_queue s ON s.id=p.signal_id
+                       WHERE p.master_id=%s ORDER BY p.created_at DESC LIMIT 30""",(MASTER_ID,))
+        orders=cur.fetchall()
+        cur.execute("""SELECT status,count(*) AS n FROM master_control.signal_queue
+                       WHERE master_id=%s GROUP BY status""",(MASTER_ID,))
+        queue=[(r["status"],r["n"]) for r in cur.fetchall()]
+    return build_snapshot(state,anomalies,orders,queue,clock)
+
 def read_database(dsn):
     if not allowed_reader_dsn(dsn):
         raise RuntimeError("Wrong staging master reader connection")
     with psycopg.connect(dsn, connect_timeout=8, options="-c statement_timeout=5000",
                          row_factory=dict_row, autocommit=True) as conn:
-        with conn.cursor() as cur:
-            cur.execute("SELECT current_user AS role, now() AS clock")
-            identity=cur.fetchone()
-            if identity["role"] != "tradevice_master_reader":
-                raise RuntimeError("Dedicated read-only role required")
-            clock=identity["clock"]
-            cur.execute("""SELECT master_id,mode,heartbeat_at,lease_until,started_at,last_cycle_at,
-                               cycles,healthy_cycles,anomalies,active_source,clean_ticks,reason,kill_switch
-                           FROM master_control.worker_state WHERE master_id=%s""",(MASTER_ID,))
-            state=cur.fetchone()
-            cur.execute("""SELECT id,observed_at,severity,code,note
-                           FROM master_control.anomaly_journal
-                           WHERE master_id=%s ORDER BY id DESC LIMIT 30""",(MASTER_ID,))
-            anomalies=cur.fetchall()
-            cur.execute("""SELECT p.id,p.created_at,p.status,
-                           s.payload->>'symbol' AS symbol,s.payload->>'side' AS side,
-                           s.payload->>'quantity' AS quantity
-                           FROM master_control.paper_orders p JOIN master_control.signal_queue s ON s.id=p.signal_id
-                           WHERE p.master_id=%s ORDER BY p.created_at DESC LIMIT 30""",(MASTER_ID,))
-            orders=cur.fetchall()
-            cur.execute("""SELECT status,count(*) AS n FROM master_control.signal_queue
-                           WHERE master_id=%s GROUP BY status""",(MASTER_ID,))
-            queue=[(r["status"],r["n"]) for r in cur.fetchall()]
-    return build_snapshot(state,anomalies,orders,queue,clock)
+        return snapshot_from_connection(conn)

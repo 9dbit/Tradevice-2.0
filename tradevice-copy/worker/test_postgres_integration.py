@@ -15,6 +15,7 @@ import pytest
 from psycopg.rows import dict_row
 
 from master_worker import MASTER, cycle_state, transact
+from app.master_telemetry import snapshot_from_connection
 
 MIGRATIONS = (
     "202610120001_master_control_private_paper_telemetry.sql",
@@ -162,3 +163,30 @@ def test_member_postgres_role_cannot_read_private_schema(dsn):
     with as_role(dsn, "authenticated") as conn:
         with pytest.raises(psycopg.errors.InsufficientPrivilege):
             conn.execute("SELECT * FROM master_control.worker_state")
+
+
+
+def test_reader_query_handles_uninitialized_infinite_lease(dsn):
+    # Default lease is '-infinity'. A reader must display OFFLINE, not raise DataError.
+    with psycopg.connect(dsn, autocommit=True) as admin:
+        admin.execute("INSERT INTO master_control.worker_state(master_id) VALUES (%s)", (MASTER,))
+    with as_role(dsn, "tradevice_master_reader") as conn:
+        snapshot = snapshot_from_connection(conn)
+    assert snapshot["source"] == "STAGING_WORKER_TELEMETRY"
+    assert snapshot["master"]["state"] == "OFFLINE/STALE"
+    assert snapshot["master"]["heartbeatAt"] is None
+    assert snapshot["risk"]["pnlUsd"] is None
+    assert snapshot["paperOrders"] == []
+
+
+def test_reader_query_returns_real_worker_heartbeat(dsn):
+    with as_role(dsn, "tradevice_master_worker") as conn:
+        assert transact(conn, str(uuid4()))
+    with as_role(dsn, "tradevice_master_reader") as conn:
+        snapshot = snapshot_from_connection(conn)
+    assert snapshot["master"]["state"] == "DEGRADED"
+    assert snapshot["master"]["cycles"] == 1
+    assert snapshot["master"]["reason"] == "MISSING_TRUSTED_QUOTE"
+    assert snapshot["infrastructure"]["masterWorker"] == "ONLINE"
+    assert snapshot["activity"][0]["kind"] == "MISSING_TRUSTED_QUOTE"
+    assert snapshot["paperExecution"]["fillsVerified"] is False

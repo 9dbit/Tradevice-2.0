@@ -6,7 +6,7 @@ DSN="postgresql://tradevice_master_reader:secret@db.scqzlcivherovlwqypeu.supabas
 
 def state(**kwargs):
     return dict(master_id="tradevice-master-staging",mode="DEGRADED",
-        heartbeat_at=NOW-timedelta(seconds=2), lease_until=NOW+timedelta(seconds=8),
+        heartbeat_at=NOW-timedelta(seconds=2), lease_valid=True,
         last_cycle_at=NOW-timedelta(seconds=2),started_at=NOW-timedelta(minutes=1),
         cycles=20,healthy_cycles=0,anomalies=1,active_source=None,clean_ticks=0,
         reason="MISSING_TRUSTED_QUOTE",kill_switch=False,**kwargs)
@@ -30,7 +30,7 @@ def test_fresh_real_degraded_without_fake_pnl():
     assert s["equityCurve"]==[]
 
 def test_expired_lease_forces_stale_even_with_recent_heartbeat():
-    s=state();s["lease_until"]=NOW-timedelta(seconds=1)
+    s=state();s["lease_valid"]=False
     v=build_snapshot(s,[],[],[],NOW)
     assert v["master"]["state"]=="OFFLINE/STALE"
     assert v["infrastructure"]["masterWorker"]=="OFFLINE/STALE"
