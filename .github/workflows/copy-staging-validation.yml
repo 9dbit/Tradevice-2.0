@@ -4,6 +4,12 @@ on:
     branches: ['feature/tradevice-copy-foundation-20261011']
     paths: ['tradevice-copy/**', '.github/workflows/copy-staging-validation.yml']
   workflow_dispatch:
+    inputs:
+      real_pilot_security:
+        description: 'Opt-in REAL JWT/RLS validation with two confirmed staging-only pilots'
+        type: boolean
+        default: false
+        required: true
 permissions:
   contents: read
 concurrency:
@@ -42,6 +48,16 @@ jobs:
       - name: Browser regression and real public staging checks
         working-directory: tradevice-copy/web
         run: npm run test:e2e
+      - name: Real two-member security gate (manual only)
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.real_pilot_security == true }}
+        working-directory: tradevice-copy/api
+        env:
+          COPY_STAGING_PUBLISHABLE_KEY: ${{ secrets.COPY_STAGING_PUBLISHABLE_KEY }}
+          COPY_PILOT_A_EMAIL: ${{ secrets.COPY_PILOT_A_EMAIL }}
+          COPY_PILOT_A_PASSWORD: ${{ secrets.COPY_PILOT_A_PASSWORD }}
+          COPY_PILOT_B_EMAIL: ${{ secrets.COPY_PILOT_B_EMAIL }}
+          COPY_PILOT_B_PASSWORD: ${{ secrets.COPY_PILOT_B_PASSWORD }}
+        run: python scripts/real_member_acceptance.py
       - name: Dependency vulnerability report
         if: always()
         working-directory: tradevice-copy/web
