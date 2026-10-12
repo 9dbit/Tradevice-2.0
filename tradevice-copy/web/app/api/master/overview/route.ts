@@ -1,5 +1,6 @@
 import { apiOrigin, publicConfig } from '../../../../lib/runtime.mjs';
 import { masterAuthAllowed, paperHealthState, parseMasterBearer, STAGING_PROJECT_REF } from '../../../../lib/master-security.mjs';
+import { validateWorkerTelemetry } from '../../../../lib/master-telemetry.mjs';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -9,7 +10,7 @@ function result(status: number, code: string) {
   return Response.json({ detail: { code } }, { status, headers });
 }
 
-/** Staging-only, read-only. No master worker has been deployed yet. */
+/** Staging-only, authenticated, read-only. Worker data comes from restricted PostgreSQL via the internal API. */
 export async function GET(request: Request) {
   const token = parseMasterBearer(request.headers.get('authorization'));
   if (!token) return result(401, 'MASTER_AUTH_REQUIRED');
@@ -44,19 +45,40 @@ export async function GET(request: Request) {
       memberApi = 'UNAVAILABLE';
     }
   }
+  // The internal service-to-service secret is never exposed in the response or to browser code.
+  const sharedSecret = process.env.MASTER_TELEMETRY_SHARED_SECRET || '';
+  if (origin && /^[0-9a-f]{64}$/.test(sharedSecret)) {
+    try {
+      const telemetryResponse = await fetch(origin + '/internal/master/telemetry', {
+        headers: { 'x-tradevice-master-secret': sharedSecret },
+        cache: 'no-store', redirect: 'error', signal: AbortSignal.timeout(8000),
+      });
+      if (telemetryResponse.ok) {
+        const snapshot = validateWorkerTelemetry(await telemetryResponse.json());
+        if (snapshot) {
+          return Response.json({
+            ...snapshot,
+            infrastructure: { ...snapshot.infrastructure, memberApi },
+          }, { headers });
+        }
+      }
+    } catch {
+      // No synthetic fallback. When the backend is unavailable, report OFFLINE/STALE.
+    }
+  }
   return Response.json({
     source: 'STAGING_INFRASTRUCTURE',
     environment: 'staging',
     observedAt: new Date().toISOString(),
     executionMode: 'PAPER_ONLY',
     master: {
-      id: null, state: 'NOT_CONNECTED', heartbeatAt: null, cycles: null,
+      id: null, state: 'OFFLINE/STALE', heartbeatAt: null, cycles: null,
       healthyCycles: null, anomalies: null, activeSource: null, recoveryTicks: null,
     },
     risk: { killSwitch: 'UNAVAILABLE', positions: null, equityUsd: null,
       pnlUsd: null, drawdownPct: null, winRatePct: null },
-    infrastructure: { memberApi, masterWorker: 'NOT_DEPLOYED',
-      journal: 'NOT_CONNECTED', adminAuth: 'VERIFIED' },
+    infrastructure: { memberApi, masterWorker: 'OFFLINE/STALE',
+      journal: 'UNAVAILABLE', adminAuth: 'VERIFIED' },
     activity: [], paperOrders: [], equityCurve: [],
   }, { headers });
 }

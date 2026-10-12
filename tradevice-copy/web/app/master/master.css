@@ -448,3 +448,12 @@
   .mt *{animation:none!important;transition:none!important;scroll-behavior:auto!important}
   .mt-mobile-nav::before{transition:none!important}
 }
+
+/* Operational telemetry rows; isolated master-only report layout. */
+.mt-runtime-row{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px;margin:18px 0 28px}
+.mt-runtime-row>div{min-width:0;background:#151515;border-radius:16px;padding:18px}
+.mt-runtime-row small{display:block;font-size:10px;color:#b8b8b8;letter-spacing:1.1px}
+.mt-runtime-row strong{display:block;color:#f5f5f5;overflow-wrap:anywhere;font-size:12px;margin-top:7px}
+.mt-journal-summary{display:flex;flex-wrap:wrap;gap:12px 25px;margin:16px 0 27px;color:#aaa;font-size:12px}
+.mt-journal-summary strong{color:#ff7900}
+@media(max-width:760px){.mt-runtime-row{gap:10px}.mt-runtime-row>div{padding:13px}.mt-runtime-row strong{font-size:11px}}

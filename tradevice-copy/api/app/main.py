@@ -3,6 +3,11 @@ from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from typing import Annotated
 from uuid import UUID
+import hmac
+import os
+import re
+from fastapi.concurrency import run_in_threadpool
+from .master_telemetry import read_database, allowed_reader_dsn
 
 import httpx
 from fastapi import Depends, FastAPI, HTTPException, Query, Request
@@ -121,6 +126,24 @@ def create_app(settings: Settings | None = None, transport: httpx.AsyncBaseTrans
         if response.status_code != 200:
             raise problem(503, "AUTH_UNAVAILABLE")
         return {"status": "auth_reachable", "database_verified": False, "live_execution": False}
+    @application.get("/internal/master/telemetry")
+    async def internal_master_telemetry(request: Request):
+        # Authenticated server-to-server access ONLY, never forwarded to browser or member routes.
+        if settings.environment != "staging" or settings.project_ref != "scqzlcivherovlwqypeu":
+            raise problem(503, "MASTER_STAGING_ONLY")
+        expected = os.getenv("MASTER_TELEMETRY_SHARED_SECRET", "")
+        if not re.fullmatch(r"[0-9a-f]{64}", expected):
+            raise problem(503, "MASTER_TELEMETRY_NOT_CONFIGURED")
+        provided = request.headers.get("x-tradevice-master-secret", "")
+        if not hmac.compare_digest(expected, provided):
+            raise problem(401, "MASTER_INTERNAL_AUTH_REQUIRED")
+        dsn = os.getenv("MASTER_READ_DATABASE_URL", "")
+        if not allowed_reader_dsn(dsn):
+            raise problem(503, "MASTER_READ_DB_NOT_CONFIGURED")
+        try:
+            return await run_in_threadpool(read_database, dsn)
+        except Exception:
+            raise problem(503, "MASTER_TELEMETRY_UNAVAILABLE") from None
     @application.get("/api/v1/me")
     async def me(identity: Member = Depends(member)):
         return {"id": str(identity.id), "execution_mode": "paper"}

@@ -6,15 +6,18 @@ import './master.css';
 type Tab = 'overview'|'cycles'|'anomalies'|'risk'|'journal'|'system';
 type Scenario = 'healthy'|'anomaly'|'recovering';
 type Notice = { id: string; at: string; severity: 'info'|'warning'|'critical'; kind: string; note: string };
-type PaperOrder = { id: string; symbol: string; side: 'BUY'|'SELL'; state: string; quantity: string; at: string };
+type PaperOrder = { id: string; symbol: string; side: string; state: string; quantity: string; at: string };
 type Snapshot = {
   source: string; observedAt: string; executionMode: string;
   master: {id: string|null; state: string; heartbeatAt: string|null; cycles: number|null; healthyCycles: number|null;
-           anomalies: number|null; activeSource: string|null; recoveryTicks: number|null};
+           anomalies: number|null; activeSource: string|null; recoveryTicks: number|null;
+           lastCycleAt?: string|null; uptimeSeconds?: number|null; reason?: string|null};
   risk: {killSwitch: string; positions: number|null; equityUsd: number|null; pnlUsd: number|null;
          drawdownPct: number|null; winRatePct: number|null};
   infrastructure: {memberApi: string; masterWorker: string; journal: string; adminAuth: string};
   activity: Notice[]; paperOrders: PaperOrder[]; equityCurve: number[];
+  queue?: {queued:number;retry:number;expired:number;rejected:number;accepted:number;deadLetter:number};
+  paperExecution?: {accepted:number;rejected:number;fillsVerified:boolean};
 };
 
 const routes: {key:Tab;label:string;icon:string;caption:string}[] = [
@@ -177,7 +180,7 @@ export default function MasterConsole({preview=false}:{preview?:boolean}) {
         if(response.status===403){setAuth('forbidden');setSnapshot(null);setMessage('Akses Master Trader hanya untuk administrator yang telah disetujui.');return;}
         if(!response.ok)throw new Error('Service unavailable');
         const data=await response.json() as Snapshot;
-        if(data.source!=='STAGING_INFRASTRUCTURE' || data.executionMode!=='PAPER_ONLY')throw new Error('Invalid mode');
+        if(!['STAGING_INFRASTRUCTURE','STAGING_WORKER_TELEMETRY'].includes(data.source) || data.executionMode!=='PAPER_ONLY')throw new Error('Invalid mode');
         setSnapshot(data);setAuth('authorized');setMessage('');
       }catch{
         if(active){setAuth('forbidden');setSnapshot(null);setMessage('Koneksi monitoring sedang tidak tersedia.');}
@@ -203,6 +206,8 @@ export default function MasterConsole({preview=false}:{preview?:boolean}) {
   }
   const data:Snapshot|null=preview?demoData(scenario):snapshot;
   const mode=data?.master.state||'NOT_CONNECTED';
+  const realTelemetry=!preview && data?.source==='STAGING_WORKER_TELEMETRY';
+  const workerOnline=preview || data?.infrastructure.masterWorker==='ONLINE';
   const available=!!data;
   const alertRows=(data?.activity||[]).filter(row=>severity==='all'||row.severity===severity);
   const roleTitle=routes.find(route=>route.key===tab)?.label||'Overview';
@@ -251,11 +256,11 @@ export default function MasterConsole({preview=false}:{preview?:boolean}) {
         <div className="mt-page-header"><div><div className="mt-eyebrow">TRADEVICE / COMMAND DESK</div>
           <h1>{tab==='overview'?'Master overview':roleTitle}<span>.</span></h1>
           <p>Monitor continuity, anomaly, risk guardrails, dan audit paper trading dari satu tempat.</p>
-        </div><div className="mt-date"><Glyph name="clock" size={18}/><span>{preview?'Preview snapshot · synthetic':'Live infrastructure check · every 15s'}</span></div></div>
+        </div><div className="mt-date"><Glyph name="clock" size={18}/><span>{preview?'Preview snapshot · synthetic':'Operational telemetry · every 15s'}</span></div></div>
         <div role="note" className={'mt-disclosure '+(preview?'mt-disclosure-preview':'')}>
           <Glyph name={preview?'alert':'shield'} size={20}/>
-          <div><strong>{preview?'SYNTHETIC PREVIEW · BUKAN DATA TRADING NYATA':'READ-ONLY STAGING · MASTER WORKER BELUM TERHUBUNG'}</strong>
-          <span>{preview?'Angka, grafik, event, dan order di halaman ini hanya ilustrasi interaktif. Tidak ada order yang dikirim.':'Dashboard telah dilindungi login admin. Data cycle, journal dan P&L tetap tidak tersedia sampai worker resmi terhubung.'}</span></div>
+          <div><strong>{preview?'SYNTHETIC PREVIEW · BUKAN DATA TRADING NYATA':realTelemetry?'READ-ONLY STAGING · VERIFIED WORKER TELEMETRY':'READ-ONLY STAGING · WORKER OFFLINE / STALE'}</strong>
+          <span>{preview?'Angka, grafik, event, dan order di halaman ini hanya ilustrasi interaktif. Tidak ada order yang dikirim.':'Monitoring menggunakan heartbeat dan journal dari database staging. Jika worker offline atau stale, order tetap diblokir. P&L dan fill tetap tidak tersedia sampai terverifikasi.'}</span></div>
         </div>
         {preview&&<div className="mt-preview-controls" aria-label="Synthetic anomaly scenarios"><span>SIMULATE CONDITIONS</span>
           {([{key:'healthy',label:'Normal'},{key:'anomaly',label:'Feed stale'},{key:'recovering',label:'Recovering'}] as const).map(item=>
@@ -265,16 +270,16 @@ export default function MasterConsole({preview=false}:{preview?:boolean}) {
           <section className="mt-hero">
             <div className="mt-hero-main"><div className="mt-hero-overline"><span className="mt-led"/> MASTER TRADER / SUPERVISOR</div>
               <h2>{mode==='ACTIVE'?'Cycle running normally.':mode==='DEGRADED'?'Anomaly detected. Cycle protected.':mode==='RECOVERING'?'Revalidating market conditions.':'Engine connection pending.'}</h2>
-              <p>{preview?'Simulated master stays observable during feed disruption while new paper orders are paused.':'The Python supervisor is not deployed as a managed staging worker. Live cycle metrics are not yet connected.'}</p>
+              <p>{preview?'Simulated master stays observable during feed disruption while new paper orders are paused.':'The supervisor runs paper-only with fail-closed risk admission. Dashboard reads recorded staging telemetry, never simulated fills.'}</p>
               <div className="mt-hero-foot"><Pill value={mode}/><span>Master ID: {data?.master.id||'Not connected'}</span><span>Quote feed: {data?.master.activeSource||'Not connected'}</span></div>
             </div>
             <div className="mt-hero-orbit" aria-hidden="true"><span className="mt-orbit-one"/><span className="mt-orbit-two"/><span className="mt-orbit-center"><Glyph name="pulse" size={33}/></span></div>
           </section>
           <div className="mt-metrics">
-            <Metric label="Master heartbeat" icon="pulse" desc={preview?'Synthetic heartbeat':'Worker connection required'}>{data?.master.heartbeatAt?'CONNECTED':'NOT CONNECTED'}</Metric>
-            <Metric label="Cycle count" icon="refresh" desc={preview?'Illustrative cycle counter':'No verified worker events'}><Value value={data?.master.cycles}/></Metric>
-            <Metric label="Paper positions" icon="receipt" desc={preview?'Simulated journal only':'No worker order reconciliation'}><Value value={data?.risk.positions}/></Metric>
-            <Metric label="Maximum drawdown" icon="shield" desc={preview?'Synthetic realised simulation':'No verified fills / equity'}><Value value={data?.risk.drawdownPct} suffix="%"/></Metric>
+            <Metric label="Master heartbeat" icon="pulse" desc={preview?'Synthetic heartbeat':'Verified when worker is online'}>{workerOnline?'CONNECTED':'OFFLINE / STALE'}</Metric>
+            <Metric label="Cycle count" icon="refresh" desc={preview?'Illustrative cycle counter':'Staging cycle journal only'}><Value value={data?.master.cycles}/></Metric>
+            <Metric label="Paper positions" icon="receipt" desc={preview?'Simulated journal only':'No verified fill reconciliation'}><Value value={data?.risk.positions}/></Metric>
+            <Metric label="Maximum drawdown" icon="shield" desc={preview?'Synthetic realised simulation':'No verified fills or equity'}><Value value={data?.risk.drawdownPct} suffix="%"/></Metric>
           </div>
           <div className="mt-main-grid">
             <section className="mt-panel mt-performance"><SectionHead eyebrow="PERFORMANCE MONITOR" title="Master equity curve" extra={<Pill value={preview?'SYNTHETIC':'NO DATA'}/>}/>
@@ -299,15 +304,21 @@ export default function MasterConsole({preview=false}:{preview?:boolean}) {
               ['03','RECOVERY','3 clean ticks + cooldown'],
               ['04','PAPER INBOX','Idempotent accepted simulation'],
             ].map(step=><div className="mt-state-step" key={step[0]}><small>{step[0]}</small><strong>{step[1]}</strong><p>{step[2]}</p></div>)}</div>
-            <div className="mt-explainer"><strong>Fail-closed continuity</strong><p>The heartbeat can continue in DEGRADED or RECOVERING. No new order is admitted until every risk check passes. HALTED always requires explicit operator release.</p></div>
+            <div className="mt-explainer"><strong>Fail-closed continuity</strong><p>The heartbeat continues in DEGRADED even when trusted quotes are missing. New orders remain blocked. No automatic release is permitted after HALTED.</p></div>
           </section>
+          <div className="mt-runtime-row">
+            <div><small>LAST CYCLE</small><strong>{data?.master.lastCycleAt||'NOT MEASURED'}</strong></div>
+            <div><small>RUNTIME UPTIME</small><strong>{typeof data?.master.uptimeSeconds==='number'?Math.floor(data.master.uptimeSeconds/60)+' min':'NOT MEASURED'}</strong></div>
+            <div><small>ACTIVE DATA SOURCE</small><strong>{data?.master.activeSource||'NONE · ORDERS BLOCKED'}</strong></div>
+            <div><small>PENDING SIGNALS</small><strong>{typeof data?.queue?.queued==='number'?data.queue.queued+data.queue.retry:'NOT MEASURED'}</strong></div>
+          </div>
           <div className="mt-metrics mt-three"><Metric icon="pulse" label="Cycle count" desc="Persisted supervisor ticks"><Value value={data?.master.cycles}/></Metric>
             <Metric icon="alert" label="Anomaly count" desc="Observed quality failures"><Value value={data?.master.anomalies}/></Metric>
             <Metric icon="shield" label="Recovery ticks" desc="Consecutive clean observations"><Value value={data?.master.recoveryTicks}/></Metric></div>
         </>}
         {tab==='anomalies'&&<section className="mt-panel"><SectionHead eyebrow="EXCEPTIONS & RECOVERY" title="Anomaly event log" extra={<Pill value={mode}/>}/>
           <div className="mt-filter" aria-label="Filter anomaly severity">{(['all','warning','critical'] as const).map(v=><button key={v} type="button" aria-pressed={severity===v} onClick={()=>setSeverity(v)} className={severity===v?'current':''}>{v==='all'?'All events':v==='warning'?'Warning':'Critical'}</button>)}</div><Events rows={alertRows}/>
-          <p className="mt-panel-caption">No external quote source or live event history is connected in operational mode.</p></section>}
+          <p className="mt-panel-caption">Operational events come from the restricted worker journal, when available. There is no trusted live quote source.</p></section>}
         {tab==='risk'&&<>
           <div className="mt-risk-grid"><section className="mt-panel"><SectionHead eyebrow="EXECUTION GUARDRAILS" title="Risk controls"/>
             {[
@@ -325,17 +336,23 @@ export default function MasterConsole({preview=false}:{preview?:boolean}) {
           <div className="mt-metrics mt-three"><Metric icon="shield" label="Drawdown" desc="Requires verified closed paper fills"><Value value={data?.risk.drawdownPct} suffix="%"/></Metric><Metric icon="pulse" label="Open positions" desc="Requires reconciliation"><Value value={data?.risk.positions}/></Metric><Metric icon="receipt" label="Net paper P&L" desc="Simulated sample only in preview">{typeof data?.risk.pnlUsd==='number'?'$'+data.risk.pnlUsd.toFixed(2):'—'}</Metric></div>
         </>}
         {tab==='journal'&&<section className="mt-panel"><SectionHead eyebrow="PAPER EXECUTION AUDIT" title="Paper order journal" extra={<Pill value={preview?'SYNTHETIC':'NOT_CONNECTED'}/>}/>
-          <p className="mt-panel-caption">Accepted simulated orders are acknowledgements, not guaranteed fills. Live trading is not enabled.</p><Orders rows={data?.paperOrders||[]}/></section>}
+          <p className="mt-panel-caption">Accepted paper orders are journal acknowledgements, not executed fills. Live trading is disabled.</p>
+          {!preview&&<div className="mt-journal-summary">
+            <span>Accepted paper acknowledgements: <strong>{data?.queue?.accepted??'—'}</strong></span>
+            <span>Rejected paper signals: <strong>{data?.queue?.rejected??'—'}</strong></span>
+            <span>Verified fills: <strong>NOT MEASURED</strong></span>
+          </div>}
+          <Orders rows={data?.paperOrders||[]}/></section>}
         {tab==='system'&&<>
           <section className="mt-panel"><SectionHead eyebrow="INFRASTRUCTURE" title="Connectivity & data provenance"/><div className="mt-system-grid">
             {[
               ['Member API',data?.infrastructure.memberApi||'UNKNOWN','Railway staging health'],
-              ['Master worker',data?.infrastructure.masterWorker||'NOT_DEPLOYED','No dedicated cycle worker deployed'],
-              ['Master journal',data?.infrastructure.journal||'NOT_CONNECTED','No durable worker journal source'],
+              ['Master worker',data?.infrastructure.masterWorker||'OFFLINE/STALE','Database-backed staging heartbeat'],
+              ['Master journal',data?.infrastructure.journal||'UNAVAILABLE','Read-only Postgres staging journal'],
               ['Admin authorization',data?.infrastructure.adminAuth||'NOT_CONFIGURED','Supabase app_metadata gate'],
             ].map(([label,value,note])=><div key={label} className="mt-system-card"><div className="mt-system-card-top"><Glyph name="layers" size={19}/><Pill value={value}/></div><h3>{label}</h3><p>{note}</p></div>)}
           </div></section><section className="mt-panel mt-system-source"><SectionHead eyebrow="DATA INTEGRITY" title="Reporting boundaries"/>
-            <p>Mode operasional hanya membaca health API staging setelah verifikasi Supabase master-admin. Master heartbeat, fills, win rate, drawdown, dan anomaly log ditampilkan sebagai unavailable sampai pipeline telemetry worker diterapkan.</p><span>Data source: {data?.source||'UNAVAILABLE'}</span></section>
+            <p>Mode operasional membaca telemetry PostgreSQL melalui API privat, setelah verifikasi Supabase master-admin. Heartbeat dan anomaly journal berasal dari worker aktual. Fill, win rate, dan drawdown tetap tidak diukur sampai ada bukti paper execution yang terverifikasi.</p><span>Data source: {data?.source||'UNAVAILABLE'}</span></section>
         </>}
         <footer className="mt-footer"><span>TRADEVICE / MASTER CONTROL CENTER</span><span>{preview?'SYNTHETIC PREVIEW · NO REAL ORDERS':'STAGING · ADMIN ONLY · READ-ONLY'}</span></footer>
       </main>

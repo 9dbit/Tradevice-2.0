@@ -1,11 +1,10 @@
 """Tradevice staging master supervisor. No broker connectivity and no fabricated quotes/fills."""
-import json
 import logging
 import os
 import signal
 import time
-from datetime import datetime, timezone
 from uuid import uuid4
+from urllib.parse import urlsplit, parse_qs
 
 import psycopg
 from psycopg.rows import dict_row
@@ -27,8 +26,23 @@ def enforce_safety(env):
             raise RuntimeError(f"Unsafe configuration: {key}")
     if env.get("MASTER_QUOTE_SOURCE","none") != "none":
         raise RuntimeError("No trusted market feed adapter has been approved")
-    if not env.get("MASTER_DATABASE_URL","").startswith(("postgresql://","postgres://")):
-        raise RuntimeError("MASTER_DATABASE_URL must use dedicated, restricted Postgres credentials")
+    dsn=env.get("MASTER_DATABASE_URL","")
+    try:
+        parts=urlsplit(dsn)
+        query=parse_qs(parts.query)
+        correct=(parts.scheme in ("postgresql","postgres") and
+                 parts.hostname=="db.scqzlcivherovlwqypeu.supabase.co" and
+                 parts.port==5432 and parts.path=="/postgres" and
+                 parts.username=="tradevice_master_worker" and
+                 bool(parts.password) and query.get("sslmode")==["require"])
+        if not correct:
+            raise ValueError("Invalid staging worker connection")
+    except (ValueError,TypeError):
+        raise RuntimeError("MASTER_DATABASE_URL must be dedicated staging, restricted worker and TLS") from None
+
+def cycle_state(kill_switch):
+    """Never call this offline-only supervisor ACTIVE without an approved quote source."""
+    return ("HALTED","MANUAL_KILL") if kill_switch else ("DEGRADED","MISSING_TRUSTED_QUOTE")
 
 def _stop(*args):
     global stop
@@ -48,21 +62,21 @@ def transact(conn, worker_id):
             other=state["holder_id"] is not None and str(state["holder_id"])!=worker_id
             if other and state["lease_until"]>now:
                 return False
-            takeover=state["holder_id"] is None or str(state["holder_id"])!=worker_id
+            takeover=(state["holder_id"] is None or str(state["holder_id"])!=worker_id or state["lease_until"]<=now)
             epoch=state["lease_epoch"]+(1 if takeover else 0)
-            mode="HALTED" if state["kill_switch"] else "DEGRADED"
-            reason="MANUAL_KILL" if state["kill_switch"] else "MISSING_TRUSTED_QUOTE"
+            mode,reason=cycle_state(state["kill_switch"])
+            anomaly_transition=(mode=="DEGRADED" and state["mode"]!="DEGRADED")
             cur.execute("""UPDATE master_control.worker_state SET holder_id=%s,
                lease_until=now()+(%s * interval '1 second'),lease_epoch=%s,
                started_at=CASE WHEN %s THEN now() ELSE coalesce(started_at,now()) END,
                heartbeat_at=now(),last_cycle_at=now(),mode=%s,reason=%s,
                cycles=cycles+1,anomalies=anomalies+%s,clean_ticks=0,last_bad_at=now(),
                active_source=NULL,updated_at=now() WHERE master_id=%s""",
-               (worker_id,LEASE_SECONDS,epoch,takeover,mode,reason,0 if state["kill_switch"] else 1,MASTER))
+               (worker_id,LEASE_SECONDS,epoch,takeover,mode,reason,1 if anomaly_transition else 0,MASTER))
             cur.execute("""INSERT INTO master_control.cycle_history
                (master_id,worker_id,lease_epoch,mode,reason,safe_to_admit)
                VALUES (%s,%s,%s,%s,%s,false)""",(MASTER,worker_id,epoch,mode,reason))
-            if not state["kill_switch"]:
+            if anomaly_transition:
                 cur.execute("""INSERT INTO master_control.anomaly_journal
                  (master_id,worker_id,severity,code,note)
                  VALUES (%s,%s,'warning','MISSING_TRUSTED_QUOTE','No trusted source configured; paper orders blocked')""",(MASTER,worker_id))
@@ -91,7 +105,7 @@ def run():
                     raise RuntimeError("Connection must authenticate as dedicated tradevice_master_worker role")
                 leader=transact(conn,worker_id)
                 if leader:
-                    log.info("heartbeat: DEGRADED, orders blocked, paper only")
+                    log.info("heartbeat: paper-only supervisor; new orders blocked")
                 else:
                     log.info("standby: lease owned by another worker")
         except Exception as exc:
