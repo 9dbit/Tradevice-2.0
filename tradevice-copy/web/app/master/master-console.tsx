@@ -163,10 +163,20 @@ export default function MasterConsole() {
         if(!['STAGING_INFRASTRUCTURE','STAGING_WORKER_TELEMETRY'].includes(data.source) || data.executionMode!=='PAPER_ONLY')throw new Error('Invalid mode');
         setSnapshot(data);setAuth('authorized');setMessage('');
       }catch{
-        if(active){setAuth('forbidden');setSnapshot(null);setMessage('Koneksi monitoring sedang tidak tersedia.');}
+        if(active){
+          // A temporary telemetry/network failure does not invalidate verified admin auth.
+          // Clear all market/control data to fail closed while retaining the console shell.
+          setSnapshot(null);
+          setAuth(current=>current==='authorized'?current:'forbidden');
+          setMessage('Koneksi monitoring sementara tidak tersedia. Periksa System Health dan coba refresh.');
+        }
       }
     }
-    setAuth('checking');void load();
+    // A successful admin session stays mounted during revalidation.
+    // A command acknowledgement or refreshed JWT must not bounce to login.
+    // Explicit 401/403 responses above still immediately revoke dashboard access.
+    setAuth(current=>current==='authorized'?current:'checking');
+    void load();
     const id=window.setInterval(()=>{void load();},15000);
     return()=>{active=false;window.clearInterval(id);};
   },[token,refreshIndex]);
@@ -237,6 +247,10 @@ export default function MasterConsole() {
           <h1>{tab==='overview'?'Master overview':roleTitle}<span>.</span></h1>
           <p>Monitor continuity, anomaly, risk guardrails, dan audit paper trading dari satu tempat.</p>
         </div><div className="mt-date"><Glyph name="clock" size={18}/><span>Operational telemetry · every 15s</span></div></div>
+        {message&&auth==='authorized'&&!data&&<div role="alert" className="mt-disclosure">
+          <Glyph name="alert" size={20}/><div><strong>TELEMETRY TEMPORARILY UNAVAILABLE</strong>
+            <span>{message} Semua kontrol trading dinonaktifkan sampai koneksi pulih.</span></div>
+        </div>}
         <div role="note" className="mt-disclosure">
           <Glyph name="shield" size={20}/>
           <div><strong>{realTelemetry?'READ-ONLY STAGING · VERIFIED WORKER TELEMETRY':'READ-ONLY STAGING · WORKER OFFLINE / STALE'}</strong>

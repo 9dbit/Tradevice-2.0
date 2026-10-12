@@ -99,3 +99,16 @@ test('master command origin is pinned to public staging host, not Railway reques
  assert.match(route,/masterAuthAllowed\(user\)/);
  assert.match(route,/parseMasterBearer/);
 });
+
+
+test('verified dashboard stays mounted during command save revalidation and JWT refresh',()=>{
+ const source=consolePage;
+ assert.match(source,/setAuth\(current=>current==='authorized'\?current:'checking'\)/);
+ assert.doesNotMatch(source,/\n    setAuth\('checking'\);void load\(\);/);
+ assert.match(source,/setAuth\(current=>current==='authorized'\?current:'forbidden'\)/);
+ assert.match(source,/setSnapshot\(null\);\s*setAuth\(current=>current==='authorized'/);
+ // Authorization failures, unlike transient telemetry outages, still revoke the session.
+ assert.match(source,/response\.status===401\)\{setAuth\('login'\);setSnapshot\(null\)/);
+ assert.match(source,/response\.status===403\)\{setAuth\('forbidden'\);setSnapshot\(null\)/);
+ assert.match(source,/auth!=='authorized'/);
+});
