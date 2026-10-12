@@ -78,12 +78,12 @@ async def rows(request: Request, identity: Member, table: str, params: dict) -> 
 
 async def owned_account(request: Request, identity: Member, account_id: UUID) -> dict:
     data = await rows(request, identity, "copy_accounts", {
-        "select": "id,broker_id,external_account_id,environment,created_at",
+        "select": "id,user_id,broker_id,external_account_id,environment,created_at",
         "id": f"eq.{account_id}", "user_id": f"eq.{identity.id}", "limit": "1",
     })
-    if not data:
+    if not data or len(data) != 1 or data[0].get("id") != str(account_id) or data[0].get("user_id") != str(identity.id):
         raise problem(404, "ACCOUNT_NOT_FOUND")
-    return data[0]
+    return {k: v for k, v in data[0].items() if k != "user_id"}
 
 def create_app(settings: Settings | None = None, transport: httpx.AsyncBaseTransport | None = None) -> FastAPI:
     settings = settings or Settings.from_env()
@@ -127,10 +127,13 @@ def create_app(settings: Settings | None = None, transport: httpx.AsyncBaseTrans
     @application.get("/api/v1/accounts")
     async def accounts(request: Request, identity: Member = Depends(member), offset: int = Query(default=0, ge=0, le=10000)):
         data = await rows(request, identity, "copy_accounts", {
-            "select": "id,broker_id,external_account_id,environment,created_at", "user_id": f"eq.{identity.id}",
+            "select": "id,user_id,broker_id,external_account_id,environment,created_at", "user_id": f"eq.{identity.id}",
             "order": "id.asc", "limit": "51", "offset": str(offset),
         })
-        return {"items": data[:50], "next_offset": offset + 50 if len(data) > 50 else None, "source": "supabase_rls"}
+        if any(row.get("user_id") != str(identity.id) for row in data):
+            raise problem(503, "OWNER_SCOPE_VIOLATION")
+        visible = [{k: v for k, v in row.items() if k != "user_id"} for row in data[:50]]
+        return {"items": visible, "next_offset": offset + 50 if len(data) > 50 else None, "source": "supabase_rls"}
     @application.get("/api/v1/accounts/{account_id}")
     async def account(account_id: UUID, request: Request, identity: Member = Depends(member)):
         return await owned_account(request, identity, account_id)
@@ -138,16 +141,21 @@ def create_app(settings: Settings | None = None, transport: httpx.AsyncBaseTrans
     async def orders(account_id: UUID, request: Request, identity: Member = Depends(member), offset: int = Query(default=0, ge=0, le=10000)):
         await owned_account(request, identity, account_id)
         data = await rows(request, identity, "copy_orders", {
-            "select": "id,signal_id,status,paper_order_id", "account_id": f"eq.{account_id}",
+            "select": "id,account_id,signal_id,status,paper_order_id", "account_id": f"eq.{account_id}",
             "order": "id.asc", "limit": "51", "offset": str(offset),
         })
-        return {"items": data[:50], "next_offset": offset + 50 if len(data) > 50 else None}
+        if any(row.get("account_id") != str(account_id) for row in data):
+            raise problem(503, "OWNER_SCOPE_VIOLATION")
+        visible = [{k: v for k, v in row.items() if k != "account_id"} for row in data[:50]]
+        return {"items": visible, "next_offset": offset + 50 if len(data) > 50 else None}
     @application.get("/api/v1/accounts/{account_id}/risk")
     async def risk(account_id: UUID, request: Request, identity: Member = Depends(member)):
         await owned_account(request, identity, account_id)
         data = await rows(request, identity, "copy_risk_profiles", {
             "select": "account_id,risk_per_trade_pct,daily_loss_limit_pct,is_enabled", "account_id": f"eq.{account_id}", "limit": "1",
         })
+        if len(data) > 1 or any(row.get("account_id") != str(account_id) for row in data):
+            raise problem(503, "OWNER_SCOPE_VIOLATION")
         return {"profile": data[0] if data else None, "editable": False}
     @application.get("/api/v1/strategies")
     async def strategies(request: Request, identity: Member = Depends(member)):
@@ -156,10 +164,13 @@ def create_app(settings: Settings | None = None, transport: httpx.AsyncBaseTrans
     @application.get("/api/v1/referrals")
     async def referrals(request: Request, identity: Member = Depends(member), offset: int = Query(default=0, ge=0, le=10000)):
         data = await rows(request, identity, "copy_referrals", {
-            "select": "id,broker_attribution,created_at", "referrer_user_id": f"eq.{identity.id}",
+            "select": "id,referrer_user_id,broker_attribution,created_at", "referrer_user_id": f"eq.{identity.id}",
             "order": "id.asc", "limit": "51", "offset": str(offset),
         })
-        return {"items": data[:50], "next_offset": offset + 50 if len(data) > 50 else None, "commissions_enabled": False}
+        if any(row.get("referrer_user_id") != str(identity.id) for row in data):
+            raise problem(503, "OWNER_SCOPE_VIOLATION")
+        visible = [{k: v for k, v in row.items() if k != "referrer_user_id"} for row in data[:50]]
+        return {"items": visible, "next_offset": offset + 50 if len(data) > 50 else None, "commissions_enabled": False}
     @application.post("/api/v1/paper/orders")
     async def paper_order(identity: Member = Depends(member)):
         raise problem(409, "PAPER_EXECUTOR_NOT_CONNECTED")
