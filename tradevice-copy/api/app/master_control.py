@@ -65,10 +65,14 @@ def submit_command(dsn: str, payload: dict):
             cur.execute("SELECT current_user")
             if cur.fetchone()[0]!="tradevice_master_operator":
                 raise RuntimeError("Dedicated command writer role required")
-            cur.execute("""INSERT INTO master_control.operator_commands
-                (master_id,actor_id,action,idempotency_key,cycle_mode,target_cycles,news_policy)
-                VALUES (%s,%s,%s,%s,%s,%s,%s)
-                ON CONFLICT(idempotency_key) DO NOTHING""",
-                (MASTER,actor,action,request,mode,target,news))
-            inserted = cur.rowcount == 1
+            try:
+                cur.execute("""INSERT INTO master_control.operator_commands
+                    (master_id,actor_id,action,idempotency_key,cycle_mode,target_cycles,news_policy)
+                    VALUES (%s,%s,%s,%s,%s,%s,%s)""",
+                    (MASTER,actor,action,request,mode,target,news))
+                inserted = True
+            except psycopg.errors.UniqueViolation as exc:
+                if exc.diag.constraint_name != "operator_commands_idempotency_key_key":
+                    raise
+                inserted = False
     return {"requestId":str(request),"status":"PENDING" if inserted else "DUPLICATE"}

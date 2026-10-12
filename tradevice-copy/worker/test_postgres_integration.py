@@ -201,13 +201,12 @@ def test_operator_commands_are_idempotent_and_do_not_unlock_trading(dsn):
     with as_role(dsn,"tradevice_master_operator") as conn:
         row=conn.execute("""INSERT INTO master_control.operator_commands
            (master_id,actor_id,action,idempotency_key)
-           VALUES (%s,%s,'START',%s) ON CONFLICT(idempotency_key) DO NOTHING""",
-           (MASTER,actor,request))
+           VALUES (%s,%s,'START',%s)""", (MASTER,actor,request))
         assert row.rowcount==1
-        assert conn.execute("""INSERT INTO master_control.operator_commands
-           (master_id,actor_id,action,idempotency_key)
-           VALUES (%s,%s,'START',%s) ON CONFLICT(idempotency_key) DO NOTHING""",
-           (MASTER,actor,request)).rowcount==0
+        with pytest.raises(psycopg.errors.UniqueViolation):
+            conn.execute("""INSERT INTO master_control.operator_commands
+               (master_id,actor_id,action,idempotency_key)
+               VALUES (%s,%s,'START',%s)""",(MASTER,actor,request))
         with pytest.raises(psycopg.errors.InsufficientPrivilege):
             conn.execute("SELECT * FROM master_control.operator_commands")
         with pytest.raises(psycopg.errors.InsufficientPrivilege):
