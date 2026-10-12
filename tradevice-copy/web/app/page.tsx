@@ -246,16 +246,11 @@ export default function Home() {
     </aside>
 
     <div className="workspace">
-      <header className="topbar glass-surface" aria-label="Tradevice Copy, mode simulasi">
-        <a className="header-brand" href="/" aria-label="Tradevice Copy, beranda"><Brand/><strong>tradevice<span className="brand-accent">.</span></strong><small>COPY</small></a>
-        <div className="mobile-brand"><Brand/><strong>tradevice<span className="brand-accent">.</span></strong><small>COPY</small></div>
+      <header className="topbar" aria-label="Tradevice Copy, mode simulasi">
+        <div className="desktop-top-label"><span>TRADEVICE / MEMBER PORTAL</span><strong>{title}</strong></div>
+        <div className="mobile-brand"><Brand/><span className="mobile-wordmark"><strong>tradevice<span className="brand-accent">.</span></strong><small>COPY</small></span></div>
         <div className="top-actions"><span className="paper-chip" role="status" aria-label="Mode paper aktif, eksekusi live nonaktif" title="Simulasi saja. Tidak ada eksekusi live"><span className="status-dot"/> PAPER</span><button type="button" className="icon-button" aria-label="Muat ulang data" title="Muat ulang" onClick={() => setRefresh(x => x + 1)} disabled={loading}><Icon name="refresh"/></button></div>
       </header>
-      <nav className="glass-nav glass-surface" aria-label="Navigasi cepat">
-        {navigation.map(item => <button key={item.key} type="button" className={'glass-nav-item' + (page === item.key ? ' is-active' : '')} aria-current={page === item.key ? 'page' : undefined} onClick={() => visit(item.key)}>
-          <Icon name={item.icon}/><span>{item.label}</span>
-        </button>)}
-      </nav>
 
       <main id="main-content" className="content" tabIndex={-1}>
         <section className="hero" aria-label="Ringkasan workspace">
@@ -354,6 +349,9 @@ export default function Home() {
     </div>
 
     <nav className="bottom-nav" aria-label="Navigasi mobile">
+      <span className="bottom-liquid-indicator" aria-hidden="true" style={{ transform: `translate3d(${(moreOpen || extra.includes(page) ? 4 : Math.max(0, primary.indexOf(page))) * 100}%, 0, 0)` }}>
+        <span className="bottom-liquid-highlight" key={moreOpen || extra.includes(page) ? 'More' : page} />
+      </span>
       {navigation.filter(item => primary.includes(item.key)).map(item => <button key={item.key} type="button" onClick={() => visit(item.key)} className={'bottom-item' + (page === item.key ? ' is-active' : '')} aria-current={page === item.key ? 'page' : undefined}><Icon name={item.icon}/><span>{item.label}</span></button>)}
       <button type="button" className={'bottom-item' + (extra.includes(page) || moreOpen ? ' is-active' : '')} onClick={() => setMoreOpen(x => !x)} aria-expanded={moreOpen} aria-controls="mobile-more-menu"><Icon name="more"/><span>Lainnya</span></button>
     </nav>

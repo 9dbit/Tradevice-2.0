@@ -1,70 +1,101 @@
 import { test, expect } from '@playwright/test';
 
-/** UI-only regression suite: no member credentials or order execution needed. */
-test('floating header preserves orange branding and shows paper-only mode', async ({ page }) => {
-  await page.setViewportSize({ width: 1440, height: 900 });
+/** Restores the original black/white member portal and isolates glass to the floating island. */
+test('monochrome background and flat header; brand image vertically aligned',async({page})=>{
+  await page.setViewportSize({width:390,height:844});
   await page.goto('/');
-  await expect(page.locator('.header-brand .brand-sign img')).toBeVisible();
-  await expect(page.locator('.paper-chip[role="status"]')).toHaveAttribute('aria-label', /Mode paper aktif.*live nonaktif/);
-  await expect(page.getByText('PAPER-ONLY TEST ENVIRONMENT')).toBeVisible();
-  await expect(page.getByRole('link', { name: /Lihat demo admin/i })).toHaveCount(0);
-  const top = await page.locator('.topbar').evaluate(e => {
-    const s = getComputedStyle(e);
-    const prefixed = (s as CSSStyleDeclaration & {webkitBackdropFilter?:string}).webkitBackdropFilter || '';
+  const visual=await page.evaluate(()=>{
+    const body=getComputedStyle(document.body);
+    const header=document.querySelector('.topbar')!;
+    const h=getComputedStyle(header);
+    const logo=document.querySelector('.mobile-brand .brand-sign img')!.getBoundingClientRect();
+    const wordmark=document.querySelector('.mobile-wordmark')!.getBoundingClientRect();
     return {
-      filters: [s.backdropFilter, prefixed],
-      radius: parseFloat(s.borderRadius),
-      background: s.backgroundColor,
-      shadow: s.boxShadow,
+      body:body.backgroundColor,
+      image:body.backgroundImage,
+      radius:parseFloat(h.borderRadius),
+      logoCenter:(logo.top+logo.bottom)/2,
+      wordmarkCenter:(wordmark.top+wordmark.bottom)/2,
     };
   });
-  // The implementation declares standard and prefixed blur. Chromium in CI can
-  // report "none" even when the feature is parseable. In that case require
-  // visible opaque/translucent glass fallback and genuine floating shadow.
-  const hasBlur = top.filters.some(value => value && value.includes('blur'));
-  if (!hasBlur) {
-    expect(top.background).not.toBe('rgba(0, 0, 0, 0)');
-    expect(top.shadow).not.toBe('none');
-  }
-  expect(top.radius).toBeGreaterThan(18);
-  await page.screenshot({ path: 'test-results/glass-desktop.png', fullPage: true });
+  expect(visual.body).toBe('rgb(0, 0, 0)');
+  expect(visual.image).toBe('none');
+  expect(visual.radius).toBe(0);
+  expect(Math.abs(visual.logoCenter-visual.wordmarkCenter)).toBeLessThan(3);
+  await expect(page.locator('.paper-chip[role="status"]')).toHaveAttribute('aria-label',/Mode paper aktif.*live nonaktif/);
+  await expect(page.getByRole('link',{name:/Lihat demo admin/i})).toHaveCount(0);
+  await page.screenshot({path:'test-results/mono-floating-island-mobile.png',fullPage:true});
 });
 
-test('horizontal liquid-glass nav changes the same real app sections', async ({ page }) => {
-  await page.setViewportSize({ width: 1440, height: 900 });
+test('floating island uses neutral glass and moving white indicator',async({page})=>{
+  await page.setViewportSize({width:390,height:844});
   await page.goto('/');
-  const nav = page.getByRole('navigation', { name: 'Navigasi cepat' });
+  const nav=page.getByRole('navigation',{name:'Navigasi mobile'});
   await expect(nav).toBeVisible();
-  await expect(nav.getByRole('button', { name: 'Ringkasan' })).toHaveAttribute('aria-current', 'page');
-  await nav.getByRole('button', { name: 'Strategi' }).click();
-  await expect(nav.getByRole('button', { name: 'Strategi' })).toHaveClass(/is-active/);
-  await expect(page.getByRole('heading', { name: 'Strategi tersedia' })).toBeVisible();
-  const active = await nav.locator('.glass-nav-item.is-active').evaluate(e => {
-    const s = getComputedStyle(e);
-    return { radius: parseFloat(s.borderRadius), shadow: s.boxShadow };
+  const state=await nav.evaluate(el=>{
+    const n=getComputedStyle(el);
+    const dot=el.querySelector('.bottom-liquid-indicator')!;
+    const pill=getComputedStyle(dot);
+    const bounds=el.getBoundingClientRect();
+    return {
+      distanceFromBottom:window.innerHeight-bounds.bottom,
+      gapLeft:bounds.left,
+      radius:parseFloat(n.borderRadius),
+      backdrop:n.backdropFilter,
+      indicatorColor:pill.backgroundColor,
+      indicatorTransition:pill.transitionDuration,
+    };
   });
-  expect(active.radius).toBeGreaterThanOrEqual(22);
-  expect(active.shadow).not.toBe('none');
+  expect(state.distanceFromBottom).toBeGreaterThan(6);
+  expect(state.gapLeft).toBeGreaterThan(6);
+  expect(state.radius).toBeGreaterThan(28);
+  expect(state.indicatorColor).toBe('rgb(247, 247, 247)');
+  expect(state.indicatorTransition).not.toBe('0s');
+  await expect(nav.getByRole('button',{name:'Ringkasan'})).toHaveAttribute('aria-current','page');
+  const initial=await nav.locator('.bottom-liquid-indicator').evaluate(el=>getComputedStyle(el).transform);
+  await nav.getByRole('button',{name:'Strategi'}).click();
+  await expect(nav.getByRole('button',{name:'Strategi'})).toHaveAttribute('aria-current','page');
+  await expect(page.getByRole('heading',{name:'Strategi tersedia'})).toBeVisible();
+  await expect.poll(()=>nav.locator('.bottom-liquid-indicator').evaluate(el=>getComputedStyle(el).transform)).not.toBe(initial);
+  await page.screenshot({path:'test-results/mono-floating-island-strategy.png',fullPage:true});
 });
 
-for (const width of [320, 390, 430, 768, 1024, 1440]) {
-  test('glass header layout stays within viewport at ' + width, async ({ page }) => {
-    await page.setViewportSize({ width, height: 850 });
+for(const width of [320,375,390,430,768,1024,1440]){
+  test('monochrome floating island responsive at '+width,async({page})=>{
+    await page.setViewportSize({width,height:850});
     await page.goto('/');
-    await expect(page.locator('.paper-chip')).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Muat ulang data' })).toBeVisible();
-    if (width <= 780) {
-      await expect(page.getByRole('navigation', { name: 'Navigasi cepat' })).toBeHidden();
-      await expect(page.getByRole('navigation', { name: 'Navigasi mobile' })).toBeVisible();
-    }
-    const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+    const overflow=await page.evaluate(()=>document.documentElement.scrollWidth-window.innerWidth);
     expect(overflow).toBeLessThanOrEqual(1);
+    const bottom=page.getByRole('navigation',{name:'Navigasi mobile'});
+    if(width<=780){
+      await expect(bottom).toBeVisible();
+      const tabs=bottom.locator('button.bottom-item');
+      await expect(tabs).toHaveCount(5);
+    }else{
+      await expect(bottom).toBeHidden();
+      await expect(page.getByRole('navigation',{name:'Navigasi desktop'})).toBeVisible();
+    }
   });
 }
-test('safe funding gate unchanged in glass layout', async ({ page }) => {
-  await page.setViewportSize({ width: 1440, height: 900 });
+
+test('more menu stays usable above floating island; no funding execution',async({page})=>{
+  await page.setViewportSize({width:390,height:844});
   await page.goto('/');
-  await page.getByRole('navigation', { name: 'Navigasi cepat' }).getByRole('button', { name: 'Pendanaan' }).click();
-  await expect(page.getByRole('button', { name: 'Deposit melalui broker' })).toBeDisabled();
-  await expect(page.getByRole('button', { name: 'Withdraw melalui broker' })).toBeDisabled();
+  const nav=page.getByRole('navigation',{name:'Navigasi mobile'});
+  await nav.getByRole('button',{name:'Lainnya'}).click();
+  await expect(nav.getByRole('button',{name:'Lainnya'})).toHaveClass(/is-active/);
+  const sheet=page.getByRole('dialog',{name:'Navigasi lainnya'});
+  await expect(sheet).toBeVisible();
+  await sheet.getByRole('button',{name:/Pendanaan/}).click();
+  await expect(page.getByRole('button',{name:'Deposit melalui broker'})).toBeDisabled();
+  await expect(page.getByRole('button',{name:'Withdraw melalui broker'})).toBeDisabled();
+});
+
+test('desktop flat header keeps existing authenticated member navigation',async({page})=>{
+  await page.setViewportSize({width:1440,height:900});
+  await page.goto('/');
+  await expect(page.getByRole('navigation',{name:'Navigasi cepat'})).toHaveCount(0);
+  await expect(page.getByRole('navigation',{name:'Navigasi desktop'})).toBeVisible();
+  const radius=await page.locator('.topbar').evaluate(el=>parseFloat(getComputedStyle(el).borderRadius));
+  expect(radius).toBe(0);
 });
