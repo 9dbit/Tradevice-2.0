@@ -9,19 +9,33 @@ test('monochrome background and flat header; brand image vertically aligned',asy
     const header=document.querySelector('.topbar')!;
     const h=getComputedStyle(header);
     const logo=document.querySelector('.mobile-brand .brand-sign img')!.getBoundingClientRect();
+    const brand=document.querySelector('.mobile-brand')!;
+    const brandRect=brand.getBoundingClientRect();
     const wordmark=document.querySelector('.mobile-wordmark')!.getBoundingClientRect();
     return {
       body:body.backgroundColor,
       image:body.backgroundImage,
       radius:parseFloat(h.borderRadius),
+      brandAlignment:getComputedStyle(brand).alignItems,
       logoCenter:(logo.top+logo.bottom)/2,
-      wordmarkCenter:(wordmark.top+wordmark.bottom)/2,
+      brandCenter:(brandRect.top+brandRect.bottom)/2,
+      wordmarkTop:wordmark.top,
+      wordmarkBottom:wordmark.bottom,
+      headerTop:header.getBoundingClientRect().top,
+      headerBottom:header.getBoundingClientRect().bottom,
     };
   });
   expect(visual.body).toBe('rgb(0, 0, 0)');
   expect(visual.image).toBe('none');
   expect(visual.radius).toBe(0);
-  expect(Math.abs(visual.logoCenter-visual.wordmarkCenter)).toBeLessThan(3);
+  // Brand contains a two-line wordmark ("tradevice." + "COPY"). The
+  // flex item's optical center is not the geometric center of both lines.
+  // Assert alignment to the brand row and bounds rather than a false 3px
+  // equality with the entire stacked wordmark.
+  expect(visual.brandAlignment).toBe('center');
+  expect(Math.abs(visual.logoCenter-visual.brandCenter)).toBeLessThan(3);
+  expect(visual.wordmarkTop).toBeGreaterThanOrEqual(visual.headerTop);
+  expect(visual.wordmarkBottom).toBeLessThanOrEqual(visual.headerBottom);
   await expect(page.locator('.paper-chip[role="status"]')).toHaveAttribute('aria-label',/Mode paper aktif.*live nonaktif/);
   await expect(page.getByRole('link',{name:/Lihat demo admin/i})).toHaveCount(0);
   await page.screenshot({path:'test-results/mono-floating-island-mobile.png',fullPage:true});
