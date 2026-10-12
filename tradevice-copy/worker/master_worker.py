@@ -54,15 +54,17 @@ def transact(conn, worker_id):
         with conn.cursor(row_factory=dict_row) as cur:
             cur.execute("""INSERT INTO master_control.worker_state(master_id)
                            VALUES (%s) ON CONFLICT DO NOTHING""",(MASTER,))
-            cur.execute("""SELECT holder_id,lease_until,lease_epoch,mode,kill_switch
+            # Compute lease validity inside PostgreSQL: the schema intentionally
+            # defaults to '-infinity', which psycopg cannot decode as datetime.
+            # This also keeps all leadership decisions on the DB clock.
+            cur.execute("""SELECT holder_id,(lease_until>now()) AS lease_valid,
+                               lease_epoch,mode,kill_switch
                            FROM master_control.worker_state WHERE master_id=%s FOR UPDATE""",(MASTER,))
             state=cur.fetchone()
-            cur.execute("SELECT now() AS clock")
-            now=cur.fetchone()["clock"]
             other=state["holder_id"] is not None and str(state["holder_id"])!=worker_id
-            if other and state["lease_until"]>now:
+            if other and state["lease_valid"]:
                 return False
-            takeover=(state["holder_id"] is None or str(state["holder_id"])!=worker_id or state["lease_until"]<=now)
+            takeover=(state["holder_id"] is None or str(state["holder_id"])!=worker_id or not state["lease_valid"])
             epoch=state["lease_epoch"]+(1 if takeover else 0)
             mode,reason=cycle_state(state["kill_switch"])
             anomaly_transition=(mode=="DEGRADED" and state["mode"]!="DEGRADED")
