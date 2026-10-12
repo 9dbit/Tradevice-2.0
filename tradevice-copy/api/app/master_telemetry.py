@@ -73,7 +73,8 @@ def build_snapshot(state, anomalies, orders, queue, clock, run=None, terminal=No
     if safe_status not in ("STOPPED","RUNNING","COMPLETED","HALTED"):
         safe_status = "NOT_CONFIGURED"
     command_history = [{
-       "id":str(c["id"]),"action":str(c["action"]),"status":str(c["status"]),
+       "id":str(c["id"]),"requestId":str(c["idempotency_key"]),
+       "action":str(c["action"]),"status":str(c["status"]),
        "errorCode":str(c["error_code"])[:100] if c.get("error_code") else None,
        "at":iso(c.get("created_at")),"processedAt":iso(c.get("processed_at"))
     } for c in commands]
@@ -170,7 +171,7 @@ def snapshot_from_connection(conn):
                        FROM master_control.terminal_events
                        WHERE master_id=%s ORDER BY id DESC LIMIT 60""",(MASTER_ID,))
         terminal=cur.fetchall()
-        cur.execute("""SELECT id,action,status,error_code,created_at,processed_at
+        cur.execute("""SELECT id,idempotency_key,action,status,error_code,created_at,processed_at
                        FROM master_control.operator_commands
                        WHERE master_id=%s ORDER BY created_at DESC,id DESC LIMIT 12""",(MASTER_ID,))
         commands=cur.fetchall()

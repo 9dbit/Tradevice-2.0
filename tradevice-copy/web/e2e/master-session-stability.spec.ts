@@ -4,7 +4,7 @@ import {test,expect, type Page} from '@playwright/test';
  * Fully mocked admin-session regression. Never connects to real Supabase,
  * uses no real credentials, and never sends commands to staging.
  */
-async function simulateVerifiedAdmin(page:Page){
+async function simulateVerifiedAdmin(page:Page, commandResult:'APPLIED'|'REJECTED'='APPLIED'){
   const token='fake.master-admin-token.fixture';
   const session={
     access_token:token,refresh_token:'not-a-real-refresh-token',token_type:'bearer',
@@ -28,6 +28,7 @@ async function simulateVerifiedAdmin(page:Page){
       publishableKey:'sb_publishable_master_mock_test_only'}),
   }));
   let overviewRequests=0,commandRequests=0,failNextStatus=0;
+  let latestRequestId:string|null=null,receiptPolls=0;
   const snapshot={
     source:'STAGING_WORKER_TELEMETRY',environment:'staging',
     observedAt:'2026-10-12T05:00:00Z',executionMode:'PAPER_ONLY',
@@ -56,7 +57,15 @@ async function simulateVerifiedAdmin(page:Page){
         body:JSON.stringify({detail:{code:status===401?'MASTER_AUTH_REQUIRED':'MASTER_UNAVAILABLE'}})});
       return;
     }
-    await route.fulfill({status:200,contentType:'application/json',body:JSON.stringify(snapshot)});
+    if(latestRequestId)receiptPolls++;
+    const commands=latestRequestId ? [{
+      id:'11111111-1111-4111-8111-111111111111',requestId:latestRequestId,
+      action:'CONFIGURE',status:receiptPolls>=2?commandResult:'PENDING',
+      errorCode:commandResult==='REJECTED'&&receiptPolls>=2?'STOP_TRIAL_FIRST':null,
+      at:'2026-10-12T05:00:00Z',processedAt:receiptPolls>=2?'2026-10-12T05:00:00Z':null,
+    }] : [];
+    await route.fulfill({status:200,contentType:'application/json',
+      body:JSON.stringify({...snapshot,commands})});
   });
   await page.route('**/api/master/command',async route=>{
     commandRequests++;
@@ -65,6 +74,7 @@ async function simulateVerifiedAdmin(page:Page){
     expect(payload.cycleMode).toBe('CONTINUOUS');
     expect(payload.newsPolicy).toBe('AVOID');
     expect(route.request().headers().authorization).toBe('Bearer '+token);
+    latestRequestId=payload.requestId;receiptPolls=0;
     await route.fulfill({status:202,contentType:'application/json',
       body:JSON.stringify({requestId:payload.requestId,status:'PENDING'})});
   });
@@ -90,11 +100,15 @@ test('Save Configuration reapply and manual refresh never bounce verified admin 
   });
   const before=mocked.overviewCount();
   await page.getByRole('button',{name:/Save Configuration/}).click();
-  await expect(page.getByText(/Perintah CONFIGURE masuk antrean/)).toBeVisible();
+  await expect(page.getByRole('progressbar',{name:'Apply configuration progress'})).toBeVisible();
+  await expect(page.getByText(/Diterima API · menunggu konfirmasi worker/)).toBeVisible();
   await expect.poll(()=>mocked.overviewCount()).toBeGreaterThan(before);
   await expect(page.getByRole('heading',{name:'Trading Cycle'})).toBeVisible();
   expect(await page.evaluate(()=>sessionStorage.getItem('__master_auth_login_flash'))).toBeNull();
   expect(mocked.commandCount()).toBe(1);
+  await expect(page.getByText(/Selesai · worker mengonfirmasi APPLIED/)).toBeVisible({timeout:15000});
+  await expect(page.getByText('02 · Worker applied')).toHaveAttribute('data-checked','true');
+  await expect(page.getByRole('button',{name:/Save Configuration/})).toBeEnabled();
 
   const beforeManual=mocked.overviewCount();
   await page.getByRole('button',{name:'Refresh master status'}).click();
@@ -117,4 +131,25 @@ test('telemetry outage stays on verified dashboard but disables controls; real 4
   await page.getByRole('button',{name:'Refresh master status'}).click();
   await expect(page.getByLabel('Email administrator')).toBeVisible();
   await expect(page.getByText('Sesi kedaluwarsa, silakan masuk lagi.')).toBeVisible();
+});
+
+test('operator progress must show REJECTED when worker denies the matched command',async({page})=>{
+  await simulateVerifiedAdmin(page,'REJECTED');
+  await page.goto('/master');
+  await expect(page.getByRole('heading',{name:'Trading Cycle'})).toBeVisible();
+  await page.getByRole('button',{name:/Save Configuration/}).click();
+  await expect(page.getByRole('progressbar',{name:'Apply configuration progress'})).toBeVisible();
+  await expect(page.getByText(/Ditolak · STOP_TRIAL_FIRST/)).toBeVisible({timeout:15000});
+  await expect(page.locator('.mt-u-command-progress')).toHaveAttribute('data-phase','REJECTED');
+  await expect(page.getByText(/Selesai · worker mengonfirmasi APPLIED/)).toHaveCount(0);
+  await expect(page.getByRole('heading',{name:'Trading Cycle'})).toBeVisible();
+});
+
+test('Start Cycle remains disabled while broker feed, paper execution and news calendar are absent',async({page})=>{
+  await simulateVerifiedAdmin(page);
+  await page.goto('/master');
+  await expect(page.getByRole('button',{name:'Start Cycle'})).toBeDisabled();
+  await expect(page.getByLabel('Persyaratan Start Trading demo')).toContainText('Trusted quote');
+  await expect(page.getByLabel('Persyaratan Start Trading demo')).toContainText('Paper broker');
+  await expect(page.getByLabel('Persyaratan Start Trading demo')).toContainText('News calendar');
 });

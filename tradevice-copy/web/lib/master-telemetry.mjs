@@ -4,6 +4,8 @@ const allowedSeverities=new Set(['info','warning','critical']);
 const allowedRunStatuses=new Set(['STOPPED','RUNNING','COMPLETED','HALTED']);
 const allowedCycleModes=new Set(['CUSTOM','CONTINUOUS']);
 const allowedNewsPolicies=new Set(['AVOID','ALLOW','ONLY']);
+const allowedCommandStatuses=new Set(['PENDING','APPLIED','REJECTED']);
+const commandRequestPattern=/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 function count(x){return Number.isSafeInteger(x)&&x>=0&&x<=1e12?x:0}
 function dateOrNull(s){return typeof s==='string'&&Number.isFinite(Date.parse(s))?s:null}
 function bounded(s,n=150){return typeof s==='string'?s.slice(0,n):''}
@@ -47,7 +49,10 @@ export function validateWorkerTelemetry(raw, now=Date.now()) {
   })):[];
   const commands=Array.isArray(raw.commands)?raw.commands.slice(0,12).filter(c=>c&&
     typeof c==='object').map(c=>({
-    id:bounded(String(c.id??''),80),action:bounded(c.action,32),status:bounded(c.status,32),
+    id:bounded(String(c.id??''),80),
+    requestId:typeof c.requestId==='string'&&commandRequestPattern.test(c.requestId)?c.requestId:null,
+    action:bounded(c.action,32),
+    status:allowedCommandStatuses.has(c.status)?c.status:'UNKNOWN',
     errorCode:bounded(c.errorCode,100)||null,at:dateOrNull(c.at),
   })):[];
   const queue=raw.queue&&typeof raw.queue==='object'?raw.queue:{};

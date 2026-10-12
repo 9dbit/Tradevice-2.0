@@ -52,3 +52,13 @@ def test_verified_paper_ack_is_not_fill():
     assert v["paperExecution"]["accepted"]==1
     assert v["paperExecution"]["fillsVerified"] is False
     assert v["risk"]["pnlUsd"] is None
+
+
+def test_command_receipt_contains_unique_request_id_and_authoritative_status():
+    request_id="e0000000-0000-4000-8000-000000000001"
+    commands=[dict(id="command-id",idempotency_key=request_id,action="CONFIGURE",
+       status="APPLIED",error_code=None,created_at=NOW,processed_at=NOW)]
+    result=build_snapshot(state(),[],[],[],NOW,commands=commands)
+    assert result["commands"][0]["requestId"]==request_id
+    assert result["commands"][0]["status"]=="APPLIED"
+    assert result["commands"][0]["processedAt"]==NOW.isoformat()

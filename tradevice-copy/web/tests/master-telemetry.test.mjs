@@ -46,3 +46,15 @@ test('untrusted broker values never appear when no signed staging observer exist
  assert.equal(x.market.commissionUsdPerLot,null);
  assert.equal(x.market.slippagePoints,null);
 });
+test('verified operator command receipt can be correlated to requestId without revealing private metadata',()=>{
+ const requestId='e0000000-0000-4000-8000-000000000001';
+ const x=validateWorkerTelemetry({...raw,commands:[
+   {id:'internal-id',requestId,action:'CONFIGURE',status:'APPLIED',
+    errorCode:null,at:'2026-10-12T04:59:59Z'},
+   {id:'internal-other',requestId:'not-an-id',action:'CONFIGURE',status:'FAKE_APPLIED'},
+ ]},now);
+ assert.equal(x.commands[0].requestId,requestId);
+ assert.equal(x.commands[0].status,'APPLIED');
+ assert.equal(x.commands[1].requestId,null);
+ assert.equal(x.commands[1].status,'UNKNOWN');
+});

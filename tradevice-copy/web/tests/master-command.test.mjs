@@ -112,3 +112,31 @@ test('verified dashboard stays mounted during command save revalidation and JWT 
  assert.match(source,/response\.status===403\)\{setAuth\('forbidden'\);setSnapshot\(null\)/);
  assert.match(source,/auth!=='authorized'/);
 });
+
+
+test('submit progress does not pretend HTTP 202 means worker APPLIED',()=>{
+ assert.match(dashboard,/type CommandPhase='SENDING'\|'QUEUED'\|'APPLIED'\|'REJECTED'\|'DELAYED'/);
+ assert.match(dashboard,/receipt\?\.requestId!==requestId/);
+ assert.match(dashboard,/command\.requestId===commandProgress\.requestId/);
+ assert.match(dashboard,/row\.status==='APPLIED'/);
+ assert.match(dashboard,/row\.status==='REJECTED'/);
+ assert.match(dashboard,/role="progressbar"/);
+ assert.match(dashboard,/mt-u-command-progress/);
+ assert.match(dashboard,/aria-valuetext=\{progressText\}/);
+ assert.match(dashboard,/setInterval\(\(\)=>onUpdatedRef\.current\(\),2500\)/);
+ assert.match(dashboard,/phase:'DELAYED'/);
+ assert.doesNotMatch(dashboard,/setTimeout\(\(\)=>\s*setCommandProgress\(.*phase:'APPLIED'/s);
+ assert.match(masterCSS,/MASTER_COMMAND_RECEIPT_PROGRESS_V1/);
+ assert.match(masterCSS,/@keyframes mt-u-progress-scan/);
+ assert.match(masterCSS,/@media\(prefers-reduced-motion:reduce\)/);
+});
+
+test('start remains fail-closed and shows real feed / broker / news readiness',()=>{
+ assert.match(dashboard,/control\?\.quotesReady===true/);
+ assert.match(dashboard,/control\?\.brokerReady===true/);
+ assert.match(dashboard,/control\?\.newsCalendarReady===true/);
+ assert.match(dashboard,/data\?\.risk\.killSwitch==='DISENGAGED'/);
+ assert.match(dashboard,/disabled=\{!canOperate\|\|!engineReady\|\|commandBusy\|\|/);
+ assert.match(dashboard,/Persyaratan Start Trading demo/);
+ assert.doesNotMatch(dashboard,/brokerReady:\s*true|newsCalendarReady:\s*true/);
+});

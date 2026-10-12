@@ -32,7 +32,7 @@ export type Snapshot = {
     operatorConfigured:boolean;quotesReady:boolean;brokerReady:boolean;newsCalendarReady:boolean;
   };
   terminal?: Array<{id:string;at:string;source:string;severity:'info'|'warning'|'critical';kind:string;message:string}>;
-  commands?: Array<{id:string;action:string;status:string;errorCode:string|null;at:string|null}>;
+  commands?: Array<{id:string;requestId:string|null;action:string;status:string;errorCode:string|null;at:string|null}>;
 };
 
 const routes: {key:Tab;label:string;icon:string;caption:string}[] = [
