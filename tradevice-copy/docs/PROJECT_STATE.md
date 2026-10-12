@@ -159,3 +159,12 @@ Private staging schema `master_control` successfully migrated in Supabase `scqzl
 ## Master worker database privilege correction (2026-10-12)
 
 Supabase staging-only migration `master_control_worker_least_privilege` was applied successfully. The worker role no longer has any privilege on `admin_audit`, `admin_commands` or `paper_orders`. Remaining UPDATE grants are explicitly limited to operational heartbeat/lease fields in `worker_state` and signal expiry fields in `signal_queue`. Column-level grants are not included in information_schema.role_table_grants reports; inspect column_privileges when auditing them. RLS remains enabled and security advisor returned zero lints. The role remains NOLOGIN; dedicated worker has not deployed, and no heartbeat has occurred. Production and frozen member UI untouched.
+
+
+## Isolated Postgres integration acceptance checkpoint (2026-10-12)
+
+- CI workflow now starts temporary PostgreSQL 16 with the database name `tradevice_master_ci`; the test DSN explicitly rejects any non-localhost or non-ephemeral database, including Supabase. Migration SQL is applied there, and worker/reader roles are exercised with real RLS permissions.
+- The first integration run `38205945801` exposed a real worker start failure decoding PostgreSQL `-infinity` lease default with Psycopg. Worker SQL now calculates lease validity inside Postgres. CI run `38206020263` passed all checks, including the new PostgreSQL tests.
+- A second test exposed the same lease sentinel concern in the FastAPI reader; commit `773b551d46031132cfe601beb9143593c9e50ce4` fixes it and adds reader queries against an actual local ephemeral database. CI `38206214437` completed SUCCESS, including browser regressions.
+- The `copy-api` service upgrade was reviewed as the only non-destructive patch and staged changes were committed in Railway staging; deployment `354aab44-3a7d-4703-96d0-b466f60feed2` was BUILDING on last read. Do not claim deployment SUCCESS until terminal Railway status is observed.
+- Production remained unchanged. `master-worker` still has no deployment because required dedicated LOGIN credentials were blocked by tool-level protections; the worker/reader roles still have NOLOGIN, and the real telemetry schema is empty. Paper/live execution boundaries and locked member UI remain unchanged.
