@@ -26,19 +26,34 @@ def enforce_safety(env):
             raise RuntimeError(f"Unsafe configuration: {key}")
     if env.get("MASTER_QUOTE_SOURCE","none") != "none":
         raise RuntimeError("No trusted market feed adapter has been approved")
-    dsn=env.get("MASTER_DATABASE_URL","")
+    errors=database_url_errors(env.get("MASTER_DATABASE_URL",""))
+    if errors:
+        # Only static field labels are logged. Never log the DSN or credentials.
+        raise RuntimeError("MASTER_DATABASE_URL validation failed: " + ",".join(errors))
+
+
+def database_url_errors(dsn):
+    """Diagnose fields without logging connection strings or password contents."""
+    if not isinstance(dsn,str) or not dsn:
+        return ["missing"]
     try:
         parts=urlsplit(dsn)
         query=parse_qs(parts.query)
-        correct=(parts.scheme in ("postgresql","postgres") and
-                 parts.hostname=="db.scqzlcivherovlwqypeu.supabase.co" and
-                 parts.port==5432 and parts.path=="/postgres" and
-                 parts.username=="tradevice_master_worker" and
-                 bool(parts.password) and query.get("sslmode")==["require"])
-        if not correct:
-            raise ValueError("Invalid staging worker connection")
+        checks={
+            "scheme":parts.scheme in ("postgresql","postgres"),
+            "host":parts.hostname=="db.scqzlcivherovlwqypeu.supabase.co",
+            "port":parts.port==5432,
+            "database":parts.path=="/postgres",
+            "username":parts.username=="tradevice_master_worker",
+            "password_present":bool(parts.password),
+            "sslmode":query.get("sslmode")==["require"],
+            "no_fragment":not parts.fragment,
+            "no_surrounding_whitespace":dsn==dsn.strip(),
+        }
+        return [name for name,valid in checks.items() if not valid]
     except (ValueError,TypeError):
-        raise RuntimeError("MASTER_DATABASE_URL must be dedicated staging, restricted worker and TLS") from None
+        return ["malformed_url"]
+
 
 def cycle_state(kill_switch):
     """Never call this offline-only supervisor ACTIVE without an approved quote source."""
