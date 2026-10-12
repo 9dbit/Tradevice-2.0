@@ -1,5 +1,5 @@
 import {apiOrigin, publicConfig} from '../../../../lib/runtime.mjs';
-import {masterAuthAllowed,parseMasterBearer,STAGING_PROJECT_REF} from '../../../../lib/master-security.mjs';
+import {masterAuthAllowed,masterCommandOriginAllowed,parseMasterBearer,STAGING_PROJECT_REF} from '../../../../lib/master-security.mjs';
 
 export const dynamic='force-dynamic';
 export const runtime='nodejs';
@@ -17,10 +17,10 @@ export async function POST(request:Request){
   if(!token)return fail(401,'MASTER_AUTH_REQUIRED');
   const config=publicConfig(process.env);
   if(!config.configured||!config.supabaseUrl||!config.publishableKey)return fail(503,'MASTER_AUTH_NOT_CONFIGURED');
-  try{
-    const origin=request.headers.get('origin');
-    if(origin&&origin!==new URL(request.url).origin)return fail(403,'MASTER_ORIGIN_MISMATCH');
-  }catch{return fail(400,'INVALID_ORIGIN');}
+  // Railway reverse proxy may rewrite request.url to an internal origin.
+  // Accept only the exact pinned public staging domain, not forwarded headers.
+  if(!masterCommandOriginAllowed(request.headers.get('origin')))
+    return fail(403,'MASTER_ORIGIN_MISMATCH');
   let user:unknown;
   try{
     const r=await fetch(config.supabaseUrl+'/auth/v1/user',{

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { parseMasterBearer, masterAuthAllowed, paperHealthState, STAGING_PROJECT_REF } from '../lib/master-security.mjs';
+import { parseMasterBearer, masterAuthAllowed, paperHealthState, STAGING_PROJECT_REF, MASTER_STAGING_WEB_ORIGIN, masterCommandOriginAllowed } from '../lib/master-security.mjs';
 
 const admin = {
   id: '11111111-1111-4111-8111-111111111111',
@@ -35,4 +35,25 @@ test('paper API health cannot override a safety mismatch', () => {
   assert.equal(paperHealthState({ status: 'ok', execution_mode: 'paper', live_execution: false, copy_execution: true }), 'SAFETY_MISMATCH');
   assert.equal(paperHealthState(null), 'UNAVAILABLE');
   assert.equal(STAGING_PROJECT_REF, 'scqzlcivherovlwqypeu');
+});
+
+test('staging Master command accepts exact browser origin even behind Railway proxy',()=>{
+ assert.equal(MASTER_STAGING_WEB_ORIGIN,'https://copy-web-staging.up.railway.app');
+ assert.equal(masterCommandOriginAllowed(MASTER_STAGING_WEB_ORIGIN),true);
+ // A server-to-server request without Origin remains subject to bearer and admin checks.
+ assert.equal(masterCommandOriginAllowed(null),true);
+});
+
+test('Master command origin allowlist rejects cross-site, lookalikes and spoofed origins',()=>{
+ for (const origin of [
+   'null', '', 'https://evil.example',
+   'https://copy-web-staging.up.railway.app.evil.test',
+   'http://copy-web-staging.up.railway.app',
+   'https://copy-web-staging.up.railway.app:1234',
+   'https://copy-web-staging.up.railway.app/some-path',
+   'https://copy-web-staging.up.railway.app@evil.test',
+   'https://copy-web-staging.up.railway.app ',
+   'https://copy-api-staging-4c33.up.railway.app'
+ ]) assert.equal(masterCommandOriginAllowed(origin),false,origin);
+ assert.equal(masterCommandOriginAllowed(undefined),false);
 });

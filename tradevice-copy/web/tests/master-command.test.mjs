@@ -90,3 +90,12 @@ test('broker quality panel exists and never fabricates broker metrics or starts 
  assert.match(dashboard,/!engineReady/);
  assert.doesNotMatch(dashboard,/FAKE_BROKER|spreadPoints:\s*10|atr14:\s*5|commissionUsdPerLot:\s*5/);
 });
+
+test('master command origin is pinned to public staging host, not Railway request.url or forwarded host',()=>{
+ assert.match(route,/masterCommandOriginAllowed\(request\.headers\.get\('origin'\)\)/);
+ assert.doesNotMatch(route,/new URL\(request\.url\)\.origin/);
+ assert.doesNotMatch(route,/x-forwarded-host|x-forwarded-proto/);
+ assert.match(route,/MASTER_ORIGIN_MISMATCH/);
+ assert.match(route,/masterAuthAllowed\(user\)/);
+ assert.match(route,/parseMasterBearer/);
+});

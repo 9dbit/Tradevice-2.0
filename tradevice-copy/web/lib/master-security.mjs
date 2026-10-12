@@ -1,5 +1,16 @@
 /** Server-side master admin gate: use verified Supabase app_metadata only. */
 export const STAGING_PROJECT_REF = 'scqzlcivherovlwqypeu';
+/**
+ * Fixed staging browser origin. Railway's internal request.url origin can differ
+ * from the publicly routed hostname, so it is not an authorization authority.
+ * Keep this deliberately single-host; never accept arbitrary forwarded hosts.
+ */
+export const MASTER_STAGING_WEB_ORIGIN = 'https://copy-web-staging.up.railway.app';
+export function masterCommandOriginAllowed(origin) {
+  // Preserve bearer-only server clients without Origin headers; browser POSTs
+  // send Origin and must match the explicitly pinned staging web domain.
+  return origin === null || origin === MASTER_STAGING_WEB_ORIGIN;
+}
 export function parseMasterBearer(value) {
   if (typeof value !== 'string' || value.length > 16400 ||
       !/^Bearer [A-Za-z0-9._~-]{8,16384}$/.test(value)) return null;
