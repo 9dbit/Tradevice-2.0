@@ -32,7 +32,8 @@ jobs:
       - name: Python foundation regression tests
         run: |
           python -m pip install -r tradevice-copy/api/requirements-dev.txt
-          PYTHONPATH=tradevice-copy/api:tradevice-copy/services python -m pytest tradevice-copy/api/tests tradevice-copy/services -q
+          python -m pip install -r tradevice-copy/worker/requirements.txt
+          PYTHONPATH=tradevice-copy/api:tradevice-copy/services:tradevice-copy/worker python -m pytest tradevice-copy/api/tests tradevice-copy/services tradevice-copy/worker -q
       - name: Install pinned web dependencies and generate lockfile
         working-directory: tradevice-copy/web
         run: |
