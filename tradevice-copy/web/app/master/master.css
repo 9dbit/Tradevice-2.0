@@ -560,3 +560,20 @@
  .mt-u-sort{padding:7px 9px}
 }
 @media(prefers-reduced-motion:reduce){.mt-u-choice button,.mt-u-buttons button{transition:none}}
+
+/* Master 2.1 verified broker market panel and actionable telemetry diagnostics. */
+.mt-u-diagnostic{display:flex;align-items:flex-start;gap:12px;padding:14px 16px;background:#211b15;border:1px solid #78502a;border-radius:13px;color:#f4c996}
+.mt-u-diagnostic svg{flex:none;margin-top:2px}
+.mt-u-diagnostic strong{display:block;color:#f6ddbb;font-size:12px}
+.mt-u-diagnostic p{font-size:11px;line-height:1.65;margin:5px 0 0;color:#d9b48a;overflow-wrap:anywhere}
+.mt-u-market-grid{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:0;border-top:1px solid #292929;border-bottom:1px solid #292929;margin-top:16px}
+.mt-u-market-cell{min-width:0;padding:13px 12px;border-right:1px solid #262626;display:flex;flex-direction:column;gap:7px}
+.mt-u-market-cell:first-child{padding-left:0}
+.mt-u-market-cell:last-child{border:0;padding-right:0}
+.mt-u-market-cell small{font-size:10px;color:#a8a8a8}
+.mt-u-market-cell strong{font-size:clamp(13px,1.2vw,16px);line-height:1.3;color:#f2f2f2;overflow-wrap:anywhere;font-weight:690}
+.mt-u-market-cell span{font-size:9px;color:#909090;line-height:1.45}
+.mt-u-market-foot{margin-top:11px;display:flex;align-items:center;flex-wrap:wrap;gap:6px 22px;color:#929292;font-size:10px;line-height:1.6}
+.mt-u-market-foot strong{color:#ddd;font-weight:600}
+@media(max-width:1200px){.mt-u-market-grid{grid-template-columns:repeat(3,minmax(0,1fr))}.mt-u-market-cell:nth-child(3){border-right:0}.mt-u-market-cell:nth-child(-n+3){border-bottom:1px solid #282828}.mt-u-market-cell:nth-child(4){padding-left:0}}
+@media(max-width:760px){.mt-u-market-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.mt-u-market-cell:nth-child(odd){padding-left:0;border-right:1px solid #282828}.mt-u-market-cell:nth-child(even){border-right:0;padding-right:0}.mt-u-market-cell:nth-child(-n+4){border-bottom:1px solid #282828}.mt-u-market-cell{padding:13px 10px}.mt-u-market-foot{gap:4px 14px}}

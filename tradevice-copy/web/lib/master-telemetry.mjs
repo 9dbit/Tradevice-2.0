@@ -73,6 +73,15 @@ export function validateWorkerTelemetry(raw, now=Date.now()) {
       masterWorker:online?'ONLINE':'OFFLINE/STALE',journal:'CONNECTED',adminAuth:'VERIFIED',
     },
     activity:events,paperOrders:orders,
+    // Do not accept arbitrary broker quote numbers until a trusted demo-observer
+    // ingestion protocol is deployed with source attestation and freshness gates.
+    market:{
+      status:'NOT_CONNECTED',source:'NONE',brokerName:null,accountMode:null,
+      symbol:null,observedAt:null,bid:null,ask:null,pointSize:null,
+      spreadPoints:null,commissionUsdPerLot:null,slippagePoints:null,
+      volatilityPct:null,volatilityWindow:null,atr14:null,atrTimeframe:null,
+      executionAdapter:'INTERNAL_PAPER_ONLY',
+    },
     control:{runStatus,cycleMode,targetCycles,strategyCycles,newsPolicy,
       sessionId:bounded(control.sessionId,80)||null,lastRejection:bounded(control.lastRejection,100)||null,
       operatorConfigured:control.operatorConfigured===true,

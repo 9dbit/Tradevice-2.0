@@ -47,6 +47,14 @@ export async function GET(request: Request) {
   }
   // The internal service-to-service secret is never exposed in the response or to browser code.
   const sharedSecret = process.env.MASTER_TELEMETRY_SHARED_SECRET || '';
+  // Admin-only, low-cardinality codes. Never forward secrets or provider exception messages.
+  const allowedDiagnosticCodes = new Set([
+    'MASTER_READ_DB_NOT_CONFIGURED','MASTER_READ_DB_ACCESS_FAILED',
+    'MASTER_READ_DB_IDENTITY_FAILED','MASTER_TELEMETRY_PROCESSING_FAILED',
+    'MASTER_INTERNAL_AUTH_REQUIRED','MASTER_STAGING_ONLY',
+    'MASTER_TELEMETRY_NOT_CONFIGURED',
+  ]);
+  let telemetryDiagnostic = origin ? 'MASTER_TELEMETRY_UNAVAILABLE' : 'MASTER_API_NOT_CONFIGURED';
   if (origin && /^[0-9a-f]{64}$/.test(sharedSecret)) {
     try {
       const telemetryResponse = await fetch(origin + '/internal/master/telemetry', {
@@ -61,9 +69,18 @@ export async function GET(request: Request) {
             infrastructure: { ...snapshot.infrastructure, memberApi },
           }, { headers });
         }
+        telemetryDiagnostic='MASTER_TELEMETRY_INVALID_RESPONSE';
+      } else if (telemetryResponse.status === 401) {
+        telemetryDiagnostic='MASTER_INTERNAL_AUTH_MISMATCH';
+      } else {
+        const err=await telemetryResponse.json().catch(()=>null);
+        const code=err?.detail?.code;
+        telemetryDiagnostic=typeof code==='string' && allowedDiagnosticCodes.has(code)
+          ? code : 'MASTER_TELEMETRY_UNAVAILABLE';
       }
     } catch {
-      // No synthetic fallback. When the backend is unavailable, report OFFLINE/STALE.
+      telemetryDiagnostic='MASTER_TELEMETRY_UNREACHABLE';
+      // No synthetic fallback. Unverified data must remain OFFLINE/STALE.
     }
   }
   return Response.json({
@@ -80,5 +97,6 @@ export async function GET(request: Request) {
     infrastructure: { memberApi, masterWorker: 'OFFLINE/STALE',
       journal: 'UNAVAILABLE', adminAuth: 'VERIFIED' },
     activity: [], paperOrders: [], equityCurve: [],
+    diagnostic: { code: telemetryDiagnostic, component: 'MASTER_TELEMETRY' },
   }, { headers });
 }

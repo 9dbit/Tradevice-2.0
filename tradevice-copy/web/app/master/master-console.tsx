@@ -18,6 +18,13 @@ export type Snapshot = {
   activity: Notice[]; paperOrders: PaperOrder[]; equityCurve: number[];
   queue?: {queued:number;retry:number;expired:number;rejected:number;accepted:number;deadLetter:number};
   paperExecution?: {accepted:number;rejected:number;fillsVerified:boolean};
+  diagnostic?: {code:string;component?:string};
+  market?: {status:'NOT_CONNECTED'|'STALE'|'VERIFIED';source:string;
+    brokerName:string|null;accountMode:'DEMO'|'REAL'|null;symbol:string|null;
+    observedAt:string|null;bid:number|null;ask:number|null;pointSize:number|null;
+    spreadPoints:number|null;commissionUsdPerLot:number|null;slippagePoints:number|null;
+    volatilityPct:number|null;volatilityWindow:string|null;atr14:number|null;
+    atrTimeframe:string|null;executionAdapter:string};
   control?: {
     runStatus:'STOPPED'|'RUNNING'|'COMPLETED'|'HALTED'|'NOT_CONFIGURED';
     cycleMode:'CONTINUOUS'|'CUSTOM';targetCycles:number|null;strategyCycles:number|null;

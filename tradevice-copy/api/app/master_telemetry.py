@@ -111,6 +111,17 @@ def build_snapshot(state, anomalies, orders, queue, clock, run=None, terminal=No
       "paperExecution":{"accepted":sum(o["state"]=="ACCEPTED_SIMULATED" for o in paper),
                         "rejected":sum(o["state"]=="REJECTED" for o in paper),
                         "fillsVerified":False},
+      "market":{
+          # No live broker or approved quote observer belongs to this staging project yet.
+          # The local SQLite PaperBroker prototype does not supply live bid/ask or fills.
+          "status":"NOT_CONNECTED","source":"NONE","brokerName":None,
+          "accountMode":None,"symbol":None,"observedAt":None,
+          "bid":None,"ask":None,"pointSize":None,"spreadPoints":None,
+          "commissionUsdPerLot":None,"slippagePoints":None,
+          "volatilityPct":None,"volatilityWindow":None,
+          "atr14":None,"atrTimeframe":None,
+          "executionAdapter":"INTERNAL_PAPER_ONLY",
+      },
       "activity":events,"paperOrders":paper,"equityCurve":[],
       "control":{
          "runStatus":safe_status,"cycleMode":safe_mode,

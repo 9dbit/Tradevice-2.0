@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from typing import Annotated
 from uuid import UUID
 import hmac
+import logging
 import psycopg
 import os
 import re
@@ -19,6 +20,7 @@ from pydantic import BaseModel, ConfigDict
 from typing import Literal
 from .config import Settings
 
+master_logger = logging.getLogger('tradevice.master.telemetry')
 bearer = HTTPBearer(auto_error=False)
 
 class OperatorCommand(BaseModel):
@@ -159,8 +161,17 @@ def create_app(settings: Settings | None = None, transport: httpx.AsyncBaseTrans
             payload["control"]["operatorConfigured"] = allowed_operator_dsn(
                 os.getenv("MASTER_OPERATOR_DATABASE_URL",""))
             return payload
-        except Exception:
-            raise problem(503, "MASTER_TELEMETRY_UNAVAILABLE") from None
+        except psycopg.Error as exc:
+            # Never log DSNs, usernames/passwords, SQL or payloads. SQLSTATE is safe diagnostics.
+            master_logger.warning("master_telemetry_db_failed type=%s sqlstate=%s",
+                                  type(exc).__name__, exc.sqlstate or "NONE")
+            raise problem(503, "MASTER_READ_DB_ACCESS_FAILED") from None
+        except RuntimeError as exc:
+            master_logger.warning("master_telemetry_runtime_failed type=%s", type(exc).__name__)
+            raise problem(503, "MASTER_READ_DB_IDENTITY_FAILED") from None
+        except Exception as exc:
+            master_logger.warning("master_telemetry_processing_failed type=%s", type(exc).__name__)
+            raise problem(503, "MASTER_TELEMETRY_PROCESSING_FAILED") from None
 
     @application.post("/internal/master/command", status_code=202)
     async def internal_master_command(request: Request, command: OperatorCommand):

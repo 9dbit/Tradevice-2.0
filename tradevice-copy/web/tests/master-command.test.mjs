@@ -69,3 +69,24 @@ test('telemetry accepts only verified operator event metadata and no fake fills'
  assert.equal(v.risk.pnlUsd,null);
  assert.deepEqual(v.equityCurve,[]);
 });
+
+
+test('operator save can reapply the unchanged Continuous and Avoid News policy',()=>{
+ const saveControl=dashboard.match(/<button className="mt-u-apply"[\s\S]*?<\/button>/)?.[0]||'';
+ assert.match(saveControl,/Save Configuration/);
+ assert.match(saveControl,/onClick=\{\(\)=>void command\('CONFIGURE'\)\}/);
+ assert.doesNotMatch(saveControl,/!dirty/);
+ assert.match(dashboard,/Save Configuration · Reapply/);
+ assert.match(dashboard,/mt-u-diagnostic/);
+ assert.match(workerContract,/MASTER_READ_DB_ACCESS_FAILED/);
+});
+
+test('broker quality panel exists and never fabricates broker metrics or starts trading',()=>{
+ for(const field of ['Broker & Market Conditions','Current Spread','Commission','Slippage',
+  'Volatility','ATR (14)','MT5 Observer','Last quote','executionAdapter']) {
+    assert.ok(dashboard.includes(field),field);
+ }
+ assert.match(dashboard,/Not connected/);
+ assert.match(dashboard,/!engineReady/);
+ assert.doesNotMatch(dashboard,/FAKE_BROKER|spreadPoints:\s*10|atr14:\s*5|commissionUsdPerLot:\s*5/);
+});

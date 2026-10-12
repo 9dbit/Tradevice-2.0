@@ -52,6 +52,7 @@ export default function CompactDashboard({data,token,onNavigate,onUpdated}:{
  data:Snapshot|null;token:string;onNavigate:(tab:Details)=>void;onUpdated:()=>void;
 }){
  const control=data?.control;
+ const market=data?.market;
  const [cycleMode,setCycleMode]=useState<Cycle>('CONTINUOUS');
  const [target,setTarget]=useState('100');
  const [news,setNews]=useState<News>('AVOID');
@@ -72,6 +73,7 @@ export default function CompactDashboard({data,token,onNavigate,onUpdated}:{
  const operatorAvailable=data?.source==='STAGING_WORKER_TELEMETRY'&&control?.operatorConfigured===true;
  const workerAvailable=data?.infrastructure.masterWorker==='ONLINE';
  const canOperate=!!operatorAvailable&&workerAvailable;
+ const diagnostic=data?.diagnostic?.code || null;
  const engineReady=control?.quotesReady===true&&control?.brokerReady===true&&
    control?.newsCalendarReady===true&&data?.risk.killSwitch!=='ENGAGED';
  const newSession=control?.sessionId||null;
@@ -120,6 +122,13 @@ export default function CompactDashboard({data,token,onNavigate,onUpdated}:{
    finally{setWorking(null);}
  }
  return <div className="mt-unified">
+  {diagnostic&&<div className="mt-u-diagnostic" role="alert">
+    <I name="alert" size={18}/>
+    <div><strong>Telemetry Master belum tersambung</strong>
+      <p>{diagnostic}. Periksa koneksi `MASTER_READ_DATABASE_URL` pada copy-api staging.
+      Konfigurasi dan eksekusi terkunci sampai identitas reader serta heartbeat terverifikasi.</p>
+    </div>
+  </div>}
   <div className="mt-u-statusline">
     <span className="mt-u-status"><i className={workerAvailable?'ok':''}/> Supervisor {workerAvailable?'ONLINE':'OFFLINE / STALE'}</span>
     <span>Trade admission: BLOCKED · Paper only</span>
@@ -157,6 +166,37 @@ export default function CompactDashboard({data,token,onNavigate,onUpdated}:{
       <Datum name="Pending signals" value={fmt(data?.queue?.queued)}/>
     </Panel>
   </div>
+  <section className="mt-u-panel mt-u-market">
+    <div className="mt-u-panel-head">
+      <div><span className="mt-u-overline">REAL BROKER EVIDENCE · NO SYNTHETIC VALUES</span>
+        <h2><I name="activity"/> Broker & Market Conditions</h2>
+      </div>
+      <span className="mt-u-chip">{market?.status==='VERIFIED'?'VERIFIED':'NOT CONNECTED'}</span>
+    </div>
+    <p className="mt-u-hint">Feed MT5 dan broker demo belum terhubung ke Master Copy staging.
+      Angka pasar baru akan muncul dari observer tepercaya, bukan dari simulasi.</p>
+    <div className="mt-u-market-grid">
+      <div className="mt-u-market-cell"><small>Broker</small><strong>{market?.brokerName||'Not connected'}</strong>
+        <span>Account: {market?.accountMode||'Not linked'}</span></div>
+      <div className="mt-u-market-cell"><small>Current Spread</small>
+        <strong>{fmt(market?.spreadPoints)}</strong><span>points · bid/ask</span></div>
+      <div className="mt-u-market-cell"><small>Commission</small>
+        <strong>{fmt(market?.commissionUsdPerLot)}</strong><span>USD / lot · verified cost</span></div>
+      <div className="mt-u-market-cell"><small>Slippage</small>
+        <strong>{fmt(market?.slippagePoints)}</strong><span>points · decision vs fill</span></div>
+      <div className="mt-u-market-cell"><small>Volatility</small>
+        <strong>{fmt(market?.volatilityPct,'%')}</strong>
+        <span>{market?.volatilityWindow||'awaiting completed candles'}</span></div>
+      <div className="mt-u-market-cell"><small>ATR (14)</small>
+        <strong>{fmt(market?.atr14)}</strong>
+        <span>{market?.atrTimeframe||'M1'} · price units</span></div>
+    </div>
+    <div className="mt-u-market-foot">
+      <span>Execution adapter: <strong>{market?.executionAdapter==='INTERNAL_PAPER_ONLY'?'Internal paper only':'Not configured'}</strong></span>
+      <span>MT5 Observer: <strong>{market?.status==='VERIFIED'?'Connected':'Not connected'}</strong></span>
+      <span>Last quote: <strong>{time(market?.observedAt)}</strong></span>
+    </div>
+  </section>
   <div className="mt-u-duo">
    <section className="mt-u-panel mt-u-commands">
     <div className="mt-u-panel-head"><div><span className="mt-u-overline">CONTROL DESK</span>
@@ -171,7 +211,7 @@ export default function CompactDashboard({data,token,onNavigate,onUpdated}:{
     </div>
     <div className="mt-u-help">{!operatorAvailable?'Operator command service belum terkonfigurasi.':
       !workerAvailable?'Worker tidak tersedia, perintah dinonaktifkan.':
-      !engineReady?'Start terkunci sampai trusted quote, news calendar, dan paper broker lulus preflight.':
+      !engineReady?'Start terkunci: trusted quote, economic calendar, dan paper broker belum tersambung. MT5 Observer saja tidak mengaktifkan trading.':
       'Safety guard siap dievaluasi saat Start.'}</div>
     <div className="mt-u-settings">
       <label className="mt-u-label">Jumlah Cycle</label>
@@ -190,10 +230,13 @@ export default function CompactDashboard({data,token,onNavigate,onUpdated}:{
         <option value="ALLOW">Allow during news (risk guards apply)</option>
         <option value="ONLY">News windows only</option>
       </select>
-      <p className="mt-u-help">Belum ada kalender berita terverifikasi. Mengubah policy tidak mengaktifkan order.</p>
-      <button className="mt-u-apply" disabled={!canOperate||!!working||!dirty||
-        control?.runStatus==='RUNNING'} onClick={()=>void command('CONFIGURE')} type="button">
-        Save Configuration</button>
+      <p className="mt-u-help">Belum ada kalender berita terverifikasi. Mengubah policy tidak mengaktifkan order.
+      Tombol Save boleh digunakan meski nilai Continuous / Avoid News tidak berubah.</p>
+      <button className="mt-u-apply" disabled={!canOperate||!!working||
+        control?.runStatus==='RUNNING'} onClick={()=>void command('CONFIGURE')} type="button"
+        title={!canOperate?'Menunggu telemetry operator yang terverifikasi':
+          'Kirim ulang konfigurasi meskipun nilainya belum berubah'}>
+        {dirty?'Save Configuration':'Save Configuration · Reapply'}</button>
     </div>
     {!!feedback&&<p className="mt-u-feedback" role="status">{feedback}</p>}
     <div className="mt-u-reset">

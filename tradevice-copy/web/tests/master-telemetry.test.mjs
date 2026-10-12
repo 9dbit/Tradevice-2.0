@@ -34,3 +34,15 @@ test('invalid provider/source/time cannot fall back to synthetic',()=>{
   assert.equal(validateWorkerTelemetry(x,now),null);
  }
 });
+
+test('untrusted broker values never appear when no signed staging observer exists',()=>{
+ const poisoned={...raw,market:{status:'VERIFIED',source:'UNKNOWN',brokerName:'Synthetic Broker',
+   spreadPoints:100,commissionUsdPerLot:123,slippagePoints:10,volatilityPct:9,atr14:500}};
+ const x=validateWorkerTelemetry(poisoned,now);
+ assert.equal(x.market.status,'NOT_CONNECTED');
+ assert.equal(x.market.brokerName,null);
+ assert.equal(x.market.spreadPoints,null);
+ assert.equal(x.market.atr14,null);
+ assert.equal(x.market.commissionUsdPerLot,null);
+ assert.equal(x.market.slippagePoints,null);
+});
