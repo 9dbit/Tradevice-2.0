@@ -25,23 +25,16 @@ const dimensions=[
   {width:1024,height:768,label:'tablet landscape'}
 ];
 for(const d of dimensions) {
- test('no horizontal overflow in login and every demo tab at '+d.label+' '+d.width,async ({page})=>{
+ test('no horizontal overflow on empty paper demo tabs at '+d.label+' '+d.width,async ({page})=>{
   await page.setViewportSize({width:d.width,height:d.height});
   await page.goto('/demo');
-  await expect(page.getByLabel('Username demo')).toBeVisible();
-  await noHorizontalOverflow(page,'Login '+d.label);
-  const computed=await page.getByLabel('Username demo').evaluate(el=>({font:getComputedStyle(el).fontSize,border:getComputedStyle(el).borderRadius}));
-  expect(parseFloat(computed.font)).toBeGreaterThanOrEqual(16);
-  expect(parseFloat(computed.border)).toBeGreaterThanOrEqual(22);
-  await page.getByLabel('Username demo').fill('admin');
-  await page.getByLabel('Password demo').fill('admin');
-  await page.getByRole('button',{name:/Masuk ke demo/}).click();
-  await expect(page.getByText('DATA SINTETIS · DEMO READ-ONLY')).toBeVisible();
-  await noHorizontalOverflow(page,'Overview '+d.label);
+  await expect(page.getByText('BELUM ADA DATA TRADING DEMO')).toBeVisible();
+  await expect(page.getByLabel('Username demo')).toHaveCount(0);
+  await noHorizontalOverflow(page,'Empty overview '+d.label);
   const mobile=d.width<=860;
   const nav=page.getByRole('navigation',{name:mobile?'Demo mobile navigation':'Demo desktop navigation'});
   for(const name of ['Akun','Strategi','Riwayat']) {
-    const button=name==='Akun'&&!mobile?'Akun Paper':name==='Strategi'&&!mobile?'Strategi':name;
+    const button=name==='Akun'&&!mobile?'Akun Paper':name;
     await nav.getByRole('button',{name:button,exact:true}).click();
     await noHorizontalOverflow(page,name+' '+d.label);
   }
@@ -63,15 +56,15 @@ for(const d of dimensions) {
   await noHorizontalOverflow(page,'Referral '+d.label);
  });
 }
-test('login button uses the current solid white pill with dark readable label',async ({page})=>{
+test('mobile floating menu retains white active pill and safe empty-state text',async ({page})=>{
   await page.setViewportSize({width:393,height:852});
   await page.goto('/demo');
-  const style=await page.getByRole('button',{name:/Masuk ke demo/}).evaluate(el=>{
+  await expect(page.getByText('BELUM ADA DATA TRADING DEMO')).toBeVisible();
+  const nav=page.getByRole('navigation',{name:'Demo mobile navigation'});
+  const style=await nav.getByRole('button',{name:'Ringkasan'}).evaluate(el=>{
     const c=getComputedStyle(el);
-    return {background:c.backgroundColor,image:c.backgroundImage,color:c.color,radius:parseFloat(c.borderRadius)};
+    return {background:c.backgroundColor,color:c.color};
   });
   expect(style.background).toBe('rgb(247, 247, 247)');
-  expect(style.image).toBe('none');
   expect(style.color).toBe('rgb(17, 17, 17)');
-  expect(style.radius).toBeGreaterThanOrEqual(24);
 });

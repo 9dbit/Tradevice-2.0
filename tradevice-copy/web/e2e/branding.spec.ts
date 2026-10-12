@@ -22,15 +22,12 @@ test('orange brand is visible on iPhone with no horizontal overflow',async({page
   expect(overflow).toBeLessThanOrEqual(1);
   await page.screenshot({path:'test-results/orange-brand-mobile.png',fullPage:true});
 });
-test('public demo uses same brand and orange sign-in CTA',async({page})=>{
+test('empty paper demo retains brand and removes fake admin login',async({page})=>{
+  await page.setViewportSize({width:390,height:844});
   await page.goto('/demo');
-  await expect(page.locator('.demo-gate-brand .dmark img')).toBeVisible();
-  const style=await page.locator('.demo-login-btn').evaluate(e=>({image:getComputedStyle(e).backgroundImage,color:getComputedStyle(e).backgroundColor}));
-  expect(style.image).toBe('none');
-  expect(style.color).toBe('rgb(247, 247, 247)');
-  await page.getByLabel('Username demo').fill('admin');
-  await page.getByLabel('Password demo').fill('admin');
-  await page.getByRole('button',{name:/Masuk ke demo/}).click();
-  await expect(page.getByText('DATA SINTETIS · DEMO READ-ONLY')).toBeVisible();
-  await expect(page.locator('.demo-brand .dmark img')).toBeAttached();
+  await expect(page.locator('.demo-mobile-brand .dmark img')).toBeVisible();
+  await expect(page.getByText('BELUM ADA DATA TRADING DEMO')).toBeVisible();
+  await expect(page.getByRole('navigation',{name:'Demo mobile navigation'})).toBeVisible();
+  await expect(page.getByLabel('Username demo')).toHaveCount(0);
+  await expect(page.getByText('SIM-001')).toHaveCount(0);
 });
