@@ -1,6 +1,7 @@
 'use client';
 import {useEffect,useMemo,useRef,useState} from 'react';
 import type {Snapshot} from './master-console';
+import {validateEngine,validateOwned} from '../../lib/engine-diagnostics.mjs';
 import {validateNews} from '../../lib/news-calendar.mjs';
 
 type Details='overview'|'cycles'|'anomalies'|'risk'|'journal'|'system';
@@ -62,6 +63,10 @@ export default function CompactDashboard({data,token,onNavigate,onUpdated}:{
  const [newsClock,setNewsClock]=useState(Date.now());
  useEffect(()=>{const timer=setInterval(()=>setNewsClock(Date.now()),1000);return ()=>clearInterval(timer);},[]);
  const calendar=validateNews(data?.news,newsClock);
+ const marketFresh=market?.observedAt!=null&&newsClock-Date.parse(market.observedAt)>=0&&newsClock-Date.parse(market.observedAt)<=8000;
+ const engine=validateEngine(marketFresh?market?.engineDiagnostics:null,newsClock);
+ const owned=validateOwned(marketFresh?market?.ownedPositionPnl:null);
+ const decision=engine.decision;
  const newsTime=(value:number|null)=>value===null?'—':time(new Date(value).toISOString());
  const countdownTarget=calendar.status==='BLACKOUT'?calendar.blackoutUntil:calendar.nextEvent?.blackoutStart;
  const seconds=countdownTarget==null?null:Math.max(0,Math.ceil((countdownTarget-newsClock)/1000));
@@ -271,6 +276,31 @@ export default function CompactDashboard({data,token,onNavigate,onUpdated}:{
       <span>Last quote: <strong>{time(market?.observedAt)}</strong></span>
     </div>
   </section>
+  <section className="mt-u-panel mt-u-market" aria-label="Engine and basket diagnostics">
+    <div className="mt-u-panel-head"><div><span className="mt-u-overline">ENGINE EVIDENCE · READ-ONLY</span>
+      <h2><I name="shield"/> Adaptive Entry &amp; Basket Risk</h2></div>
+      <span className="mt-u-chip">{engine.status.replaceAll('_',' ')}</span></div>
+    <p className="mt-u-hint">Batas strategi: −$120 hard loss dan +$3.50 target. Batas konfigurasi tidak membuktikan pengawasan aktif atau menjamin harga exit. Laporan engine kedaluwarsa dalam 8 detik; P&amp;L evaluasi dalam 5 detik.</p>
+    <div className="mt-u-market-grid">
+      <div className="mt-u-market-cell"><small>Open positions profit + swap</small><strong>{fmt(owned?.value,' USD')}</strong>
+        <span>GoldTrap magic + symbol · belum termasuk realized dan seluruh commission</span></div>
+      <div className="mt-u-market-cell"><small>Last engine basket valuation</small><strong>{fmt(engine.pnl?.value,' USD')}</strong>
+        <span>{engine.pnl?'Executable estimate + cached realized; costs not fully verified':'No fresh engine valuation'}</span></div>
+      <div className="mt-u-market-cell"><small>Hard loss / risk exit</small><strong>{fmt(engine.hardLossUsd,' USD')}</strong>
+        <span>{engine.riskExitCommitted===true?'EXIT COMMITTED':engine.pnl?'Recent valuation reported; protection not attested':'Supervision NOT VERIFIED'}</span></div>
+      <div className="mt-u-market-cell"><small>Cycle state</small><strong>{engine.state||'—'}</strong>
+        <span>{engine.cycleId||'No fresh cycle identity'} · flat reconciliation: {engine.brokerFlatReconciled===true?'REPORTED':'NOT VERIFIED'}</span></div>
+      <div className="mt-u-market-cell"><small>Adaptive layer / adverse distance</small><strong>{decision?'L'+decision.layer+' · '+fmt(decision.distance_points)+' pts':'—'}</strong>
+        <span>Minimum 1,700 points from actual fill · closed M1</span></div>
+      <div className="mt-u-market-cell"><small>Body / ATR · body / range</small><strong>{fmt(decision?.body_atr)} / {fmt(decision?.body_range)}</strong>
+        <span>Minimum 0.50 / 0.55 · ATR {fmt(decision?.atr)}</span></div>
+      <div className="mt-u-market-cell"><small>Structural reversal</small><strong>{decision?.structuralReversal===true?'CONFIRMED':decision?.structuralReversal===false?'NOT CONFIRMED':'—'}</strong>
+        <span>Last evaluated candle: {newsTime(decision?.candleCloseMs??null)}</span></div>
+      <div className="mt-u-market-cell"><small>Durable authorization</small><strong>{engine.authorization}</strong>
+        <span>Expiry: {newsTime(engine.authorizationExpiresMs)} · dashboard dispatch LOCKED</span></div>
+    </div>
+    <p className="mt-u-help">L6–L10: {decision?decision.reasons.join(' · '):'NO FRESH ENGINE DECISION'}. Engine report: {newsTime(engine.observedMs)}. Posisi kosong bukan bukti cycle COMPLETE.</p>
+  </section>
   <section className="mt-u-panel mt-u-market" aria-label="Forex Factory news guard">
     <div className="mt-u-panel-head"><div><span className="mt-u-overline">FOREX FACTORY · HIGH IMPACT · ALL CURRENCIES</span>
       <h2><I name="news"/> News Safety Guard</h2></div>
@@ -292,7 +322,7 @@ export default function CompactDashboard({data,token,onNavigate,onUpdated}:{
       <span>Commission / slippage <b>NOT VERIFIED</b></span>
       <span>Demo order authorization <b>LOCKED</b></span>
     </div>
-    <p className="mt-u-help">Keputusan L6–L10 dan basket P&amp;L belum terhubung ke telemetry engine. Nilainya tidak disimpulkan dari jumlah posisi observer. Start Cycle tetap terkunci.</p>
+    <p className="mt-u-help">News CLEAR hanya menyatakan di luar window berita. Start Cycle tetap terkunci.</p>
   </section>
   <div className="mt-u-duo">
    <section className="mt-u-panel mt-u-commands">

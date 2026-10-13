@@ -1,4 +1,5 @@
 /** Fail-closed projection for server-to-server staging master telemetry. No synthetic fallback. */
+import {validateEngine,validateOwned} from './engine-diagnostics.mjs';
 import {validateNews} from './news-calendar.mjs';
 const allowedModes=new Set(['ACTIVE','DEGRADED','RECOVERING','HALTED','OFFLINE/STALE']);
 const allowedSeverities=new Set(['info','warning','critical']);
@@ -76,6 +77,7 @@ export function validateWorkerTelemetry(raw, now=Date.now()) {
     typeof m.volatilityPct==='number'&&Number.isFinite(m.volatilityPct)&&
     m.volatilityPct>=0&&m.volatilityPct<=100;
   const market=observed?{
+      engineDiagnostics:validateEngine(m.engineDiagnostics,now),ownedPositionPnl:validateOwned(m.ownedPositionPnl),
       status:'OBSERVED_READ_ONLY',source:'SIGNED_MT5_STAGING_READ_ONLY',
       brokerName:bounded(m.brokerName,70)||'Exness',accountMode:'DEMO',symbol:'XAUUSDm',
       observedAt:new Date(mt).toISOString(),bid:m.bid,ask:m.ask,
@@ -91,6 +93,7 @@ export function validateWorkerTelemetry(raw, now=Date.now()) {
       pendingOrdersCount:Number.isSafeInteger(m.pendingOrdersCount)&&m.pendingOrdersCount>=0?m.pendingOrdersCount:null,
       foreignExposure:typeof m.foreignExposure==='boolean'?m.foreignExposure:null
     }:{
+      engineDiagnostics:validateEngine(null,now),ownedPositionPnl:null,
       status:'NOT_CONNECTED',source:'NONE',brokerName:null,accountMode:null,
       symbol:null,observedAt:null,bid:null,ask:null,pointSize:null,
       spreadPoints:null,commissionUsdPerLot:null,slippagePoints:null,

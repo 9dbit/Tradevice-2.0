@@ -3,6 +3,7 @@ import { useEffect, useState, type FormEvent } from 'react';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import './master.css';
 import CompactDashboard from './compact-dashboard';
+import type {EngineDiagnostics,OwnedPnl} from '../../lib/engine-diagnostics.mjs';
 import type {NewsSnapshot} from '../../lib/news-calendar.mjs';
 
 type Tab = 'dashboard'|'overview'|'cycles'|'anomalies'|'risk'|'journal'|'system';
@@ -21,7 +22,7 @@ export type Snapshot = {
   paperExecution?: {accepted:number;rejected:number;fillsVerified:boolean};
   diagnostic?: {code:string;component?:string};
   news?: NewsSnapshot;
-  market?: {status:'NOT_CONNECTED'|'STALE'|'VERIFIED'|'OBSERVED_READ_ONLY';source:string;
+  market?: {engineDiagnostics?:EngineDiagnostics;ownedPositionPnl?:OwnedPnl|null;status:'NOT_CONNECTED'|'STALE'|'VERIFIED'|'OBSERVED_READ_ONLY';source:string;
     brokerName:string|null;accountMode:'DEMO'|'REAL'|null;symbol:string|null;
     observedAt:string|null;bid:number|null;ask:number|null;pointSize:number|null;
     spreadPoints:number|null;commissionUsdPerLot:number|null;slippagePoints:number|null;

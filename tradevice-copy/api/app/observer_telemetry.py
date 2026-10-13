@@ -3,6 +3,7 @@
 Does not persist to Postgres and never alters run_state or trade admission.
 Cache expiry and process restart both fail closed. No broker order functionality.
 """
+from .engine_diagnostics import project_engine, project_owned, missing
 import hashlib
 import hmac
 import json
@@ -155,6 +156,8 @@ def parse_observer(raw, server_ms):
         atr_verified=True
     # Return only a minimal, bounded, non-execution display projection.
     return {
+        "engineDiagnostics":project_engine(packet.get("engine_diagnostics"),server_ms),
+        "ownedPositionPnl":project_owned(packet.get("owned_position_pnl"),exposure,currency),
         "status":"OBSERVED_READ_ONLY","source":"SIGNED_MT5_STAGING_READ_ONLY",
         "brokerName":str(br.get("name") or "Exness")[:70],
         "accountMode":"DEMO","symbol":EXPECTED_SYMBOL,
@@ -173,6 +176,7 @@ def parse_observer(raw, server_ms):
 
 def disconnected_market():
     return {
+        "engineDiagnostics":missing(),"ownedPositionPnl":None,
         "status":"NOT_CONNECTED","source":"NONE","brokerName":None,
         "accountMode":None,"symbol":None,"observedAt":None,"bid":None,"ask":None,
         "pointSize":None,"spreadPoints":None,"commissionUsdPerLot":None,
