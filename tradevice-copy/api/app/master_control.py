@@ -8,7 +8,7 @@ import psycopg
 STAGING_PROJECT = "scqzlcivherovlwqypeu"
 MASTER = "tradevice-master-staging"
 VALID_ACTIONS = frozenset(("START","STOP","CONFIGURE","RESET_SESSION"))
-VALID_NEWS_POLICIES = frozenset(("AVOID","ALLOW","ONLY"))
+VALID_NEWS_POLICIES = frozenset(("AVOID",))
 VALID_CYCLE_MODES = frozenset(("CONTINUOUS","CUSTOM"))
 
 

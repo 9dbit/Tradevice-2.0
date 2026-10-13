@@ -1,6 +1,7 @@
 'use client';
 import {useEffect,useMemo,useRef,useState} from 'react';
 import type {Snapshot} from './master-console';
+import {validateNews} from '../../lib/news-calendar.mjs';
 
 type Details='overview'|'cycles'|'anomalies'|'risk'|'journal'|'system';
 type News='AVOID'|'ALLOW'|'ONLY';
@@ -57,7 +58,14 @@ export default function CompactDashboard({data,token,onNavigate,onUpdated}:{
  const market=data?.market;
  const [cycleMode,setCycleMode]=useState<Cycle>('CONTINUOUS');
  const [target,setTarget]=useState('100');
- const [news,setNews]=useState<News>('AVOID');
+ const news:News='AVOID';
+ const [newsClock,setNewsClock]=useState(Date.now());
+ useEffect(()=>{const timer=setInterval(()=>setNewsClock(Date.now()),1000);return ()=>clearInterval(timer);},[]);
+ const calendar=validateNews(data?.news,newsClock);
+ const newsTime=(value:number|null)=>value===null?'—':time(new Date(value).toISOString());
+ const countdownTarget=calendar.status==='BLACKOUT'?calendar.blackoutUntil:calendar.nextEvent?.blackoutStart;
+ const seconds=countdownTarget==null?null:Math.max(0,Math.ceil((countdownTarget-newsClock)/1000));
+ const countdown=seconds===null?'—':`${Math.floor(seconds/3600)}h ${Math.floor(seconds%3600/60)}m ${seconds%60}s`;
  const [dirty,setDirty]=useState(false);
  const [working,setWorking]=useState<Command|null>(null);
  const [commandProgress,setCommandProgress]=useState<CommandProgress|null>(null);
@@ -72,7 +80,6 @@ export default function CompactDashboard({data,token,onNavigate,onUpdated}:{
    if(!dirty&&control){
      setCycleMode(control.cycleMode);
      setTarget(String(control.targetCycles??100));
-     setNews(control.newsPolicy);
    }
  },[control?.cycleMode,control?.targetCycles,control?.newsPolicy,dirty]);
  const operatorAvailable=data?.source==='STAGING_WORKER_TELEMETRY'&&control?.operatorConfigured===true;
@@ -264,6 +271,29 @@ export default function CompactDashboard({data,token,onNavigate,onUpdated}:{
       <span>Last quote: <strong>{time(market?.observedAt)}</strong></span>
     </div>
   </section>
+  <section className="mt-u-panel mt-u-market" aria-label="Forex Factory news guard">
+    <div className="mt-u-panel-head"><div><span className="mt-u-overline">FOREX FACTORY · HIGH IMPACT · ALL CURRENCIES</span>
+      <h2><I name="news"/> News Safety Guard</h2></div>
+      <span className="mt-u-chip">{calendar.status==='CLEAR'?'NEWS WINDOW CLEAR':'NO TRADE · '+calendar.status}</span></div>
+    <p className="mt-u-hint">Entry baru diblokir 60 menit sebelum hingga 60 menit setelah setiap high-impact event. Window yang bertumpuk digabung. Kalender tidak tersedia atau basi: NO TRADE. Pengawasan basket tetap diperlukan.</p>
+    <div className="mt-u-market-grid">
+      <div className="mt-u-market-cell"><small>Next / active event</small><strong>{calendar.nextEvent?.title||'—'}</strong>
+        <span>{calendar.nextEvent?.currency||'No verified upcoming event'} · {newsTime(calendar.nextEvent?.at??null)}</span></div>
+      <div className="mt-u-market-cell"><small>{calendar.status==='BLACKOUT'?'Blackout ends in':'Blackout starts in'}</small>
+        <strong>{countdown}</strong><span>{newsTime(countdownTarget??null)}</span></div>
+      <div className="mt-u-market-cell"><small>Calendar freshness</small><strong>{calendar.status==='UNKNOWN'?'UNAVAILABLE / STALE':'FRESH'}</strong>
+        <span>Confirmed: {newsTime(calendar.observedAt)} · expires: {newsTime(calendar.validUntil)}</span></div>
+    </div>
+    <p className="mt-u-help">Calendar: {calendar.reason}. Jadwal dapat berubah; kalender ini bukan bukti kesiapan eksekusi.</p>
+    <div className="mt-u-preflight" aria-label="Alasan entry diblokir">
+      <span>News <b>{calendar.status==='CLEAR'?'WINDOW CLEAR':'BLOCKED'}</b></span>
+      <span>Execution quote <b>{control?.quotesReady?'READY':'NOT VERIFIED'}</b></span>
+      <span>Execution adapter <b>{control?.brokerReady?'READY':'NOT READY'}</b></span>
+      <span>Commission / slippage <b>NOT VERIFIED</b></span>
+      <span>Demo order authorization <b>LOCKED</b></span>
+    </div>
+    <p className="mt-u-help">Keputusan L6–L10 dan basket P&amp;L belum terhubung ke telemetry engine. Nilainya tidak disimpulkan dari jumlah posisi observer. Start Cycle tetap terkunci.</p>
+  </section>
   <div className="mt-u-duo">
    <section className="mt-u-panel mt-u-commands">
     <div className="mt-u-panel-head"><div><span className="mt-u-overline">CONTROL DESK</span>
@@ -297,13 +327,10 @@ export default function CompactDashboard({data,token,onNavigate,onUpdated}:{
           disabled={commandBusy} onChange={e=>{setTarget(e.target.value);setDirty(true);}}/>
       </label>}
       <label className="mt-u-label" htmlFor="mt-u-news-policy"><I name="news" size={15}/> News Trading Policy</label>
-      <select id="mt-u-news-policy" value={news} disabled={commandBusy} onChange={e=>{setNews(e.target.value as News);setDirty(true);}}>
-        <option value="AVOID">Avoid high-impact news</option>
-        <option value="ALLOW">Allow during news (risk guards apply)</option>
-        <option value="ONLY">News windows only</option>
+      <select id="mt-u-news-policy" value="AVOID" disabled>
+        <option value="AVOID">Locked · Avoid high-impact news ±60 minutes</option>
       </select>
-      <p className="mt-u-help">Belum ada kalender berita terverifikasi. Mengubah policy tidak mengaktifkan order.
-      Tombol Save boleh digunakan meski nilai Continuous / Avoid News tidak berubah.</p>
+      <p className="mt-u-help">Policy AVOID dikunci. Status kalender tampil pada News Safety Guard; kalender CLEAR saja tidak mengaktifkan order.</p>
       <button className="mt-u-apply" disabled={!canOperate||commandBusy||
         control?.runStatus==='RUNNING'} onClick={()=>void command('CONFIGURE')} type="button"
         title={!canOperate?'Menunggu telemetry operator yang terverifikasi':

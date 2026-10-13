@@ -1,5 +1,6 @@
 """Operator commands are paper-only, fail-closed and never exposed without a shared secret."""
 from uuid import uuid4
+import pytest
 
 from fastapi.testclient import TestClient
 
@@ -31,7 +32,11 @@ def test_command_action_contract_and_cycle_values():
     validate_command(sample("START"))
     validate_command(sample("RESET_SESSION"))
     validate_command(sample("CONFIGURE",cycle_mode="CONTINUOUS",news_policy="AVOID"))
-    validate_command(sample("CONFIGURE",cycle_mode="CUSTOM",target_cycles=100,news_policy="ONLY"))
+    validate_command(sample("CONFIGURE",cycle_mode="CUSTOM",target_cycles=100,news_policy="AVOID"))
+    # User locked high-impact avoidance; formerly accepted policies now reject.
+    for policy in ("ALLOW","ONLY"):
+        with pytest.raises(ValueError,match="INVALID_CONFIGURATION"):
+            validate_command(sample("CONFIGURE",cycle_mode="CUSTOM",target_cycles=100,news_policy=policy))
     for payload in (
         sample("CONFIGURE",cycle_mode="CUSTOM",target_cycles=0,news_policy="AVOID"),
         sample("CONFIGURE",cycle_mode="CUSTOM",target_cycles=True,news_policy="AVOID"),

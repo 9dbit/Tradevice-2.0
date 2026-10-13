@@ -1,4 +1,5 @@
 /** Fail-closed projection for server-to-server staging master telemetry. No synthetic fallback. */
+import {validateNews} from './news-calendar.mjs';
 const allowedModes=new Set(['ACTIVE','DEGRADED','RECOVERING','HALTED','OFFLINE/STALE']);
 const allowedSeverities=new Set(['info','warning','critical']);
 const allowedRunStatuses=new Set(['STOPPED','RUNNING','COMPLETED','HALTED']);
@@ -119,7 +120,7 @@ export function validateWorkerTelemetry(raw, now=Date.now()) {
       masterWorker:online?'ONLINE':'OFFLINE/STALE',journal:'CONNECTED',adminAuth:'VERIFIED',
     },
     activity:events,paperOrders:orders,
-    market,
+    market,news:validateNews(raw.news,now),
     control:{runStatus,cycleMode,targetCycles,strategyCycles,newsPolicy,
       sessionId:bounded(control.sessionId,80)||null,lastRejection:bounded(control.lastRejection,100)||null,
       operatorConfigured:control.operatorConfigured===true,

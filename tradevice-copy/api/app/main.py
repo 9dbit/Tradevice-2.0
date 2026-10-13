@@ -13,6 +13,7 @@ from .observer_telemetry import ObserverBuffer, ObserverRejected, ObserverRateLi
 from fastapi.concurrency import run_in_threadpool
 from .master_telemetry import read_database, allowed_reader_dsn
 from .master_control import allowed_operator_dsn,submit_command,validate_command
+from .news_calendar import NewsCalendar
 
 import httpx
 from fastapi import Depends, FastAPI, HTTPException, Query, Request
@@ -114,11 +115,18 @@ def create_app(settings: Settings | None = None, transport: httpx.AsyncBaseTrans
     async def lifespan(application: FastAPI):
         async with httpx.AsyncClient(timeout=8, follow_redirects=False, transport=transport) as client:
             application.state.http = client
-            yield
+            if (os.getenv('MASTER_NEWS_CALENDAR_ENABLED') == 'true' and
+                settings.environment == 'staging' and settings.project_ref == 'scqzlcivherovlwqypeu'):
+                application.state.news_calendar.start()
+            try:
+                yield
+            finally:
+                application.state.news_calendar.close()
     application = FastAPI(title="Tradevice Copy Foundation", version="0.2.0", lifespan=lifespan)
     application.state.settings = settings
     # Ephemeral, single-instance staging market DISPLAY cache. No database writes.
     application.state.observer_market = ObserverBuffer()
+    application.state.news_calendar = NewsCalendar()
     if settings.cors_origins:
         application.add_middleware(CORSMiddleware, allow_origins=list(settings.cors_origins),
                                    allow_methods=["GET", "POST"], allow_headers=["Authorization", "Content-Type"])
@@ -131,9 +139,11 @@ def create_app(settings: Settings | None = None, transport: httpx.AsyncBaseTrans
         return response
     @application.get("/health")
     async def health():
+        news = application.state.news_calendar.projection()
         return {"status": "ok", "version": "0.2.0", "execution_mode": "paper",
                 "live_execution": False, "copy_execution": False, "environment": settings.environment,
-                "auth_configured": settings.auth_configured}
+                "auth_configured": settings.auth_configured,
+                "news_calendar": {key: news[key] for key in ('provider','status','reason','observedAt','nextRefreshAt')}}
     @application.get("/readyz")
     async def readiness():
         if not settings.auth_configured:
@@ -198,6 +208,7 @@ def create_app(settings: Settings | None = None, transport: httpx.AsyncBaseTrans
         try:
             payload = await run_in_threadpool(read_database, dsn)
             payload["market"] = application.state.observer_market.market(int(time.time()*1000))
+            payload["news"] = application.state.news_calendar.projection()
             payload["control"]["operatorConfigured"] = allowed_operator_dsn(
                 os.getenv("MASTER_OPERATOR_DATABASE_URL",""))
             return payload

@@ -8,7 +8,7 @@ function fail(status:number,code:string){return Response.json({detail:{code}},{s
 const idPattern=/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const actions=new Set(['START','STOP','CONFIGURE','RESET_SESSION']);
 const modes=new Set(['CUSTOM','CONTINUOUS']);
-const policies=new Set(['AVOID','ALLOW','ONLY']);
+const policies=new Set(['AVOID']);
 
 export async function POST(request:Request){
   if(process.env.PLATFORM_ENVIRONMENT!=='staging'||process.env.SUPABASE_PROJECT_REF!==STAGING_PROJECT_REF)
