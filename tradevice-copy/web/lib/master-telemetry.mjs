@@ -56,7 +56,38 @@ export function validateWorkerTelemetry(raw, now=Date.now()) {
     errorCode:bounded(c.errorCode,100)||null,at:dateOrNull(c.at),
   })):[];
   const queue=raw.queue&&typeof raw.queue==='object'?raw.queue:{};
+
   const paper=raw.paperExecution&&typeof raw.paperExecution==='object'?raw.paperExecution:{};
+  // Read-only operator display only. Server-side HMAC validator and volatile
+  // expiry enforce provenance before this browser-facing projection runs.
+  const m=raw.market&&typeof raw.market==='object'?raw.market:{};
+  const mt=Date.parse(m.observedAt);
+  const observed= m.status==='OBSERVED_READ_ONLY'&&m.source==='SIGNED_MT5_STAGING_READ_ONLY'&&
+    m.accountMode==='DEMO'&&m.symbol==='XAUUSDm'&&
+    m.executionAdapter==='INTERNAL_PAPER_ONLY'&&m.trustedForTradeAdmission===false&&
+    Number.isFinite(mt)&&now-mt>=-1000&&now-mt<=8000&&
+    typeof m.bid==='number'&&Number.isFinite(m.bid)&&m.bid>0&&
+    typeof m.ask==='number'&&Number.isFinite(m.ask)&&m.ask>=m.bid&&
+    typeof m.spreadPoints==='number'&&Number.isFinite(m.spreadPoints)&&
+    m.spreadPoints>=0&&m.spreadPoints<=200000&&
+    typeof m.atr14==='number'&&Number.isFinite(m.atr14)&&m.atr14>0&&
+    typeof m.volatilityPct==='number'&&Number.isFinite(m.volatilityPct)&&
+    m.volatilityPct>=0&&m.volatilityPct<=100;
+  const market=observed?{
+      status:'OBSERVED_READ_ONLY',source:'SIGNED_MT5_STAGING_READ_ONLY',
+      brokerName:bounded(m.brokerName,70)||'Exness',accountMode:'DEMO',symbol:'XAUUSDm',
+      observedAt:new Date(mt).toISOString(),bid:m.bid,ask:m.ask,
+      pointSize:typeof m.pointSize==='number'&&m.pointSize>0?m.pointSize:null,
+      spreadPoints:m.spreadPoints,commissionUsdPerLot:null,slippagePoints:null,
+      volatilityPct:m.volatilityPct,volatilityWindow:'ATR14 / last M1 close',
+      atr14:m.atr14,atrTimeframe:'M1',executionAdapter:'INTERNAL_PAPER_ONLY'
+    }:{
+      status:'NOT_CONNECTED',source:'NONE',brokerName:null,accountMode:null,
+      symbol:null,observedAt:null,bid:null,ask:null,pointSize:null,
+      spreadPoints:null,commissionUsdPerLot:null,slippagePoints:null,
+      volatilityPct:null,volatilityWindow:null,atr14:null,atrTimeframe:null,
+      executionAdapter:'INTERNAL_PAPER_ONLY',
+    };
   return {
     source:'STAGING_WORKER_TELEMETRY',observedAt:new Date(ts).toISOString(),
     executionMode:'PAPER_ONLY',
@@ -78,20 +109,12 @@ export function validateWorkerTelemetry(raw, now=Date.now()) {
       masterWorker:online?'ONLINE':'OFFLINE/STALE',journal:'CONNECTED',adminAuth:'VERIFIED',
     },
     activity:events,paperOrders:orders,
-    // Do not accept arbitrary broker quote numbers until a trusted demo-observer
-    // ingestion protocol is deployed with source attestation and freshness gates.
-    market:{
-      status:'NOT_CONNECTED',source:'NONE',brokerName:null,accountMode:null,
-      symbol:null,observedAt:null,bid:null,ask:null,pointSize:null,
-      spreadPoints:null,commissionUsdPerLot:null,slippagePoints:null,
-      volatilityPct:null,volatilityWindow:null,atr14:null,atrTimeframe:null,
-      executionAdapter:'INTERNAL_PAPER_ONLY',
-    },
+    market,
     control:{runStatus,cycleMode,targetCycles,strategyCycles,newsPolicy,
       sessionId:bounded(control.sessionId,80)||null,lastRejection:bounded(control.lastRejection,100)||null,
       operatorConfigured:control.operatorConfigured===true,
-      quotesReady:control.quotesReady===true && online,
-      brokerReady:false,newsCalendarReady:false},
+      // Read-only observer is never a trusted executable quote adapter.
+      quotesReady:false,brokerReady:false,newsCalendarReady:false},
     terminal,commands,
     queue:{queued:count(queue.queued),retry:count(queue.retry),expired:count(queue.expired),
       rejected:count(queue.rejected),accepted:count(queue.accepted),deadLetter:count(queue.deadLetter)},

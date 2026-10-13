@@ -229,10 +229,11 @@ export default function CompactDashboard({data,token,onNavigate,onUpdated}:{
       <div><span className="mt-u-overline">REAL BROKER EVIDENCE · NO SYNTHETIC VALUES</span>
         <h2><I name="activity"/> Broker & Market Conditions</h2>
       </div>
-      <span className="mt-u-chip">{market?.status==='VERIFIED'?'VERIFIED':'NOT CONNECTED'}</span>
+      <span className="mt-u-chip">{market?.status==='OBSERVED_READ_ONLY'?'MT5 DEMO · READ-ONLY':'NOT CONNECTED'}</span>
     </div>
-    <p className="mt-u-hint">Feed MT5 dan broker demo belum terhubung ke Master Copy staging.
-      Angka pasar baru akan muncul dari observer tepercaya, bukan dari simulasi.</p>
+    <p className="mt-u-hint">{market?.status==='OBSERVED_READ_ONLY'?
+      'Observasi broker demo sudah diterima dengan validasi HMAC. Data ini hanya untuk monitoring; Start Cycle tetap terkunci sampai seluruh preflight dan adapter eksekusi tervalidasi.':
+      'Feed MT5 belum tersedia atau quote terakhir sudah stale. Data broker hanya tampil dari observer staging terautentikasi, bukan simulasi.'}</p>
     <div className="mt-u-market-grid">
       <div className="mt-u-market-cell"><small>Broker</small><strong>{market?.brokerName||'Not connected'}</strong>
         <span>Account: {market?.accountMode||'Not linked'}</span></div>
@@ -251,7 +252,7 @@ export default function CompactDashboard({data,token,onNavigate,onUpdated}:{
     </div>
     <div className="mt-u-market-foot">
       <span>Execution adapter: <strong>{market?.executionAdapter==='INTERNAL_PAPER_ONLY'?'Internal paper only':'Not configured'}</strong></span>
-      <span>MT5 Observer: <strong>{market?.status==='VERIFIED'?'Connected':'Not connected'}</strong></span>
+      <span>MT5 Observer: <strong>{market?.status==='OBSERVED_READ_ONLY'?'Demo · read-only':'Not connected / stale'}</strong></span>
       <span>Last quote: <strong>{time(market?.observedAt)}</strong></span>
     </div>
   </section>

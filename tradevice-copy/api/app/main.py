@@ -8,6 +8,8 @@ import logging
 import psycopg
 import os
 import re
+import time
+from .observer_telemetry import ObserverBuffer, ObserverRejected, BODY_MAX_BYTES, verify_hmac
 from fastapi.concurrency import run_in_threadpool
 from .master_telemetry import read_database, allowed_reader_dsn
 from .master_control import allowed_operator_dsn,submit_command,validate_command
@@ -115,6 +117,8 @@ def create_app(settings: Settings | None = None, transport: httpx.AsyncBaseTrans
             yield
     application = FastAPI(title="Tradevice Copy Foundation", version="0.2.0", lifespan=lifespan)
     application.state.settings = settings
+    # Ephemeral, single-instance staging market DISPLAY cache. No database writes.
+    application.state.observer_market = ObserverBuffer()
     if settings.cors_origins:
         application.add_middleware(CORSMiddleware, allow_origins=list(settings.cors_origins),
                                    allow_methods=["GET", "POST"], allow_headers=["Authorization", "Content-Type"])
@@ -142,6 +146,39 @@ def create_app(settings: Settings | None = None, transport: httpx.AsyncBaseTrans
         if response.status_code != 200:
             raise problem(503, "AUTH_UNAVAILABLE")
         return {"status": "auth_reachable", "database_verified": False, "live_execution": False}
+
+    @application.post("/internal/master/observer", status_code=202)
+    async def internal_master_readonly_observer(request: Request):
+        # Distinct HMAC key from the master command/telemetry secret. Staging only.
+        if settings.environment != "staging" or settings.project_ref != "scqzlcivherovlwqypeu":
+            raise problem(503, "MASTER_STAGING_ONLY")
+        secret = os.getenv("MASTER_OBSERVER_SHARED_SECRET", "")
+        if not re.fullmatch(r"[0-9a-f]{64}", secret):
+            raise problem(503, "MASTER_OBSERVER_NOT_CONFIGURED")
+        chunks = bytearray()
+        async for chunk in request.stream():
+            chunks.extend(chunk)
+            if len(chunks) > BODY_MAX_BYTES:
+                raise problem(413, "MASTER_OBSERVER_BODY_TOO_LARGE")
+        body = bytes(chunks)
+        now_ms = int(time.time() * 1000)
+        try:
+            verify_hmac(
+                secret,
+                request.headers.get("x-tradevice-observer-time", ""),
+                request.headers.get("x-tradevice-observer-signature", ""),
+                body,
+                now_ms,
+            )
+        except ObserverRejected:
+            raise problem(401, "MASTER_OBSERVER_AUTH_DENIED") from None
+        try:
+            application.state.observer_market.receive(body, now_ms)
+        except ObserverRejected:
+            raise problem(422, "MASTER_OBSERVER_INVALID_OR_STALE") from None
+        # Never confer quote readiness, broker execution, news readiness, or START permissions.
+        return {"status": "ACCEPTED_READ_ONLY", "tradingReady": False, "executionEnabled": False}
+
     @application.get("/internal/master/telemetry")
     async def internal_master_telemetry(request: Request):
         # Authenticated server-to-server access ONLY, never forwarded to browser or member routes.
@@ -158,6 +195,7 @@ def create_app(settings: Settings | None = None, transport: httpx.AsyncBaseTrans
             raise problem(503, "MASTER_READ_DB_NOT_CONFIGURED")
         try:
             payload = await run_in_threadpool(read_database, dsn)
+            payload["market"] = application.state.observer_market.market(int(time.time()*1000))
             payload["control"]["operatorConfigured"] = allowed_operator_dsn(
                 os.getenv("MASTER_OPERATOR_DATABASE_URL",""))
             return payload

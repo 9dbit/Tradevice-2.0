@@ -58,3 +58,39 @@ test('verified operator command receipt can be correlated to requestId without r
  assert.equal(x.commands[1].requestId,null);
  assert.equal(x.commands[1].status,'UNKNOWN');
 });
+
+
+test('signed staging demo observation is display-only and never unlocks START',()=>{
+ const snapshot={...raw,market:{
+   status:'OBSERVED_READ_ONLY',source:'SIGNED_MT5_STAGING_READ_ONLY',brokerName:'Exness',
+   accountMode:'DEMO',symbol:'XAUUSDm',observedAt:'2026-10-12T04:59:59Z',
+   bid:4200.01,ask:4200.25,spreadPoints:240,pointSize:0.001,
+   atr14:1.501857,volatilityPct:0.035782,commissionUsdPerLot:99999,
+   slippagePoints:99999,executionAdapter:'INTERNAL_PAPER_ONLY',
+   trustedForTradeAdmission:false,
+ },control:{runStatus:'STOPPED',quotesReady:true,brokerReady:true,newsCalendarReady:true}};
+ const value=validateWorkerTelemetry(snapshot,now);
+ assert.equal(value.market.status,'OBSERVED_READ_ONLY');
+ assert.equal(value.market.spreadPoints,240);
+ assert.equal(value.market.atr14,1.501857);
+ assert.equal(value.market.commissionUsdPerLot,null);
+ assert.equal(value.market.slippagePoints,null);
+ assert.equal(value.control.quotesReady,false);
+ assert.equal(value.control.brokerReady,false);
+ assert.equal(value.control.newsCalendarReady,false);
+});
+test('spoofed or stale MT5 telemetry is suppressed',()=>{
+ const market={status:'OBSERVED_READ_ONLY',source:'SIGNED_MT5_STAGING_READ_ONLY',
+   accountMode:'DEMO',symbol:'XAUUSDm',executionAdapter:'INTERNAL_PAPER_ONLY',
+   trustedForTradeAdmission:false,brokerName:'Exness',bid:4200.01,ask:4200.24,
+   spreadPoints:230,atr14:1.5,volatilityPct:0.03,observedAt:'2026-10-12T04:59:59Z'};
+ for(const mutation of [
+   {source:'UNKNOWN'}, {trustedForTradeAdmission:true},
+   {accountMode:'REAL'}, {symbol:'XAUUSD'}, {observedAt:'2026-10-12T04:58:00Z'},
+   {ask:4180}, {atr14:NaN}, {spreadPoints:-1}
+ ]){
+   const result=validateWorkerTelemetry({...raw,market:{...market,...mutation}},now);
+   assert.equal(result.market.status,'NOT_CONNECTED');
+   assert.equal(result.market.bid,null);
+ }
+});
