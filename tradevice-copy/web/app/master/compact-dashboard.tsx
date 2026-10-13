@@ -248,7 +248,15 @@ export default function CompactDashboard({data,token,onNavigate,onUpdated}:{
         <span>{market?.volatilityWindow||'awaiting completed candles'}</span></div>
       <div className="mt-u-market-cell"><small>ATR (14)</small>
         <strong>{fmt(market?.atr14)}</strong>
-        <span>{market?.atrTimeframe||'M1'} · price units</span></div>
+        <span>{market?.atrTimeframe||'M1'} · {market?.atrRecomputed?'recalculated from closed bars':'price units'}</span></div>
+      <div className="mt-u-market-cell"><small>Demo Equity</small>
+        <strong>{fmt(market?.equity)}</strong><span>{market?.accountCurrency||'currency unavailable'} · read-only</span></div>
+      <div className="mt-u-market-cell"><small>Used / Free Margin</small>
+        <strong>{fmt(market?.margin)} / {fmt(market?.freeMargin)}</strong>
+        <span>{market?.accountCurrency||'currency unavailable'} · level {fmt(market?.marginLevelPct,'%')}</span></div>
+      <div className="mt-u-market-cell"><small>Positions / Pending</small>
+        <strong>{fmt(market?.positionsCount)} / {fmt(market?.pendingOrdersCount)}</strong>
+        <span>{market?.foreignExposure===true?'Foreign exposure present':market?.foreignExposure===false?'No foreign exposure observed':'awaiting account snapshot'}</span></div>
     </div>
     <div className="mt-u-market-foot">
       <span>Execution adapter: <strong>{market?.executionAdapter==='INTERNAL_PAPER_ONLY'?'Internal paper only':'Not configured'}</strong></span>

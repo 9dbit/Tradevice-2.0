@@ -94,3 +94,18 @@ test('spoofed or stale MT5 telemetry is suppressed',()=>{
    assert.equal(result.market.bid,null);
  }
 });
+
+test('observed margin is currency-labelled and disappears with stale feed',()=>{
+ const market={status:'OBSERVED_READ_ONLY',source:'SIGNED_MT5_STAGING_READ_ONLY',
+   accountMode:'DEMO',symbol:'XAUUSDm',executionAdapter:'INTERNAL_PAPER_ONLY',
+   trustedForTradeAdmission:false,bid:4200,ask:4200.24,spreadPoints:240,
+   atr14:1.5,volatilityPct:.03,observedAt:'2026-10-12T04:59:59Z',
+   accountCurrency:'USD',equity:1000,margin:0,freeMargin:1000,marginLevelPct:0,
+   positionsCount:0,pendingOrdersCount:0,foreignExposure:false,atrRecomputed:true};
+ const fresh=validateWorkerTelemetry({...raw,market},now);
+ assert.equal(fresh.market.equity,1000);assert.equal(fresh.market.accountCurrency,'USD');
+ assert.equal(fresh.market.marginLevelPct,null);assert.equal(fresh.control.brokerReady,false);
+ const stale=validateWorkerTelemetry({...raw,market},now+10000);
+ assert.equal(stale.market.equity,null);assert.equal(stale.market.positionsCount,null);
+ assert.equal(stale.market.atrRecomputed,false);
+});

@@ -72,3 +72,51 @@ class Tests(unittest.TestCase):
  def test_spread_inconsistency_denied(self):
   with self.assertRaisesRegex(ObserverRejected,"SPREAD_INCONSISTENT"):
    parse_observer(fixture(**{"market.spread_points":1}),NOW+100)
+
+class HardeningTests(unittest.TestCase):
+ def test_replay_a_b_a_cannot_refresh_feed(self):
+  b=ObserverBuffer();a=fixture()
+  b.receive(a,NOW)
+  b.receive(fixture(collected_utc_ms=NOW+1100),NOW+1100)
+  with self.assertRaisesRegex(ObserverRejected,'OUT_OF_ORDER'):
+   b.receive(a,NOW+2200)
+ def test_signed_high_frequency_sender_is_limited(self):
+  from app.observer_telemetry import ObserverRateLimited
+  b=ObserverBuffer();b.receive(fixture(),NOW)
+  with self.assertRaises(ObserverRateLimited):
+   b.receive(fixture(collected_utc_ms=NOW+100),NOW+100)
+  self.assertEqual(b.market(NOW+100)['status'],'OBSERVED_READ_ONLY')
+ def test_transit_delay_is_part_of_quote_age(self):
+  with self.assertRaisesRegex(ObserverRejected,'QUOTE_OR_M1_STALE'):
+   parse_observer(fixture(),NOW+5000)
+ def test_origin_cannot_claim_stale_quote_is_fresh(self):
+  with self.assertRaisesRegex(ObserverRejected,'QUOTE_OR_M1_STALE'):
+   parse_observer(fixture(**{'market.tick_time_utc_ms':NOW-2001}),NOW)
+ def test_ttl_uses_tick_time_not_arrival_time(self):
+  b=ObserverBuffer();b.receive(fixture(),NOW+4000)
+  self.assertEqual(b.market(NOW+8501)['status'],'NOT_CONNECTED')
+ def test_account_metrics_never_default_to_zero(self):
+  x=parse_observer(fixture(),NOW)
+  self.assertIsNone(x['equity']);self.assertIsNone(x['freeMargin'])
+ def test_account_currency_and_margin_projection(self):
+  a={'currency':'USD','equity':1000.,'margin':0.,'free_margin':1000.,'margin_level_pct':None}
+  x=parse_observer(fixture(account_metrics=a),NOW)
+  self.assertEqual(x['equity'],1000);self.assertIsNone(x['marginLevelPct'])
+  for bad in [float('nan'),True]:
+   with self.assertRaises(ObserverRejected):
+    parse_observer(fixture(account_metrics={**a,'margin':bad}),NOW)
+ def test_foreign_exposure_cannot_be_hidden(self):
+  with self.assertRaisesRegex(ObserverRejected,'EXPOSURE_INCONSISTENT'):
+   parse_observer(fixture(**{'exposure.positions_count':1}),NOW)
+ def test_closed_bar_proof_recalculates_atr(self):
+  end=(NOW//60000)*60000
+  bars=[[end-(15-i)*60000,4200.,4201.,4199.,4200.5] for i in range(15)]
+  args={'market.closed_m1_ohlc':bars,'market.atr_method':'SMA_TRUE_RANGE_14',
+        'market.last_closed_m1_utc_ms':end,'market.atr14_closed_m1':2.,
+        'market.volatility_atr_pct':round(2*100/4200.5,6)}
+  self.assertTrue(parse_observer(fixture(**args),NOW)['atrRecomputed'])
+  with self.assertRaisesRegex(ObserverRejected,'ATR_PROOF_MISMATCH'):
+   parse_observer(fixture(**{**args,'market.atr14_closed_m1':1.9}),NOW)
+  bars[-1][0]+=60000
+  with self.assertRaisesRegex(ObserverRejected,'ATR_PROOF_INVALID'):
+   parse_observer(fixture(**args),NOW)

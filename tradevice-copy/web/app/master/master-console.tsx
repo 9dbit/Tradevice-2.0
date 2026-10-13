@@ -24,7 +24,10 @@ export type Snapshot = {
     observedAt:string|null;bid:number|null;ask:number|null;pointSize:number|null;
     spreadPoints:number|null;commissionUsdPerLot:number|null;slippagePoints:number|null;
     volatilityPct:number|null;volatilityWindow:string|null;atr14:number|null;
-    atrTimeframe:string|null;executionAdapter:string};
+    atrTimeframe:string|null;executionAdapter:string;atrRecomputed?:boolean;
+    accountCurrency?:string|null;equity?:number|null;margin?:number|null;
+    freeMargin?:number|null;marginLevelPct?:number|null;positionsCount?:number|null;
+    pendingOrdersCount?:number|null;foreignExposure?:boolean|null};
   control?: {
     runStatus:'STOPPED'|'RUNNING'|'COMPLETED'|'HALTED'|'NOT_CONFIGURED';
     cycleMode:'CONTINUOUS'|'CUSTOM';targetCycles:number|null;strategyCycles:number|null;

@@ -19,6 +19,10 @@ SOURCE="TRADEVICEPC_MT5_READ_ONLY"
 FEED_TTL_MS=9000
 BODY_MAX_BYTES=8192
 SIGNATURE_WINDOW_MS=10000
+MIN_RECEIVE_INTERVAL_MS=1000
+
+class ObserverRateLimited(ValueError):
+    pass
 
 class ObserverRejected(ValueError):
     pass
@@ -90,7 +94,7 @@ def parse_observer(raw, server_ms):
     lastclosed=_integer(market.get("last_closed_m1_utc_ms"),"BAR")
     if not 0 <= server_ms-collected <= SIGNATURE_WINDOW_MS:
         raise ObserverRejected("OBSERVER_CAPTURE_STALE_OR_FUTURE")
-    if not 0 <= collected-ticktime <= 5000 or not 0 <= collected-lastclosed <= 90000:
+    if not 0 <= collected-ticktime <= 2000 or not 0 <= server_ms-ticktime <= 5000 or not 0 <= server_ms-lastclosed <= 90000:
         raise ObserverRejected("OBSERVER_QUOTE_OR_M1_STALE")
     if market.get("bars_used")!=15 or type(market.get("bars_used")) is not int:
         raise ObserverRejected("OBSERVER_M1_PROOF_INCOMPLETE")
@@ -108,6 +112,47 @@ def parse_observer(raw, server_ms):
         _integer(exposure.get(k),"EXPOSURE_"+k)
     if exposure["goldtrap_positions_count"]>exposure["positions_count"] or exposure["goldtrap_orders_count"]>exposure["orders_count"]:
         raise ObserverRejected("OBSERVER_EXPOSURE_INCONSISTENT")
+    foreign=(exposure["goldtrap_positions_count"]!=exposure["positions_count"] or
+             exposure["goldtrap_orders_count"]!=exposure["orders_count"])
+    if exposure.get("foreign_exposure_present") is not foreign:
+        raise ObserverRejected("OBSERVER_EXPOSURE_INCONSISTENT")
+    # Optional extension: older senders remain display-only with unknown metrics.
+    account=packet.get("account_metrics",{})
+    caps=packet.get("broker_capabilities",{})
+    if not isinstance(account,dict) or not isinstance(caps,dict):
+        raise ObserverRejected("OBSERVER_ACCOUNT_OR_CAPABILITIES_INVALID")
+    def optional(obj,key,low=None):
+        return None if obj.get(key) is None else _number(obj[key],key,low=low)
+    currency=account.get("currency")
+    if currency is not None and (not isinstance(currency,str) or not re.fullmatch(r"[A-Z]{3,8}",currency)):
+        raise ObserverRejected("OBSERVER_CURRENCY_INVALID")
+    equity=optional(account,"equity")
+    margin=optional(account,"margin",0)
+    free=optional(account,"free_margin")
+    level=optional(account,"margin_level_pct",0)
+    if margin==0 and level is not None:
+        raise ObserverRejected("OBSERVER_ZERO_MARGIN_LEVEL_INVALID")
+    capabilities={key:optional(caps,key,0) for key in (
+        "volume_min","volume_max","volume_step","trade_stops_level",
+        "trade_freeze_level","trade_mode","filling_mode","order_mode")}
+    proof=market.get("closed_m1_ohlc")
+    atr_verified=False
+    if proof is not None:
+        if not isinstance(proof,list) or len(proof)!=15 or market.get("atr_method")!="SMA_TRUE_RANGE_14":
+            raise ObserverRejected("OBSERVER_ATR_PROOF_INVALID")
+        bars=[]
+        for row in proof:
+            if not isinstance(row,list) or len(row)!=5:
+                raise ObserverRejected("OBSERVER_ATR_PROOF_INVALID")
+            t=_integer(row[0],"BAR_TIME")
+            o,h,l,c=[_number(v,"OHLC",low=0.000001) for v in row[1:]]
+            if t%60000 or h<max(o,c) or l>min(o,c) or h<=l or (bars and t-bars[-1][0]!=60000):
+                raise ObserverRejected("OBSERVER_ATR_PROOF_INVALID")
+            bars.append((t,o,h,l,c))
+        recomputed=sum(max(b[2]-b[3],abs(b[2]-a[4]),abs(b[3]-a[4])) for a,b in zip(bars,bars[1:]))/14
+        if bars[-1][0]+60000!=lastclosed or abs(recomputed-atr)>0.000001 or abs(recomputed*100/bars[-1][4]-vol)>0.000001:
+            raise ObserverRejected("OBSERVER_ATR_PROOF_MISMATCH")
+        atr_verified=True
     # Return only a minimal, bounded, non-execution display projection.
     return {
         "status":"OBSERVED_READ_ONLY","source":"SIGNED_MT5_STAGING_READ_ONLY",
@@ -118,6 +163,10 @@ def parse_observer(raw, server_ms):
         "commissionUsdPerLot":None,"slippagePoints":None,
         "volatilityPct":round(vol,6),"volatilityWindow":"ATR14 / last M1 close",
         "atr14":round(atr,6),"atrTimeframe":"M1",
+        "atrRecomputed":atr_verified,"accountCurrency":currency,
+        "equity":equity,"margin":margin,"freeMargin":free,"marginLevelPct":level,
+        "positionsCount":exposure["positions_count"],"pendingOrdersCount":exposure["orders_count"],
+        "foreignExposure":foreign,"brokerCapabilities":capabilities,
         "executionAdapter":"INTERNAL_PAPER_ONLY",
         "trustedForTradeAdmission":False
     }
@@ -130,6 +179,10 @@ def disconnected_market():
         "slippagePoints":None,"volatilityPct":None,"volatilityWindow":None,
         "atr14":None,"atrTimeframe":None,"executionAdapter":"INTERNAL_PAPER_ONLY",
         "trustedForTradeAdmission":False,
+        "atrRecomputed":False,"accountCurrency":None,"equity":None,
+        "margin":None,"freeMargin":None,"marginLevelPct":None,
+        "positionsCount":None,"pendingOrdersCount":None,"foreignExposure":None,
+        "brokerCapabilities":None,
     }
 
 class ObserverBuffer:
@@ -138,6 +191,8 @@ class ObserverBuffer:
         self._market=None
         self._received_ms=0
         self._payload_digest=None
+        self._collected_ms=-1
+        self._tick_ms=0
 
     def receive(self, raw, now_ms):
         projected=parse_observer(raw,now_ms)
@@ -145,13 +200,20 @@ class ObserverBuffer:
         with self._lock:
             if self._payload_digest==digest:
                 raise ObserverRejected("OBSERVER_DUPLICATE_PACKET")
+            collected=json.loads(raw)["collected_utc_ms"]
+            if collected<=self._collected_ms:
+                raise ObserverRejected("OBSERVER_OUT_OF_ORDER_PACKET")
+            if self._market is not None and now_ms-self._received_ms<MIN_RECEIVE_INTERVAL_MS:
+                raise ObserverRateLimited("OBSERVER_RATE_LIMITED")
             self._market=projected
             self._received_ms=now_ms
             self._payload_digest=digest
+            self._collected_ms=collected
+            self._tick_ms=int(datetime.fromisoformat(projected["observedAt"].replace("Z","+00:00")).timestamp()*1000)
 
     def market(self,now_ms):
         with self._lock:
-            if (self._market is None or now_ms-self._received_ms>FEED_TTL_MS
+            if (self._market is None or now_ms-self._tick_ms>FEED_TTL_MS
                   or now_ms<self._received_ms-1000):
                 return disconnected_market()
             return dict(self._market)

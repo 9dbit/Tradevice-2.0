@@ -8,6 +8,7 @@ const allowedCommandStatuses=new Set(['PENDING','APPLIED','REJECTED']);
 const commandRequestPattern=/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 function count(x){return Number.isSafeInteger(x)&&x>=0&&x<=1e12?x:0}
 function dateOrNull(s){return typeof s==='string'&&Number.isFinite(Date.parse(s))?s:null}
+function metric(x,low=-Infinity){return typeof x==='number'&&Number.isFinite(x)&&x>=low?x:null}
 function bounded(s,n=150){return typeof s==='string'?s.slice(0,n):''}
 export function validateWorkerTelemetry(raw, now=Date.now()) {
   if(!raw || typeof raw!=='object' || raw.source!=='STAGING_WORKER_TELEMETRY' ||
@@ -80,13 +81,22 @@ export function validateWorkerTelemetry(raw, now=Date.now()) {
       pointSize:typeof m.pointSize==='number'&&m.pointSize>0?m.pointSize:null,
       spreadPoints:m.spreadPoints,commissionUsdPerLot:null,slippagePoints:null,
       volatilityPct:m.volatilityPct,volatilityWindow:'ATR14 / last M1 close',
-      atr14:m.atr14,atrTimeframe:'M1',executionAdapter:'INTERNAL_PAPER_ONLY'
+      atr14:m.atr14,atrTimeframe:'M1',executionAdapter:'INTERNAL_PAPER_ONLY',
+      atrRecomputed:m.atrRecomputed===true,
+      accountCurrency:typeof m.accountCurrency==='string'&&/^[A-Z]{3,8}$/.test(m.accountCurrency)?m.accountCurrency:null,
+      equity:metric(m.equity),margin:metric(m.margin,0),freeMargin:metric(m.freeMargin),
+      marginLevelPct:m.margin===0?null:metric(m.marginLevelPct,0),
+      positionsCount:Number.isSafeInteger(m.positionsCount)&&m.positionsCount>=0?m.positionsCount:null,
+      pendingOrdersCount:Number.isSafeInteger(m.pendingOrdersCount)&&m.pendingOrdersCount>=0?m.pendingOrdersCount:null,
+      foreignExposure:typeof m.foreignExposure==='boolean'?m.foreignExposure:null
     }:{
       status:'NOT_CONNECTED',source:'NONE',brokerName:null,accountMode:null,
       symbol:null,observedAt:null,bid:null,ask:null,pointSize:null,
       spreadPoints:null,commissionUsdPerLot:null,slippagePoints:null,
       volatilityPct:null,volatilityWindow:null,atr14:null,atrTimeframe:null,
-      executionAdapter:'INTERNAL_PAPER_ONLY',
+      executionAdapter:'INTERNAL_PAPER_ONLY',atrRecomputed:false,
+      accountCurrency:null,equity:null,margin:null,freeMargin:null,marginLevelPct:null,
+      positionsCount:null,pendingOrdersCount:null,foreignExposure:null,
     };
   return {
     source:'STAGING_WORKER_TELEMETRY',observedAt:new Date(ts).toISOString(),

@@ -9,7 +9,7 @@ import psycopg
 import os
 import re
 import time
-from .observer_telemetry import ObserverBuffer, ObserverRejected, BODY_MAX_BYTES, verify_hmac
+from .observer_telemetry import ObserverBuffer, ObserverRejected, ObserverRateLimited, BODY_MAX_BYTES, verify_hmac
 from fastapi.concurrency import run_in_threadpool
 from .master_telemetry import read_database, allowed_reader_dsn
 from .master_control import allowed_operator_dsn,submit_command,validate_command
@@ -174,6 +174,8 @@ def create_app(settings: Settings | None = None, transport: httpx.AsyncBaseTrans
             raise problem(401, "MASTER_OBSERVER_AUTH_DENIED") from None
         try:
             application.state.observer_market.receive(body, now_ms)
+        except ObserverRateLimited:
+            raise problem(429, "MASTER_OBSERVER_RATE_LIMITED") from None
         except ObserverRejected:
             raise problem(422, "MASTER_OBSERVER_INVALID_OR_STALE") from None
         # Never confer quote readiness, broker execution, news readiness, or START permissions.
