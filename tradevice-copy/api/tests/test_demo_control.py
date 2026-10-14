@@ -42,7 +42,7 @@ def test_endpoint_denies_observer_secret_and_missing_admin(monkeypatch):
   assert c.get('/internal/master/demo').status_code==401
   assert c.post('/internal/master/demo',json=command()).status_code==401
   assert c.post('/internal/master/demo/exchange',json=snapshot(),headers={'x-tradevice-observer-signature':'a'*64}).status_code==401
-  assert c.post('/internal/master/demo/exchange',content='x'*16385).status_code==413
+  assert c.post('/internal/master/demo/exchange',content='x'*131073).status_code==413
 
 def test_api_response_is_signed_and_errors_do_not_leak(monkeypatch):
  import app.main as main

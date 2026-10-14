@@ -113,7 +113,10 @@ def submit(dsn,p,news_clear):
         return dict(requestId=p['requestId'],status='PENDING')
 
 def validate_snapshot(p,now):
-    if not isinstance(p,dict) or set(p)!={'observedMs','bootId','activeSkillId','activeHash','revision','state','checks','blockers','receipts'}:raise SkillError('SKILL_ENGINE_REPORT_INVALID')
+    if not isinstance(p,dict) or set(p)-{'news'}!={'observedMs','bootId','activeSkillId','activeHash','revision','state','checks','blockers','receipts'}:raise SkillError('SKILL_ENGINE_REPORT_INVALID')
+    from .bridge_calendar import validate_evidence
+    try:validate_evidence(p.get('news'),now)
+    except ValueError as exc:raise SkillError(str(exc)) from None
     if not fresh(p,now) or p['state'] not in STATES:raise SkillError('SKILL_ENGINE_REPORT_STALE')
     uid(p['bootId'])
     if p['activeSkillId'] is not None:uid(p['activeSkillId'])
@@ -155,7 +158,7 @@ def exchange(dsn,p):
         safety=safety_query.fetchone()
         package=package_query.fetchone() if package_query else None
         selected_hash=package['sha256'] if package and package['kind']=='BUILTIN' and package['sha256']==APPROVED_HASH else None
-        return dict(serverMs=now,killSwitch=not safety or safety['kill_switch'] is not False,selection=dict(skillId=str(sel['selected_skill_id']) if sel['selected_skill_id'] else None,revision=sel['revision'],sha256=selected_hash),confirmed=confirmed,
+        return dict(serverMs=now,calendarEvidencePolicy='SCHEDULE_6H_V1',killSwitch=not safety or safety['kill_switch'] is not False,selection=dict(skillId=str(sel['selected_skill_id']) if sel['selected_skill_id'] else None,revision=sel['revision'],sha256=selected_hash),confirmed=confirmed,
             commands=[dict(requestId=str(c['request_id']),action=c['action'],targetCycles=c['target_cycles'],skillId=str(c['skill_id']) if c['skill_id'] else None,sha256=c['skill_hash'],revision=c['selection_revision'],expiresMs=int(c['expires_at'].timestamp()*1000)) for c in cmds])
 
 def signature(secret,stamp,body):

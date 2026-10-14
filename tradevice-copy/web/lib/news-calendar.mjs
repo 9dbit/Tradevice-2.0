@@ -14,9 +14,11 @@ export function validateNews(raw,now=Date.now()){
    return unknown('CALENDAR_NOT_CONNECTED');
  if(raw.status==='UNKNOWN')return unknown(typeof raw.reason==='string'?raw.reason.slice(0,100):'CALENDAR_UNAVAILABLE');
  if(!['CLEAR','BLACKOUT'].includes(raw.status)||!integer(now)||!integer(raw.observedAt)||
-    !integer(raw.validUntil)||raw.validUntil!==raw.observedAt+300000||
+    !integer(raw.validUntil)||raw.validUntil!==raw.observedAt+(raw.policyVersion==='SCHEDULE_6H_V1'?22200000:300000)||
     now<raw.observedAt-1000||now>raw.validUntil)
    return unknown('CALENDAR_STALE_OR_FUTURE');
+ if(raw.policyVersion==='SCHEDULE_6H_V1'&&(!integer(raw.bridgeObservedAt)||now<raw.bridgeObservedAt-1000||now-raw.bridgeObservedAt>15000))
+   return unknown('CALENDAR_BRIDGE_STALE');
  if(!integer(raw.coverageStart)||!integer(raw.coverageEnd)||
     raw.coverageStart>now-HOUR||raw.coverageEnd<now+HOUR)
    return unknown('CALENDAR_COVERAGE_INCOMPLETE');
@@ -40,6 +42,7 @@ export function validateNews(raw,now=Date.now()){
  }
  const active=windows.find(w=>w.start<=now&&now<=w.end);
  return {...unknown(''),observedAt:raw.observedAt,validUntil:raw.validUntil,
+   ...(raw.policyVersion==='SCHEDULE_6H_V1'?{policyVersion:raw.policyVersion,bridgeObservedAt:raw.bridgeObservedAt,refreshIntervalHours:6}:{}),
    coverageStart:raw.coverageStart,coverageEnd:raw.coverageEnd,
    status:active?'BLACKOUT':'CLEAR',reason:active?'HIGH_IMPACT_NEWS_WINDOW':'NO_HIGH_IMPACT_WINDOW',
    entriesAllowed:!active,blackoutUntil:active?.end??null,

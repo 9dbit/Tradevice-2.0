@@ -110,3 +110,11 @@ def test_exchange_failure_closes_connection_without_automatic_resend(status,tamp
 def test_heartbeat_cadence_counts_work_and_respects_rate_limit():
  assert b.heartbeat_delay(.2)==1.3
  assert b.heartbeat_delay(2.5)==.5
+
+def test_calendar_evidence_is_negotiated_without_starting_cycle(tmp_path):
+ c,r,s=setup(tmp_path)
+ r.news_snapshot=lambda:{'policyVersion':'SCHEDULE_6H_V1'}
+ assert 'news' not in c.snapshot()
+ c.received(dict(calendarEvidencePolicy='SCHEDULE_6H_V1',killSwitch=False,selection=dict(skillId=s,revision=1,sha256=b.APPROVED_HASH),commands=[],confirmed=[]))
+ assert c.snapshot()['news']['policyVersion']=='SCHEDULE_6H_V1'
+ assert r.started==0

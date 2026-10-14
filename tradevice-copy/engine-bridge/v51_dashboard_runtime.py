@@ -11,6 +11,7 @@ class Runtime:
   self.root=Path(root);self.reason=None;self._checks={k:False for k in KEYS};self.checked_at=0
   from v51_runtime_calendar import RuntimeCalendar
   self.calendar=RuntimeCalendar();self.calendar.start()
+ def news_snapshot(self):return self.calendar.export()
  def fingerprint(self):
   manifest=json.loads((self.root/'read_only'/'demo_engine_fingerprint.json').read_text())
   files=manifest['files']
@@ -115,6 +116,8 @@ class Runtime:
     mapped=('COMPLETED' if completed==target else 'STOPPED') if status=='AUTO_STOP_10_CYCLES' else ('STOPPED' if status.startswith('STOPPED_') else status)
     if mapped=='WAITING_CALENDAR_REFRESH':mapped='SUSPENDED'
     blockers=[outer.reason] if outer.reason else []
+    if engine and engine.state.get('news_entry_suspended'):
+     blockers.append(engine.state.get('news_reason','ENTRY_SUSPENDED'))
     payload=report(batch_id,mapped,slots,blockers,int(now*1000));payload['requested']=target
     try:publish(payload);self.write_failed=False
     except Exception:self.write_failed=True

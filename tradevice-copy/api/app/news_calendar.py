@@ -13,7 +13,7 @@ from datetime import datetime, timezone, timedelta
 from email.utils import parsedate_to_datetime
 from urllib.request import Request, build_opener, HTTPRedirectHandler
 from urllib.error import HTTPError
-from .news_policy import evaluate_calendar
+from .news_policy import evaluate_calendar, MAX_CALENDAR_AGE_MS
 
 URL = 'https://nfs.faireconomy.media/ff_calendar_thisweek.json'
 MAX_BYTES = 2_000_000
@@ -182,7 +182,7 @@ class NewsCalendar:
                     status=decision['status'], reason=decision['reason'],
                     policy='AVOID', beforeMinutes=60, afterMinutes=60,
                     observedAt=stamp, evaluatedAt=now,
-                    validUntil=stamp+MAX_SOURCE_AGE_MS if stamp is not None else None,
+                    validUntil=stamp+MAX_CALENDAR_AGE_MS if stamp is not None else None,
                     nextRefreshAt=retry or None,
                     coverageStart=calendar['coverage_start_utc_ms'] if calendar else None,
                     coverageEnd=calendar['coverage_end_utc_ms'] if calendar else None,

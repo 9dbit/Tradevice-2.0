@@ -45,7 +45,7 @@ class Controller:
   interrupted=self.db.execute('SELECT request_id FROM active_run WHERE singleton=1').fetchone()[0]
   self.recovery=bool(interrupted) or bool(self.db.execute("SELECT 1 FROM receipts WHERE status='UNCERTAIN' LIMIT 1").fetchone())
   self.active=None;self.revision=0;self.state='RECOVERY_REQUIRED' if self.recovery else 'OFF';self.thread=None
-  self.kill=True;self.reason=None;self.mode=None;self.last_ok=0;self.last_stamp=0
+  self.kill=True;self.reason=None;self.mode=None;self.last_ok=0;self.last_stamp=0;self.calendar_protocol=False
  def snapshot(self):
   with self.lock:
    checks={k:False for k in CHECKS};blockers=[]
@@ -59,14 +59,17 @@ class Controller:
    now=int(self.clock()*1000)
    self.last_stamp=max(now,self.last_stamp+1)
    receipts=[dict(requestId=i,status=s,errorCode=e) for i,s,e in self.db.execute("SELECT id,status,error FROM receipts WHERE status!='PROCESSING' AND confirmed=0 LIMIT 16")]
-   return dict(observedMs=self.last_stamp,bootId=self.boot,activeSkillId=self.active,
+   payload=dict(observedMs=self.last_stamp,bootId=self.boot,activeSkillId=self.active,
     activeHash=APPROVED_HASH if self.active else None,revision=self.revision,state=self.state,
     checks=checks,blockers=blockers[:20],receipts=receipts)
+   if self.calendar_protocol:payload['news']=self.runtime.news_snapshot() if hasattr(self.runtime,'news_snapshot') else None
+   return payload
  def running(self):return self.thread is not None and self.thread.is_alive()
  def acknowledge(self,rid,status,error=None):
   with self.lock:self.db.execute('UPDATE receipts SET status=?,error=? WHERE id=?',(status,error,rid))
  def received(self,result):
   with self.lock:
+   self.calendar_protocol=result.get('calendarEvidencePolicy')=='SCHEDULE_6H_V1'
    self.last_ok=self.clock();self.kill=result.get('killSwitch') is not False
    if self.kill and self.running():self.runtime.suspend('MANUAL_KILL');self.state='STOPPING'
    for rid in result.get('confirmed',[]):self.db.execute("UPDATE receipts SET confirmed=1 WHERE id=? AND status!='PROCESSING'",(rid,))

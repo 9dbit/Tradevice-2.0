@@ -38,3 +38,10 @@ test('provider error erases prior event values and preserves safe diagnostic',()
  assert.equal(n.reason,'CALENDAR_HTTP_429');assert.equal(n.nextEvent,null);
  assert.deepEqual(n.highImpactEvents,[]);assert.equal(n.entriesAllowed,false);
 });
+test('six-hour schedule still requires a fresh bridge and fixed expiry',()=>{
+ const r={...fixture(now+10*H),policyVersion:'SCHEDULE_6H_V1',validUntil:now+22200000,bridgeObservedAt:now+4*H};
+ assert.equal(validateNews(r,now+4*H).status,'CLEAR');
+ assert.equal(validateNews(validateNews(r,now+4*H),now+4*H+1).status,'CLEAR');
+ assert.equal(validateNews(r,now+4*H+15001).reason,'CALENDAR_BRIDGE_STALE');
+ assert.equal(validateNews({...r,bridgeObservedAt:now+22200001},now+22200001).status,'UNKNOWN');
+});

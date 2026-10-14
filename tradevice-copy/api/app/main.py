@@ -15,6 +15,7 @@ from fastapi.concurrency import run_in_threadpool
 from .master_telemetry import read_database, allowed_reader_dsn
 from .master_control import allowed_operator_dsn,submit_command,validate_command
 from .news_calendar import NewsCalendar
+from .bridge_calendar import BridgeCalendar
 from .master_skills import registry, SkillError, MAX_BODY, json_object
 from . import demo_control
 
@@ -118,9 +119,6 @@ def create_app(settings: Settings | None = None, transport: httpx.AsyncBaseTrans
     async def lifespan(application: FastAPI):
         async with httpx.AsyncClient(timeout=8, follow_redirects=False, transport=transport) as client:
             application.state.http = client
-            if (os.getenv('MASTER_NEWS_CALENDAR_ENABLED') == 'true' and
-                settings.environment == 'staging' and settings.project_ref == 'scqzlcivherovlwqypeu'):
-                application.state.news_calendar.start()
             try:
                 yield
             finally:
@@ -129,7 +127,7 @@ def create_app(settings: Settings | None = None, transport: httpx.AsyncBaseTrans
     application.state.settings = settings
     # Ephemeral, single-instance staging market DISPLAY cache. No database writes.
     application.state.observer_market = ObserverBuffer()
-    application.state.news_calendar = NewsCalendar()
+    application.state.news_calendar = BridgeCalendar()
     if settings.cors_origins:
         application.add_middleware(CORSMiddleware, allow_origins=list(settings.cors_origins),
                                    allow_methods=["GET", "POST"], allow_headers=["Authorization", "Content-Type"])
@@ -309,11 +307,14 @@ def create_app(settings: Settings | None = None, transport: httpx.AsyncBaseTrans
             body=bytearray()
             async for chunk in request.stream():
                 body.extend(chunk)
-                if len(body)>16384:raise SkillError('SKILL_ENGINE_BODY_TOO_LARGE',413)
+                if len(body)>131072:raise SkillError('SKILL_ENGINE_BODY_TOO_LARGE',413)
             secret=os.getenv('MASTER_DEMO_BRIDGE_SECRET','')
             stamp=request.headers.get('x-tradevice-demo-time','')
             demo_control.authenticate(secret,stamp,request.headers.get('x-tradevice-demo-signature',''),bytes(body),int(time.time()*1000))
-            result=await run_in_threadpool(demo_control.exchange,os.getenv('MASTER_OPERATOR_DATABASE_URL',''),json_object(body))
+            payload=json_object(body)
+            result=await run_in_threadpool(demo_control.exchange,os.getenv('MASTER_OPERATOR_DATABASE_URL',''),payload)
+            # Only accepted authenticated, monotonic bridge exchanges update news.
+            application.state.news_calendar.accept(payload.get('news'),payload['observedMs'])
             raw=json.dumps(result,separators=(',',':')).encode()
             from fastapi.responses import Response
             return Response(raw,media_type='application/json',headers={'x-tradevice-demo-signature':demo_control.signature(secret,stamp,raw)})

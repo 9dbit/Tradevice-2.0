@@ -35,7 +35,7 @@ def test_transition_without_network_and_expiry():
     assert c.projection()['status']=='CLEAR'
     clock[0]+=1
     assert c.projection()['status']=='BLACKOUT'
-    clock[0]+=300001
+    clock[0]+=22_200_001
     assert c.projection()['status']=='UNKNOWN'
     assert not c.projection()['entriesAllowed']
 

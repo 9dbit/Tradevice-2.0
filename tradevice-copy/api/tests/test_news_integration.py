@@ -5,14 +5,14 @@ from app.main import create_app
 from app.news_calendar import NewsCalendar
 
 
-def test_calendar_poller_requires_explicit_staging_opt_in(monkeypatch):
+def test_api_never_starts_second_provider_collector(monkeypatch):
     calls=[]
     monkeypatch.setattr(NewsCalendar,'start',lambda self:calls.append('start'))
     for enabled,environment,project,expected in [
         ('false','staging','scqzlcivherovlwqypeu',0),
         ('true','local','scqzlcivherovlwqypeu',0),
         ('true','staging','different',0),
-        ('true','staging','scqzlcivherovlwqypeu',1)]:
+        ('true','staging','scqzlcivherovlwqypeu',0)]:
         calls.clear();monkeypatch.setenv('MASTER_NEWS_CALENDAR_ENABLED',enabled)
         with TestClient(create_app(Settings(environment=environment,project_ref=project))):
             assert len(calls)==expected

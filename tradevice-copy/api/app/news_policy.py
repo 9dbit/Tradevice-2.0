@@ -2,7 +2,7 @@
 Transport/source verification belongs to the caller, never to a payload flag.
 """
 HOUR_MS=3_600_000
-MAX_CALENDAR_AGE_MS=300_000
+MAX_CALENDAR_AGE_MS=22_200_000  # 6h + 10m bounded refresh overlap; schedule age, not quote age.
 
 def evaluate_calendar(calendar,now_ms,*,source_verified=False):
     def result(status,reason,until=None,ids=()):
