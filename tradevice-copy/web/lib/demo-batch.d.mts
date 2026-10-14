@@ -1,0 +1,2 @@
+export interface DemoBatch {schema:string;read_only:boolean;batch_id:string;observed_ms:number;status:string;fresh:boolean;requested:number;started:number;completed:number;wins:number;losses:number;risk_exits:number;unfinished:number;net_completed_usd:number;blockers:string[];cycles:{number:number;cycle_id:string;outcome:string;broker_flat:boolean;layers:number;peak_lots:number;net_usd:number|null;completed:boolean}[]}
+export function validateBatch(raw:unknown,now?:number):DemoBatch|null;

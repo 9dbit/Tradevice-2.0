@@ -3,6 +3,7 @@
 Does not persist to Postgres and never alters run_state or trade admission.
 Cache expiry and process restart both fail closed. No broker order functionality.
 """
+from .demo_batch import project_batch
 from .engine_diagnostics import project_engine, project_owned, missing
 import hashlib
 import hmac
@@ -156,6 +157,7 @@ def parse_observer(raw, server_ms):
         atr_verified=True
     # Return only a minimal, bounded, non-execution display projection.
     return {
+        "demoBatch":project_batch(packet.get("demo_batch"),server_ms),
         "engineDiagnostics":project_engine(packet.get("engine_diagnostics"),server_ms),
         "ownedPositionPnl":project_owned(packet.get("owned_position_pnl"),exposure,currency),
         "status":"OBSERVED_READ_ONLY","source":"SIGNED_MT5_STAGING_READ_ONLY",
@@ -176,7 +178,7 @@ def parse_observer(raw, server_ms):
 
 def disconnected_market():
     return {
-        "engineDiagnostics":missing(),"ownedPositionPnl":None,
+        "demoBatch":None,"engineDiagnostics":missing(),"ownedPositionPnl":None,
         "status":"NOT_CONNECTED","source":"NONE","brokerName":None,
         "accountMode":None,"symbol":None,"observedAt":None,"bid":None,"ask":None,
         "pointSize":None,"spreadPoints":None,"commissionUsdPerLot":None,
@@ -214,6 +216,8 @@ class ObserverBuffer:
             self._payload_digest=digest
             self._collected_ms=collected
             self._tick_ms=int(datetime.fromisoformat(projected["observedAt"].replace("Z","+00:00")).timestamp()*1000)
+
+        return projected.get("demoBatch")
 
     def market(self,now_ms):
         with self._lock:

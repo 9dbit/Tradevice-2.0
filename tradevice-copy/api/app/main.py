@@ -183,13 +183,16 @@ def create_app(settings: Settings | None = None, transport: httpx.AsyncBaseTrans
         except ObserverRejected:
             raise problem(401, "MASTER_OBSERVER_AUTH_DENIED") from None
         try:
-            application.state.observer_market.receive(body, now_ms)
+            batch = application.state.observer_market.receive(body, now_ms)
         except ObserverRateLimited:
             raise problem(429, "MASTER_OBSERVER_RATE_LIMITED") from None
         except ObserverRejected:
             raise problem(422, "MASTER_OBSERVER_INVALID_OR_STALE") from None
         # Never confer quote readiness, broker execution, news readiness, or START permissions.
-        return {"status": "ACCEPTED_READ_ONLY", "tradingReady": False, "executionEnabled": False}
+        answer = {"status": "ACCEPTED_READ_ONLY", "tradingReady": False, "executionEnabled": False}
+        if batch is not None:
+            answer["demoBatchAck"] = {"batch_id": batch["batch_id"], "observed_ms": batch["observed_ms"], "completed": batch["completed"]}
+        return answer
 
     @application.get("/internal/master/telemetry")
     async def internal_master_telemetry(request: Request):

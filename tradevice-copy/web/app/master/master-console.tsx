@@ -1,4 +1,5 @@
 'use client';
+import type {DemoBatch} from '../../lib/demo-batch.mjs';
 import { useEffect, useState, type FormEvent } from 'react';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import './master.css';
@@ -22,7 +23,7 @@ export type Snapshot = {
   paperExecution?: {accepted:number;rejected:number;fillsVerified:boolean};
   diagnostic?: {code:string;component?:string};
   news?: NewsSnapshot;
-  market?: {engineDiagnostics?:EngineDiagnostics;ownedPositionPnl?:OwnedPnl|null;status:'NOT_CONNECTED'|'STALE'|'VERIFIED'|'OBSERVED_READ_ONLY';source:string;
+  market?: {demoBatch?:DemoBatch|null;engineDiagnostics?:EngineDiagnostics;ownedPositionPnl?:OwnedPnl|null;status:'NOT_CONNECTED'|'STALE'|'VERIFIED'|'OBSERVED_READ_ONLY';source:string;
     brokerName:string|null;accountMode:'DEMO'|'REAL'|null;symbol:string|null;
     observedAt:string|null;bid:number|null;ask:number|null;pointSize:number|null;
     spreadPoints:number|null;commissionUsdPerLot:number|null;slippagePoints:number|null;
