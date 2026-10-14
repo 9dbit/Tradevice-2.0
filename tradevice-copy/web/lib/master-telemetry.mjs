@@ -105,6 +105,7 @@ export function validateWorkerTelemetry(raw, now=Date.now()) {
     };
   return {
     source:'STAGING_WORKER_TELEMETRY',observedAt:new Date(ts).toISOString(),
+    demoBatch:validateBatch(raw.demoBatch??(m.source==='SIGNED_MT5_STAGING_READ_ONLY'?m.demoBatch:null),now),
     executionMode:'PAPER_ONLY',
     master:{
       id:bounded(raw.master.id,100)||null,state,heartbeatAt:hb,

@@ -4,6 +4,8 @@ import { validateWorkerTelemetry } from '../../../../lib/master-telemetry.mjs';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
+let lastBatchDelivery = '';
+
 
 const headers = { 'Cache-Control': 'private, no-store, max-age=0', 'X-Content-Type-Options': 'nosniff' };
 function result(status: number, code: string) {
@@ -64,6 +66,14 @@ export async function GET(request: Request) {
       if (telemetryResponse.ok) {
         const snapshot = validateWorkerTelemetry(await telemetryResponse.json());
         if (snapshot) {
+          const batch=snapshot.demoBatch;
+          const delivery=batch?`${batch.batch_id}:${batch.observed_ms}`:'';
+          if(batch&&delivery!==lastBatchDelivery){
+            // Operational proof of the authenticated projection; no account or credentials.
+            console.info(JSON.stringify({event:'DEMO_HISTORY_PROJECTED',batch_id:batch.batch_id,
+              observed_ms:batch.observed_ms,completed:batch.completed,status:batch.status}));
+            lastBatchDelivery=delivery;
+          }
           return Response.json({
             ...snapshot,
             infrastructure: { ...snapshot.infrastructure, memberApi },

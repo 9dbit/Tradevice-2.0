@@ -55,3 +55,25 @@ def test_reader_role_mismatch_returns_distinct_diagnostic(monkeypatch):
         res=client.get("/internal/master/telemetry",headers={"x-tradevice-master-secret":"a"*64})
         assert res.status_code==503
         assert res.json()["detail"]["code"]=="MASTER_READ_DB_IDENTITY_FAILED"
+
+def test_authenticated_route_keeps_history_after_market_ttl(monkeypatch):
+    from importlib import import_module
+    from test_demo_batch import batch,cycle
+    from test_observer_telemetry import fixture,NOW
+    main=import_module('app.main')
+    monkeypatch.setenv('MASTER_TELEMETRY_SHARED_SECRET','a'*64)
+    monkeypatch.setenv('MASTER_READ_DATABASE_URL','postgresql://tradevice_master_reader:TEST_ONLY@db.scqzlcivherovlwqypeu.supabase.co:5432/postgres?sslmode=require')
+    monkeypatch.setattr(main,'read_database',lambda _:dict(control=dict(newsCalendarReady=False)))
+    monkeypatch.setattr(main.time,'time',lambda:(NOW+20000)/1000)
+    app=create_app(Settings(environment='staging',project_ref='scqzlcivherovlwqypeu'))
+    report=batch();report.update(status='STOPPED',cycles=[cycle()])
+    app.state.observer_market.receive(fixture(demo_batch=report),NOW)
+    with TestClient(app) as client:
+        assert client.get('/internal/master/telemetry').status_code==401
+        r=client.get('/internal/master/telemetry',headers={'x-tradevice-master-secret':'a'*64})
+        assert r.status_code==200
+        data=r.json()
+        assert data['market']['bid'] is None
+        assert data['demoBatch']['completed']==1
+        assert data['demoBatch']['net_completed_usd']==3.5
+        assert data['demoBatch']['fresh'] is False

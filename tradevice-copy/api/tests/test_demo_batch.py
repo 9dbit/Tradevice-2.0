@@ -35,3 +35,20 @@ def test_packet_batch_ack_and_size():
  b=ObserverBuffer();p=b.receive(encoded,NOW);assert p['completed']==10
  assert b.market(NOW)['demoBatch']['batch_id']=='fixture-demo10'
  assert b.market(NOW+10000)['demoBatch'] is None
+
+def test_history_survives_quote_expiry_without_reviving_runner():
+ report=batch();report.update(status='STOPPED',cycles=[cycle()])
+ b=ObserverBuffer();b.receive(fixture(demo_batch=report),NOW)
+ assert b.market(NOW+20000)['bid'] is None
+ history=b.batch(NOW+20000)
+ assert history['completed']==1 and history['net_completed_usd']==3.5
+ assert history['observed_ms']==NOW and history['fresh'] is False
+
+def test_missing_invalid_and_older_reports_do_not_erase_history():
+ report=batch();report.update(status='STOPPED',cycles=[cycle()])
+ b=ObserverBuffer();b.receive(fixture(demo_batch=report),NOW)
+ for i,replacement in enumerate([None,dict(report,requested=11),dict(report,observed_ms=NOW-1000,cycles=[])],1):
+  stamp=NOW+i*1100
+  b.receive(fixture(collected_utc_ms=stamp,demo_batch=replacement,**{'market.tick_time_utc_ms':stamp}),stamp)
+  assert b.batch(stamp)['completed']==1
+  assert b.batch(stamp)['observed_ms']==NOW

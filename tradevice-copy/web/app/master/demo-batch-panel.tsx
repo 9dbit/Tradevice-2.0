@@ -1,0 +1,26 @@
+'use client';
+import {useEffect,useState} from 'react';
+import {validateBatch} from '../../lib/demo-batch.mjs';
+const money=(n:number|null|undefined)=>typeof n==='number'?n.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})+' USD':'—';
+export default function DemoBatchPanel({raw,now}:{raw:unknown;now?:number}){
+ const [clock,setClock]=useState(Date.now());
+ useEffect(()=>{if(now!==undefined)return;const id=setInterval(()=>setClock(Date.now()),1000);return()=>clearInterval(id);},[now]);
+ const b=validateBatch(raw,now??clock);
+ const final=b&&['COMPLETED','STOPPED','SAFETY_STOP','BLOCKED'].includes(b.status)&&b.unfinished===0;
+ const stamp=b?new Intl.DateTimeFormat('id-ID',{timeZone:'Asia/Jakarta',dateStyle:'medium',timeStyle:'medium'}).format(new Date(b.observed_ms))+' WIB':'—';
+ const reasons=b?.blockers.map(x=>x==='CALENDAR_STALE_OR_FUTURE'?'Calendar freshness expired — entry suspended':x.replaceAll('_',' '));
+ return <section className="mt-u-panel mt-u-market" aria-label="Bounded demo batch evidence">
+  <div className="mt-u-panel-head"><div><span className="mt-u-overline">EXNESS DEMO · BROKER HISTORY</span><h2>Demo Test · Maksimal 10 Cycle</h2></div>
+   <span className="mt-u-chip">{b?(final?'FINAL RESULT · ':b.fresh?'':'STALE RUNNER · ')+b.status:'NO VERIFIED BATCH'}</span></div>
+  <div className="mt-u-market-grid">
+   <div className="mt-u-market-cell"><small>Completed / requested</small><strong>{b?`${b.completed} / ${b.requested}`:'—'}</strong><span>{b?`${b.started} cycles started`:'Awaiting broker evidence'}</span></div>
+   <div className="mt-u-market-cell"><small>Completed net P&amp;L</small><strong>{money(b?.net_completed_usd)}</strong><span>Profit + commission + swap + fee.</span></div>
+   <div className="mt-u-market-cell"><small>Wins / losses / risk exits</small><strong>{b?`${b.wins} / ${b.losses} / ${b.risk_exits}`:'—'}</strong><span>No-fill cycles excluded.</span></div>
+   <div className="mt-u-market-cell"><small>Unfinished cycles</small><strong>{b?.unfinished??'—'}</strong><span>{b?.batch_id||'No batch identity'}</span></div>
+  </div>
+  <p className="mt-u-help">{reasons?.length?reasons.join(' · '):b?'No reported blocker':'Awaiting signed demo history'}. Last result: {stamp}. {final?'Hasil historis tetap ditampilkan saat quote atau runner offline.':'Status running memerlukan heartbeat baru.'} Dashboard execution tetap terkunci.</p>
+  {!!b?.cycles.length&&<div className="mt-table-scroll"><table className="mt-table"><thead><tr><th>Cycle</th><th>Status</th><th>Net</th><th>Layer</th><th>Peak lots</th><th>Broker-flat</th></tr></thead><tbody>
+   {b.cycles.map(c=><tr key={c.cycle_id}><td>{c.number} · {c.cycle_id}</td><td>{c.outcome}</td><td>{money(c.net_usd)}</td><td>{c.layers}</td><td>{c.peak_lots}</td><td>{c.broker_flat?'CONFIRMED':'NOT CONFIRMED'}</td></tr>)}
+  </tbody></table></div>}
+ </section>;
+}

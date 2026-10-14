@@ -109,3 +109,15 @@ test('observed margin is currency-labelled and disappears with stale feed',()=>{
  assert.equal(stale.market.equity,null);assert.equal(stale.market.positionsCount,null);
  assert.equal(stale.market.atrRecomputed,false);
 });
+
+test('closed demo history survives missing quote while market and START remain unavailable',()=>{
+ const demoBatch={schema:'tradevice.v51.demo.batch.v1',read_only:true,batch_id:'fixture-history',observed_ms:now-3600000,status:'STOPPED',requested:10,blockers:['CALENDAR_STALE_OR_FUTURE'],cycles:[{number:1,cycle_id:'fixture-1',outcome:'COMPLETE_TARGET_HISTORY',broker_flat:true,layers:2,peak_lots:.03,net_usd:3.5}]};
+ const result=validateWorkerTelemetry({...raw,demoBatch,market:{status:'NOT_CONNECTED'}},now);
+ assert.equal(result.demoBatch.completed,1);
+ assert.equal(result.demoBatch.net_completed_usd,3.5);
+ assert.equal(result.demoBatch.fresh,false);
+ assert.equal(result.demoBatch.observed_ms,now-3600000);
+ assert.equal(result.market.bid,null);
+ assert.equal(result.control.brokerReady,false);
+ assert.equal(result.control.quotesReady,false);
+});

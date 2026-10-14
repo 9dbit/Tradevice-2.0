@@ -1,6 +1,8 @@
+import type {DemoBatch} from './demo-batch.mjs';
 export interface MasterWorkerSnapshot {
  source:'STAGING_WORKER_TELEMETRY';
  observedAt:string;
+ demoBatch:DemoBatch|null;
  executionMode:'PAPER_ONLY';
  master:{id:string|null;state:string;heartbeatAt:string|null;lastCycleAt:string|null;
  uptimeSeconds:number|null;cycles:number|null;healthyCycles:number|null;anomalies:number|null;

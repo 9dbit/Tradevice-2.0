@@ -3,6 +3,7 @@ import {useEffect,useMemo,useRef,useState} from 'react';
 import type {Snapshot} from './master-console';
 import {validateEngine,validateOwned} from '../../lib/engine-diagnostics.mjs';
 import {validateBatch} from '../../lib/demo-batch.mjs';
+import DemoBatchPanel from './demo-batch-panel';
 import {validateNews} from '../../lib/news-calendar.mjs';
 
 type Details='overview'|'cycles'|'anomalies'|'risk'|'journal'|'system';
@@ -68,7 +69,7 @@ export default function CompactDashboard({data,token,onNavigate,onUpdated}:{
  const engine=validateEngine(marketFresh?market?.engineDiagnostics:null,newsClock);
  const owned=validateOwned(marketFresh?market?.ownedPositionPnl:null);
  const decision=engine.decision;
- const batch=validateBatch(marketFresh?market?.demoBatch:null,newsClock);
+ const batch=validateBatch(data?.demoBatch??market?.demoBatch,newsClock);
  const newsTime=(value:number|null)=>value===null?'—':time(new Date(value).toISOString());
  const countdownTarget=calendar.status==='BLACKOUT'?calendar.blackoutUntil:calendar.nextEvent?.blackoutStart;
  const seconds=countdownTarget==null?null:Math.max(0,Math.ceil((countdownTarget-newsClock)/1000));
@@ -208,14 +209,14 @@ export default function CompactDashboard({data,token,onNavigate,onUpdated}:{
   </div>
   <div className="mt-u-grid">
     <Panel title="Overview" icon="dashboard" go={()=>onNavigate('overview')}>
-      <Datum name="Paper equity" value={typeof data?.risk.equityUsd==='number'?'$'+fmt(data.risk.equityUsd):'—'}/>
-      <Datum name="Paper P&L" value={typeof data?.risk.pnlUsd==='number'?'$'+fmt(data.risk.pnlUsd):'—'}/>
-      <Datum name="Win rate" value={fmt(data?.risk.winRatePct,'%')}/>
+      <Datum name="Demo equity · current" value={marketFresh&&typeof market?.equity==='number'?'$'+fmt(market.equity):'—'}/>
+      <Datum name="Demo net · completed cycles" value={batch?'$'+fmt(batch.net_completed_usd):'—'}/>
+      <Datum name="Wins / losses · demo batch" value={batch?`${batch.wins} / ${batch.losses}`:'—'}/>
     </Panel>
     <Panel title="Cycle Monitor" icon="repeat" go={()=>onNavigate('cycles')}>
       <Datum name="Supervisor ticks" value={fmt(data?.master.cycles)}/>
-      <Datum name="Strategy cycles" value={fmt(control?.strategyCycles)}/>
-      <Datum name="Run state" value={control?.runStatus||'NOT CONNECTED'}/>
+      <Datum name="Demo completed / requested" value={batch?`${batch.completed} / ${batch.requested}`:'—'}/>
+      <Datum name="Demo batch state" value={batch?.status||'NOT CONNECTED'}/>
     </Panel>
     <Panel title="System Health" icon="activity" go={()=>onNavigate('system')}>
       <Datum name="Member API" value={data?.infrastructure.memberApi||'UNKNOWN'}/>
@@ -278,21 +279,7 @@ export default function CompactDashboard({data,token,onNavigate,onUpdated}:{
       <span>Last quote: <strong>{time(market?.observedAt)}</strong></span>
     </div>
   </section>
-  <section className="mt-u-panel mt-u-market" aria-label="Bounded demo batch evidence">
-    <div className="mt-u-panel-head"><div><span className="mt-u-overline">EXNESS DEMO · BROKER HISTORY</span>
-      <h2><I name="repeat"/> Demo Test · Maksimal 10 Cycle</h2></div>
-      <span className="mt-u-chip">{batch?(batch.fresh?'':'STALE · ')+batch.status:'NO BATCH FEED'}</span></div>
-    <div className="mt-u-market-grid">
-      <div className="mt-u-market-cell"><small>Started / completed / limit</small><strong>{batch?`${batch.started} / ${batch.completed} / 10`:'—'}</strong><span>Completed memerlukan broker-flat dan exit history.</span></div>
-      <div className="mt-u-market-cell"><small>Completed net P&amp;L</small><strong>{fmt(batch?.net_completed_usd,' USD')}</strong><span>Profit + commission + swap + fee dari cycle selesai.</span></div>
-      <div className="mt-u-market-cell"><small>Wins / losses / risk exits</small><strong>{batch?`${batch.wins} / ${batch.losses} / ${batch.risk_exits}`:'—'}</strong><span>Cycle tanpa fill tidak dihitung sebagai win.</span></div>
-      <div className="mt-u-market-cell"><small>Unfinished cycles</small><strong>{fmt(batch?.unfinished)}</strong><span>{batch?.batch_id||'No verified batch identity'}</span></div>
-    </div>
-    <p className="mt-u-help">{batch?.blockers.length?batch.blockers.join(' · '):batch?'No reported blocker':'Awaiting signed demo batch evidence'}. Last report: {newsTime(batch?.observed_ms??null)}. Dashboard execution tetap terkunci.</p>
-    {!!batch?.cycles.length&&<div style={{overflowX:'auto'}}><table><thead><tr><th>Cycle</th><th>Status</th><th>Net USD</th><th>Layer</th><th>Peak lots</th><th>Broker-flat</th></tr></thead><tbody>
-      {batch.cycles.map(c=><tr key={c.cycle_id}><td>{c.number} · {c.cycle_id}</td><td>{c.outcome}</td><td>{fmt(c.net_usd)}</td><td>{c.layers}</td><td>{fmt(c.peak_lots)}</td><td>{c.broker_flat?'CONFIRMED':'NOT CONFIRMED'}</td></tr>)}
-    </tbody></table></div>}
-  </section>
+  <DemoBatchPanel raw={batch} now={newsClock}/>
   <section className="mt-u-panel mt-u-market" aria-label="Engine and basket diagnostics">
     <div className="mt-u-panel-head"><div><span className="mt-u-overline">ENGINE EVIDENCE · READ-ONLY</span>
       <h2><I name="shield"/> Adaptive Entry &amp; Basket Risk</h2></div>

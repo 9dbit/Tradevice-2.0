@@ -195,6 +195,7 @@ class ObserverBuffer:
     def __init__(self):
         self._lock=threading.Lock()
         self._market=None
+        self._batch=None
         self._received_ms=0
         self._payload_digest=None
         self._collected_ms=-1
@@ -211,6 +212,12 @@ class ObserverBuffer:
                 raise ObserverRejected("OBSERVER_OUT_OF_ORDER_PACKET")
             if self._market is not None and now_ms-self._received_ms<MIN_RECEIVE_INTERVAL_MS:
                 raise ObserverRateLimited("OBSERVER_RATE_LIMITED")
+            candidate=projected.get("demoBatch")
+            if candidate is not None:
+                if self._batch is None or candidate['observed_ms']>=self._batch['observed_ms']:
+                    self._batch=candidate
+                else:
+                    projected['demoBatch']=None
             self._market=projected
             self._received_ms=now_ms
             self._payload_digest=digest
@@ -218,6 +225,12 @@ class ObserverBuffer:
             self._tick_ms=int(datetime.fromisoformat(projected["observedAt"].replace("Z","+00:00")).timestamp()*1000)
 
         return projected.get("demoBatch")
+
+    def batch(self,now_ms):
+        # Closed results are historical evidence, independent of executable quote TTL.
+        # The durable PC journal replays this bounded projection after API restart.
+        with self._lock:
+            return project_batch(self._batch,now_ms)
 
     def market(self,now_ms):
         with self._lock:

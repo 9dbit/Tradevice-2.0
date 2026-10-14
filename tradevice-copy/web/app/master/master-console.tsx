@@ -4,6 +4,7 @@ import { useEffect, useState, type FormEvent } from 'react';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import './master.css';
 import CompactDashboard from './compact-dashboard';
+import DemoBatchPanel from './demo-batch-panel';
 import type {EngineDiagnostics,OwnedPnl} from '../../lib/engine-diagnostics.mjs';
 import type {NewsSnapshot} from '../../lib/news-calendar.mjs';
 
@@ -23,6 +24,7 @@ export type Snapshot = {
   paperExecution?: {accepted:number;rejected:number;fillsVerified:boolean};
   diagnostic?: {code:string;component?:string};
   news?: NewsSnapshot;
+  demoBatch?:DemoBatch|null;
   market?: {demoBatch?:DemoBatch|null;engineDiagnostics?:EngineDiagnostics;ownedPositionPnl?:OwnedPnl|null;status:'NOT_CONNECTED'|'STALE'|'VERIFIED'|'OBSERVED_READ_ONLY';source:string;
     brokerName:string|null;accountMode:'DEMO'|'REAL'|null;symbol:string|null;
     observedAt:string|null;bid:number|null;ask:number|null;pointSize:number|null;
@@ -157,7 +159,10 @@ export default function MasterConsole() {
   useEffect(()=>{
     if(!token){setSnapshot(null);setAuth(v=>v==='loading'?'loading':'login');return;}
     let active=true;
+    let loading=false;
     async function load(){
+      if(loading)return;
+      loading=true;
       try{
         const response=await fetch('/api/master/overview',{
           headers:{Authorization:'Bearer '+token},cache:'no-store',
@@ -177,14 +182,14 @@ export default function MasterConsole() {
           setAuth(current=>current==='authorized'?current:'forbidden');
           setMessage('Koneksi monitoring sementara tidak tersedia. Periksa System Health dan coba refresh.');
         }
-      }
+      }finally{loading=false;}
     }
     // A successful admin session stays mounted during revalidation.
     // A command acknowledgement or refreshed JWT must not bounce to login.
     // Explicit 401/403 responses above still immediately revoke dashboard access.
     setAuth(current=>current==='authorized'?current:'checking');
     void load();
-    const id=window.setInterval(()=>{void load();},15000);
+    const id=window.setInterval(()=>{void load();},5000);
     return()=>{active=false;window.clearInterval(id);};
   },[token,refreshIndex]);
   async function signIn(event:FormEvent<HTMLFormElement>){
@@ -253,7 +258,7 @@ export default function MasterConsole() {
         <div className="mt-page-header"><div><div className="mt-eyebrow">TRADEVICE / COMMAND DESK</div>
           <h1>{tab==='overview'?'Master overview':roleTitle}<span>.</span></h1>
           <p>Monitor continuity, anomaly, risk guardrails, dan audit paper trading dari satu tempat.</p>
-        </div><div className="mt-date"><Glyph name="clock" size={18}/><span>Operational telemetry · every 15s</span></div></div>
+        </div><div className="mt-date"><Glyph name="clock" size={18}/><span>Operational telemetry · every 5s</span></div></div>
         {message&&auth==='authorized'&&!data&&<div role="alert" className="mt-disclosure">
           <Glyph name="alert" size={20}/><div><strong>TELEMETRY TEMPORARILY UNAVAILABLE</strong>
             <span>{message} Semua kontrol trading dinonaktifkan sampai koneksi pulih.</span></div>
@@ -266,6 +271,7 @@ export default function MasterConsole() {
         {tab==='dashboard'&&<CompactDashboard data={data} token={token} onNavigate={setTab}
             onUpdated={()=>setRefreshIndex(i=>i+1)}/>}
         {tab==='overview'&&<>
+          <DemoBatchPanel raw={data?.demoBatch}/>
           <section className="mt-hero">
             <div className="mt-hero-main"><div className="mt-hero-overline"><span className="mt-led"/> MASTER TRADER / SUPERVISOR</div>
               <h2>{mode==='ACTIVE'?'Cycle running normally.':mode==='DEGRADED'?'Anomaly detected. Cycle protected.':mode==='RECOVERING'?'Revalidating market conditions.':'Engine connection pending.'}</h2>
@@ -296,6 +302,7 @@ export default function MasterConsole() {
           <section className="mt-panel mt-event-panel"><SectionHead eyebrow="SAFETY & CONTINUITY" title="Latest anomaly events" extra={<button type="button" className="mt-inline-action" onClick={()=>setTab('anomalies')}>View all <Glyph name="arrow" size={15}/></button>}/><Events rows={(data?.activity||[]).slice(0,4)}/></section>
         </>}
         {tab==='cycles'&&<>
+          <DemoBatchPanel raw={data?.demoBatch}/>
           <section className="mt-panel"><SectionHead eyebrow="MASTER ENGINE" title="Cycle continuity state machine" extra={<Pill value={mode}/>}/>
             <div className="mt-state-flow">{[
               ['01','MARKET DATA','Source quality and freshness'],

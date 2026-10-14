@@ -211,6 +211,7 @@ def create_app(settings: Settings | None = None, transport: httpx.AsyncBaseTrans
         try:
             payload = await run_in_threadpool(read_database, dsn)
             payload["market"] = application.state.observer_market.market(int(time.time()*1000))
+            payload["demoBatch"] = application.state.observer_market.batch(int(time.time()*1000))
             payload["news"] = application.state.news_calendar.projection()
             payload["control"]["operatorConfigured"] = allowed_operator_dsn(
                 os.getenv("MASTER_OPERATOR_DATABASE_URL",""))
