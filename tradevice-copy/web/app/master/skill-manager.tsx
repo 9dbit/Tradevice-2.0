@@ -2,6 +2,7 @@
 import {useCallback,useEffect,useRef,useState} from 'react';
 import type {DemoRuntime} from './demo-control';
 import {validateEngine} from '../../lib/engine-diagnostics.mjs';
+import {ReportDrawer,ReportIcon} from './report-ui';
 
 type Skill={id:string;name:string;version:string;description:string;strategy:string;kind:string;sha256:string;documentation:string;active:boolean;executionStatus:string};
 type SaveProgress={phase:'SAVING'|'WAITING_ENGINE'|'CONFIRMED'|'FAILED'|'UNCERTAIN';percent:number;label:string};
@@ -99,23 +100,14 @@ export default function SkillManager({token,engineRaw,now,activation}:{token:str
  }
  const selected=catalog?.skills.find(s=>s.id===catalog.selectedSkillId);
  return <section className="mt-u-card mt-skills" aria-labelledby="skill-heading">
-  <div className="mt-skill-heading"><div><span className="mt-eyebrow">MASTER TRADER · SKILL LIBRARY</span><h2 id="skill-heading">Trading Skills</h2></div>
+  <div className="mt-skill-heading"><h2 id="skill-heading"><ReportIcon name="layers"/> Trading Skills</h2>
    <button type="button" disabled={!token||busy||!fresh} onClick={()=>file.current?.click()}>Upload skill</button>
    <input ref={file} type="file" hidden accept=".zip,.json" onChange={e=>{const f=e.target.files?.[0];e.target.value='';if(f)void upload(f);}}/>
   </div>
-  <div className="mt-skill-status">
-   <div><span>Engine terlapor</span><strong>{activationFresh&&activation?.activeSkillId?'GoldTrap ARC V5.1':reported?'GoldTrap ARC V5.1':'Belum terverifikasi'}</strong>
-    <small>{activationFresh?`Engine ${activation?.state} · fingerprint ${activation?.activeHash?'terkonfirmasi':'belum dimuat'}`:reported?`${engine.state} · cycle ${engine.cycleId||'—'}`:'Menunggu telemetry engine yang fresh.'}</small>
-    {reported&&<small>Basket TP +${engine.targetUsd?.toFixed(2)} · hard loss ${engine.hardLossUsd?.toFixed(2)}</small>}
-   </div>
-   <div><span>Pilihan skill · maksimum 1 ON</span><strong>{fresh?(selected?.name||'Semua OFF'):'Status pilihan tidak tersedia'}</strong>
-    <small>{fresh&&selected?`Versi ${selected.version} · ${activationFresh&&activation?.activeSkillId===selected.id?'engine memuat skill':'menunggu konfirmasi engine'}`:'Upload baru selalu OFF.'}</small></div>
-  </div>
-
-  <p className="mt-skill-note">ZIP / JSON · 512 KB. <a href="/skill-template.json" download>Unduh template JSON</a></p>
+  <p className="mt-compact-note">{!fresh?'Pilihan belum terverifikasi':selected?(activationFresh&&activation?.activeSkillId===selected.id&&activation?.activeHash===selected.sha256?'Engine memuat skill':'Menunggu konfirmasi engine'):'Semua OFF'} · maks. 1 aktif</p>
   <div aria-live="polite">{notice&&<p className="mt-skill-notice">{notice}</p>}{error&&<p role="alert" className="mt-skill-error">{messages[error]||error}</p>}</div>
   {progress&&<div className="mt-skill-progress" data-phase={progress.phase} aria-busy={busy}>
-   <div className="mt-skill-progress-heading"><span role="status" aria-live="polite">{progress.label}</span><strong aria-hidden="true">{animatedPercent}%</strong></div>
+   <div className="mt-skill-progress-heading"><span id="skill-save-help" role="status" aria-live="polite">{progress.label}</span><strong aria-hidden="true">{animatedPercent}%</strong></div>
    <div className="mt-skill-progress-track" role="progressbar" aria-label="Progres penyimpanan pilihan skill" aria-valuemin={0} aria-valuemax={100} aria-valuenow={progress.percent} aria-valuetext={progress.label}>
     <span style={{width:animatedPercent+'%'}}/>
    </div>
@@ -126,7 +118,12 @@ export default function SkillManager({token,engineRaw,now,activation}:{token:str
    <div className="mt-skill-item-top"><div><h3>{skill.name}</h3><span>v{skill.version} · {skill.kind==='BUILTIN'?'Kandidat bawaan':'Paket upload'}</span></div>
     <button type="button" role="switch" aria-checked={activationFresh&&activation?.activeSkillId===skill.id} aria-label={'Pilih '+skill.name+' versi '+skill.version} disabled={busy||!fresh||(!skill.active&&skill.executionStatus!=='ADAPTER_AVAILABLE')}
      onClick={()=>void mutate({action:'SELECT',skillId:skill.active?null:skill.id,expectedRevision:catalog.revision})} className="mt-skill-toggle mt-skill-slider" aria-busy={busy} aria-describedby={progress?'skill-save-help':undefined}><span className="mt-skill-slider-label">{activationFresh?(activation?.activeSkillId===skill.id?'ON':'OFF'):'—'}</span><span className="mt-skill-slider-thumb" aria-hidden="true">{busy&&<span className="mt-skill-slider-spinner"/>}</span></button></div>
-   <p>{skill.description}</p>{skill.executionStatus!=='ADAPTER_AVAILABLE'&&<small>Upload tersimpan; adapter engine untuk paket ini belum disetujui.</small>}<details><summary>Informasi skill &amp; fingerprint</summary><p>Strategi: {skill.strategy}</p><p className="mt-skill-hash">SHA-256: {skill.sha256}</p><pre>{skill.documentation||'Dokumentasi tidak disertakan.'}</pre></details>
+   {skill.executionStatus!=='ADAPTER_AVAILABLE'&&<small>Adapter engine belum disetujui.</small>}
+   <ReportDrawer title="Informasi skill & fingerprint"><p>{skill.description}</p><p>Strategi: {skill.strategy}</p><p className="mt-skill-hash">SHA-256: {skill.sha256}</p><pre>{skill.documentation||'Dokumentasi tidak disertakan.'}</pre></ReportDrawer>
   </article>)}</div>
+  <ReportDrawer title="Upload & engine details">
+   <p className="mt-skill-note">ZIP / JSON · maks. 512 KB · upload baru OFF. <a href="/skill-template.json" download>Template JSON</a></p>
+   <p className="mt-compact-note">{activationFresh?`Engine ${activation?.state} · fingerprint ${activation?.activeHash?'terkonfirmasi':'belum dimuat'}`:reported?`${engine.state} · cycle ${engine.cycleId||'—'}`:'Telemetry engine belum terverifikasi.'}</p>
+  </ReportDrawer>
  </section>;
 }

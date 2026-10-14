@@ -22,10 +22,11 @@ test('Dashboard has five destinations with Risk and Paper in System',()=>{
   assert.doesNotMatch(consolePage,/key:'(?:risk|journal)'/);
   assert.match(consolePage,/tab==='system'&&<section className="mt-panel"><SectionHead eyebrow="PAPER EXECUTION AUDIT"/);
 });
-test('Dashboard presents demo controls first and preserves six factual summaries',()=>{
- for(const t of ['Overview','Cycle Monitor','System Health','Risk & Safety','Anomaly Center','Paper Journal','Terminal Activity'])assert.ok(dashboard.includes(t),t);
- assert.ok(dashboard.indexOf('<DemoControl')<dashboard.indexOf('<div className="mt-u-grid">'));
- for(const t of ['Start Cycle','>Pause<','>Stop<'])assert.ok(demo.includes(t));
+test('Dashboard presents demo controls first and concise summaries with supporting drawers',()=>{
+ for(const t of ['Overview','Cycle Monitor','Telemetry','Basket &amp; Adaptive','News Guard','System &amp; Activity','Terminal activity'])assert.ok(dashboard.includes(t),t);
+ assert.ok(dashboard.indexOf('<DemoControl')<dashboard.indexOf('aria-labelledby="summary-title"'));
+ for(const t of ['Start Cycle','/>Pause<','/>Stop<'])assert.ok(demo.includes(t));
+ assert.match(dashboard,/ReportDrawer/);
  assert.doesNotMatch(dashboard,/mt-u-statusline|Save Configuration|Reset Journal|SIM-001|Math\.random\(/);
 });
 test('command route authorizes real app_metadata user and never proxies member orders',()=>{
@@ -76,11 +77,11 @@ test('demo start is finite and authorized by explicit Start click',()=>{
  assert.match(dashboard,/mt-u-diagnostic/);
 });
 test('broker quality panel exists and never fabricates broker metrics or starts trading',()=>{
- for(const field of ['Broker & Market Conditions','Current Spread','Commission','Slippage',
-  'Volatility','ATR (14)','MT5 Observer','Last quote','executionAdapter']) {
+ for(const field of ['Telemetry','Spread','Commission','Slippage',
+  'Volatility','ATR 14','MT5 observer','Last snapshot','executionAdapter']) {
     assert.ok(dashboard.includes(field),field);
  }
- assert.match(dashboard,/Not connected/);
+ assert.match(dashboard,/Broker belum terverifikasi/);
  assert.match(demo,/!runtime\?\.canStart/);
  assert.doesNotMatch(dashboard,/FAKE_BROKER|spreadPoints:\s*10|atr14:\s*5|commissionUsdPerLot:\s*5/);
 });

@@ -261,8 +261,7 @@ export default function MasterConsole() {
           <Glyph name="alert" size={20}/><div><strong>TELEMETRY TEMPORARILY UNAVAILABLE</strong>
             <span>{message} Semua kontrol trading dinonaktifkan sampai koneksi pulih.</span></div>
         </div>}
-        {tab==='dashboard'&&<CompactDashboard data={data} token={token} onNavigate={setTab}
-            onUpdated={()=>setRefreshIndex(i=>i+1)}/>}
+        {tab==='dashboard'&&<CompactDashboard data={data} token={token} onNavigate={setTab}/>}
         {tab==='overview'&&<>
           <FinancialOverview data={data}/>
           <section className="mt-panel mt-performance"><SectionHead eyebrow="PAPER PERFORMANCE" title="Verified paper equity curve" extra={<Pill value={data?.equityCurve.length ? "VERIFIED" : "NO DATA"}/>}/>
