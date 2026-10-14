@@ -1,6 +1,6 @@
 /* Master report presentation. Content has no cards, outlines or divider frames. */
 .mt-report{--report-orange:#ff923d;max-width:1440px}
-.mt-report :is(section,article,div,p,table,td,th,footer):not(.mt-u-progress-track){border:0!important;box-shadow:none!important;background:transparent!important}
+.mt-report :is(section,article,div,p,table,td,th,footer):not(.mt-u-progress-track,.mt-skill-progress-track){border:0!important;box-shadow:none!important;background:transparent!important}
 .mt-report .mt-metric::after{display:none}
 .mt-report .mt-metrics{padding:0;border-radius:0}
 .mt-report .mt-u-terminal-window:has(.mt-u-terminal-empty){height:auto;min-height:0;padding:0}
@@ -82,3 +82,37 @@
  .mt-report .mt-u-card-sub,.mt-report .mt-u-datum small{font-size:11px;overflow-wrap:anywhere}
  .mt-report .mt-runtime-row strong{font-size:14px}
 }
+
+/* Slider state stays server-confirmed while a save is in flight. */
+.mt-report .mt-skills .mt-skill-slider{position:relative;flex:none;display:block;width:76px;min-width:76px;height:44px;min-height:44px;padding:0;border:0;border-radius:999px;background:#303030;color:#ddd;transition:background .2s ease;overflow:hidden}
+.mt-report .mt-skills .mt-skill-slider[aria-checked=true]{background:#ff923d;color:#171717}
+.mt-skill-slider-thumb{position:absolute;top:6px;left:6px;width:32px;height:32px;border-radius:50%;background:#f7f7f7;display:grid;place-items:center;box-shadow:0 1px 4px #0004;transition:transform .25s cubic-bezier(.2,.8,.2,1)}
+.mt-skill-slider[aria-checked=true] .mt-skill-slider-thumb{transform:translateX(32px)}
+.mt-report .mt-skill-slider-label{color:inherit;position:absolute;right:10px;top:50%;transform:translateY(-50%);font-size:10px;font-weight:750;letter-spacing:.4px}
+.mt-skill-slider[aria-checked=true] .mt-report .mt-skill-slider-label{color:inherit;right:auto;left:11px}
+.mt-report .mt-skills .mt-skill-slider:disabled{opacity:.65}
+.mt-skill-slider-spinner{width:14px;height:14px;border:2px solid #aaa;border-top-color:#222;border-radius:50%;animation:skill-save-spin .8s linear infinite}
+.mt-skill-progress{margin:18px 0 24px;max-width:640px}
+.mt-skill-progress-heading{display:flex;align-items:center;justify-content:space-between;gap:16px;font-size:13px;line-height:1.5}
+.mt-skill-progress-heading>strong{font-size:22px;font-variant-numeric:tabular-nums}
+.mt-report .mt-skill-progress-track{height:5px;background:#292929!important;border-radius:99px;margin:10px 0;overflow:hidden}
+.mt-skill-progress-track>span{display:block;height:100%;background:#ff923d;border-radius:99px}
+.mt-skill-progress small{display:block;color:#999;font-size:11px;line-height:1.6}
+.mt-skill-progress[data-phase=FAILED] .mt-skill-progress-track>span,.mt-skill-progress[data-phase=UNCERTAIN] .mt-skill-progress-track>span{background:#bb9280}
+@keyframes skill-save-spin{to{transform:rotate(360deg)}}
+@media(prefers-reduced-motion:reduce){.mt-skill-slider-thumb,.mt-report .mt-skills .mt-skill-slider{transition:none}.mt-skill-slider-spinner{animation:none;border-color:#555}}
+
+/* Functional controls remain readable in the borderless report layout. */
+.mt-report .mt-demo-control {padding-top:4px;}
+.mt-report .mt-demo-inputs {display:grid;grid-template-columns:minmax(100px,160px) 1fr;gap:16px;align-items:center;margin:16px 0;}
+.mt-report .mt-demo-inputs label {display:flex;flex-direction:column;gap:8px;color:var(--mt-report-orange,#ff923d);}
+.mt-report .mt-demo-inputs input[type=number] {width:100%;box-sizing:border-box;padding:12px;font-size:22px;color:#ff923d;}
+.mt-report .mt-demo-inputs .mt-demo-confirm {flex-direction:row;align-items:center;color:var(--mt-muted,#aaa);font-size:13px;}
+.mt-report .mt-demo-confirm input {width:20px;height:20px;flex-shrink:0;accent-color:#ff923d;}
+.mt-report .mt-demo-control .mt-u-buttons {display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;}
+.mt-report .mt-demo-control .mt-u-buttons button {min-width:0;padding:12px 6px;font-size:13px;min-height:44px;}
+.mt-report .mt-demo-command {padding:12px 0;}
+.mt-report .mt-demo-command strong {color:#ff923d;}
+.mt-report .mt-demo-control .mt-u-help {overflow-wrap:anywhere;}
+.mt-report .mt-demo-inputs input[type=number] {background:transparent;border:0;border-radius:0;color:#ff923d;min-height:44px;font-size:30px;padding:4px 0;outline-offset:4px;}
+@media(max-width:600px){.mt-report .mt-demo-control .mt-u-buttons{grid-template-columns:repeat(2,minmax(0,1fr));}.mt-report .mt-demo-control .mt-u-buttons .mt-u-primary{grid-column:1/-1;}}

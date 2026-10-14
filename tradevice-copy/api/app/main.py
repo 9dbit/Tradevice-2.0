@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from typing import Annotated
 from uuid import UUID
 import hmac
+import json
 import logging
 import psycopg
 import os
@@ -15,6 +16,7 @@ from .master_telemetry import read_database, allowed_reader_dsn
 from .master_control import allowed_operator_dsn,submit_command,validate_command
 from .news_calendar import NewsCalendar
 from .master_skills import registry, SkillError, MAX_BODY, json_object
+from . import demo_control
 
 import httpx
 from fastapi import Depends, FastAPI, HTTPException, Query, Request
@@ -279,6 +281,44 @@ def create_app(settings: Settings | None = None, transport: httpx.AsyncBaseTrans
             raise problem(exc.status, exc.code) from None
         except (psycopg.Error, RuntimeError):
             raise problem(503, "MASTER_SKILLS_UNAVAILABLE") from None
+
+    @application.api_route("/internal/master/demo", methods=["GET", "POST"])
+    async def internal_demo_control(request: Request):
+        if settings.environment != 'staging' or settings.project_ref != 'scqzlcivherovlwqypeu':
+            raise problem(503, 'MASTER_STAGING_ONLY')
+        secret=os.getenv('MASTER_TELEMETRY_SHARED_SECRET','')
+        if not re.fullmatch('[a-f0-9]{64}',secret):raise problem(503,'MASTER_DEMO_NOT_CONFIGURED')
+        if not hmac.compare_digest(request.headers.get('x-tradevice-master-secret',''),secret):raise problem(401,'MASTER_INTERNAL_AUTH_REQUIRED')
+        try:
+            dsn=os.getenv('MASTER_OPERATOR_DATABASE_URL','')
+            clear=application.state.news_calendar.projection().get('status')=='CLEAR'
+            if request.method=='GET':return await run_in_threadpool(demo_control.read,dsn,clear)
+            if request.headers.get('content-type','').split(';')[0]!='application/json':raise SkillError('SKILL_JSON_REQUIRED',415)
+            body=bytearray()
+            async for chunk in request.stream():
+                body.extend(chunk)
+                if len(body)>2048:raise SkillError('SKILL_COMMAND_TOO_LARGE',413)
+            return await run_in_threadpool(demo_control.submit,dsn,json_object(body),clear)
+        except SkillError as exc:raise problem(exc.status,exc.code) from None
+        except (psycopg.Error,RuntimeError):raise problem(503,'MASTER_DEMO_UNAVAILABLE') from None
+
+    @application.post('/internal/master/demo/exchange')
+    async def internal_demo_exchange(request: Request):
+        if settings.environment!='staging' or settings.project_ref!='scqzlcivherovlwqypeu':raise problem(503,'MASTER_STAGING_ONLY')
+        try:
+            body=bytearray()
+            async for chunk in request.stream():
+                body.extend(chunk)
+                if len(body)>16384:raise SkillError('SKILL_ENGINE_BODY_TOO_LARGE',413)
+            secret=os.getenv('MASTER_DEMO_BRIDGE_SECRET','')
+            stamp=request.headers.get('x-tradevice-demo-time','')
+            demo_control.authenticate(secret,stamp,request.headers.get('x-tradevice-demo-signature',''),bytes(body),int(time.time()*1000))
+            result=await run_in_threadpool(demo_control.exchange,os.getenv('MASTER_OPERATOR_DATABASE_URL',''),json_object(body))
+            raw=json.dumps(result,separators=(',',':')).encode()
+            from fastapi.responses import Response
+            return Response(raw,media_type='application/json',headers={'x-tradevice-demo-signature':demo_control.signature(secret,stamp,raw)})
+        except SkillError as exc:raise problem(exc.status,exc.code) from None
+        except (psycopg.Error,RuntimeError):raise problem(503,'MASTER_DEMO_BRIDGE_UNAVAILABLE') from None
 
     @application.get("/api/v1/me")
     async def me(identity: Member = Depends(member)):

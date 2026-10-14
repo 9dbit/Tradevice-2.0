@@ -1,18 +1,13 @@
 'use client';
-import {useEffect,useMemo,useRef,useState} from 'react';
+import {useEffect,useMemo,useState} from 'react';
 import type {Snapshot} from './master-console';
 import {validateEngine,validateOwned} from '../../lib/engine-diagnostics.mjs';
 import {validateBatch} from '../../lib/demo-batch.mjs';
 import SkillManager from './skill-manager';
+import DemoControl,{useDemoRuntime} from './demo-control';
 import {validateNews} from '../../lib/news-calendar.mjs';
 
 type Details='overview'|'cycles'|'anomalies'|'risk'|'journal'|'system';
-type News='AVOID'|'ALLOW'|'ONLY';
-type Cycle='CONTINUOUS'|'CUSTOM';
-type Command='START'|'STOP'|'CONFIGURE'|'RESET_SESSION';
-type CommandPhase='SENDING'|'QUEUED'|'APPLIED'|'REJECTED'|'DELAYED';
-type CommandProgress={requestId:string;action:Command;phase:CommandPhase;errorCode?:string|null};
-
 type IconName='dashboard'|'activity'|'shield'|'alert'|'repeat'|'receipt'|'terminal'|'news'|'play'|'stop'|'reset'|'clock'|'arrow';
 function I({name,size=18}:{name:IconName;size?:number}){
  const props={fill:'none',stroke:'currentColor',strokeWidth:1.7,strokeLinecap:'round' as const,
@@ -57,11 +52,9 @@ function Datum({name,value,metric=false,hint}:{name:string;value:string;metric?:
 export default function CompactDashboard({data,token,onNavigate,onUpdated}:{
  data:Snapshot|null;token:string;onNavigate:(tab:Details)=>void;onUpdated:()=>void;
 }){
+ const {runtime:demoRuntime,refresh:refreshDemo}=useDemoRuntime(token);
  const control=data?.control;
  const market=data?.market;
- const [cycleMode,setCycleMode]=useState<Cycle>('CONTINUOUS');
- const [target,setTarget]=useState('100');
- const news:News='AVOID';
  const [newsClock,setNewsClock]=useState(Date.now());
  useEffect(()=>{const timer=setInterval(()=>setNewsClock(Date.now()),1000);return ()=>clearInterval(timer);},[]);
  const calendar=validateNews(data?.news,newsClock);
@@ -76,31 +69,10 @@ export default function CompactDashboard({data,token,onNavigate,onUpdated}:{
  const countdownTarget=calendar.status==='BLACKOUT'?calendar.blackoutUntil:calendar.nextEvent?.blackoutStart;
  const seconds=countdownTarget==null?null:Math.max(0,Math.ceil((countdownTarget-newsClock)/1000));
  const countdown=seconds===null?'—':`${Math.floor(seconds/3600)}h ${Math.floor(seconds%3600/60)}m ${seconds%60}s`;
- const [dirty,setDirty]=useState(false);
- const [working,setWorking]=useState<Command|null>(null);
- const [commandProgress,setCommandProgress]=useState<CommandProgress|null>(null);
- const [feedback,setFeedback]=useState('');
- const onUpdatedRef=useRef(onUpdated);
- useEffect(()=>{onUpdatedRef.current=onUpdated;},[onUpdated]);
- const [confirmReset,setConfirmReset]=useState(false);
- const [confirmText,setConfirmText]=useState('');
+ const workerAvailable=data?.infrastructure.masterWorker==='ONLINE';
+ const diagnostic=data?.diagnostic?.code || null;
  const [sort,setSort]=useState<'desc'|'asc'>('desc');
  const [terminalFilter,setTerminalFilter]=useState<'all'|'warning'|'critical'>('all');
- useEffect(()=>{
-   if(!dirty&&control){
-     setCycleMode(control.cycleMode);
-     setTarget(String(control.targetCycles??100));
-   }
- },[control?.cycleMode,control?.targetCycles,control?.newsPolicy,dirty]);
- const operatorAvailable=data?.source==='STAGING_WORKER_TELEMETRY'&&control?.operatorConfigured===true;
- const workerAvailable=data?.infrastructure.masterWorker==='ONLINE';
- const canOperate=!!operatorAvailable&&workerAvailable;
- const commandBusy=!!working||commandProgress?.phase==='QUEUED';
- const diagnostic=data?.diagnostic?.code || null;
- const engineReady=control?.quotesReady===true&&control?.brokerReady===true&&
-   control?.newsCalendarReady===true&&data?.risk.killSwitch==='DISENGAGED';
- const newSession=control?.sessionId||null;
- const pending=(data?.commands||[]).filter(c=>c.status==='PENDING').length;
  const sorted=useMemo(()=>(data?.paperOrders||[]).slice().sort((a,b)=>{
    const delta=(Date.parse(a.at)||0)-(Date.parse(b.at)||0);
    return sort==='asc'?delta:-delta;
@@ -109,93 +81,6 @@ export default function CompactDashboard({data,token,onNavigate,onUpdated}:{
    e.severity===terminalFilter).sort((a,b)=>(Date.parse(b.at)||0)-(Date.parse(a.at)||0)),
  [data?.terminal,terminalFilter]);
  
- // Correlate with the exact server-side idempotency key.
- // Never treat a nearby terminal event or HTTP 202 as worker acknowledgement.
- useEffect(()=>{
-   if(!commandProgress||!['QUEUED','DELAYED'].includes(commandProgress.phase))return;
-   const row=data?.commands?.find(command=>command.requestId===commandProgress.requestId);
-   if(!row)return;
-   if(row.status==='APPLIED'){
-     setCommandProgress(previous=>previous?.requestId===commandProgress.requestId
-       ?{...previous,phase:'APPLIED',errorCode:null}:previous);
-     setFeedback('');
-     if(commandProgress.action==='CONFIGURE')setDirty(false);
-     if(commandProgress.action==='RESET_SESSION'){
-       setConfirmReset(false);setConfirmText('');
-     }
-   }else if(row.status==='REJECTED'){
-     setCommandProgress(previous=>previous?.requestId===commandProgress.requestId
-       ?{...previous,phase:'REJECTED',errorCode:row.errorCode}:previous);
-     setFeedback('');
-   }
- },[data?.commands,commandProgress?.requestId,commandProgress?.phase]);
-
- // Poll rapidly while the command is awaiting its actual worker receipt.
- // Never infer completion from a timer; overdue requests stay unconfirmed.
- useEffect(()=>{
-   if(commandProgress?.phase!=='QUEUED')return;
-   const requestId=commandProgress.requestId;
-   const interval=window.setInterval(()=>onUpdatedRef.current(),2500);
-   const timeout=window.setTimeout(()=>{
-     setCommandProgress(previous=>previous?.requestId===requestId&&previous.phase==='QUEUED'
-       ?{...previous,phase:'DELAYED'}:previous);
-   },45000);
-   return()=>{window.clearInterval(interval);window.clearTimeout(timeout);};
- },[commandProgress?.requestId,commandProgress?.phase]);
-
- const progressText=commandProgress?.phase==='SENDING'?'Mengirim command ke API…':
-   commandProgress?.phase==='QUEUED'?'Diterima API · menunggu konfirmasi worker…':
-   commandProgress?.phase==='APPLIED'?'Selesai · worker mengonfirmasi APPLIED':
-   commandProgress?.phase==='REJECTED'?'Ditolak · '+(commandProgress.errorCode||'COMMAND_REJECTED'):
-   commandProgress?.phase==='DELAYED'?'Konfirmasi worker terlambat · periksa Terminal Activity':'';
- async function command(action:Command) {
-   if(!canOperate||commandBusy)return;
-   if(action==='CONFIGURE'&&cycleMode==='CUSTOM'){
-     const n=Number(target);
-     if(!/^\d+$/.test(target)||!Number.isSafeInteger(n)||n<1||n>1000000){
-       setFeedback('Target harus bilangan bulat 1 sampai 1.000.000.');return;
-     }
-   }
-   if(action==='START'&&!engineReady){
-     setFeedback('Start diblokir: trusted quote, kalender berita, dan paper broker belum siap.');return;
-   }
-   if(action==='RESET_SESSION'&&(!confirmReset||confirmText!=='RESET')){
-     setFeedback('Konfirmasi reset diperlukan. Audit lama tidak dihapus.');return;
-   }
-   const requestId=crypto.randomUUID();
-   setWorking(action);setFeedback('');
-   setCommandProgress({requestId,action,phase:'SENDING'});
-   try{
-     const payload:Record<string,unknown>={action,requestId};
-     if(action==='CONFIGURE'){
-       payload.cycleMode=cycleMode;payload.newsPolicy=news;
-       payload.targetCycles=cycleMode==='CUSTOM'?Number(target):null;
-     }
-     if(action==='RESET_SESSION')payload.confirmReset=true;
-     const r=await fetch('/api/master/command',{method:'POST',headers:{
-       'authorization':'Bearer '+token,'content-type':'application/json'},
-       body:JSON.stringify(payload),cache:'no-store'});
-     if(!r.ok){
-       const result=await r.json().catch(()=>null);
-       setCommandProgress({requestId,action,phase:'REJECTED',
-         errorCode:result?.detail?.code||'COMMAND_UNAVAILABLE'});
-     }else{
-       const receipt=await r.json().catch(()=>null);
-       if(receipt?.requestId!==requestId||!['PENDING','DUPLICATE'].includes(receipt?.status)){
-         setCommandProgress({requestId,action,phase:'REJECTED',errorCode:'INVALID_COMMAND_ACK'});
-       }else{
-         // Preserve inputs until APPLIED is confirmed by worker.
-         if(action==='CONFIGURE')setDirty(true);
-         setCommandProgress({requestId,action,phase:'QUEUED'});
-         onUpdatedRef.current();
-       }
-     }
-   }catch{
-     setCommandProgress({requestId,action,phase:'DELAYED'});
-     setFeedback('Koneksi API terputus. Status command belum diketahui; periksa Terminal Activity sebelum mencoba lagi.');
-   }
-   finally{setWorking(null);}
- }
  return <div className="mt-unified">
   {diagnostic&&<div className="mt-u-diagnostic" role="alert">
     <I name="alert" size={18}/>
@@ -204,11 +89,7 @@ export default function CompactDashboard({data,token,onNavigate,onUpdated}:{
       Konfigurasi dan eksekusi terkunci sampai identitas reader serta heartbeat terverifikasi.</p>
     </div>
   </div>}
-  <div className="mt-u-statusline">
-    <span className="mt-u-status"><i className={workerAvailable?'ok':''}/> Supervisor {workerAvailable?'ONLINE':'OFFLINE / STALE'}</span>
-    <span>Trade admission: BLOCKED · Paper only</span>
-    <span>Snapshot: {time(data?.observedAt)}</span>
-  </div>
+  <DemoControl token={token} runtime={demoRuntime} refresh={refreshDemo} now={newsClock}/>
   <div className="mt-u-grid">
     <Panel title="Overview" icon="dashboard" go={()=>onNavigate('overview')}>
       <Datum metric name="Demo Equity · Current" value={marketFresh&&typeof market?.equity==='number'?usd(market.equity):'—'}/>
@@ -282,7 +163,7 @@ export default function CompactDashboard({data,token,onNavigate,onUpdated}:{
       <span>Last quote: <strong>{time(market?.observedAt)}</strong></span>
     </div>
   </section>
-  <SkillManager token={token} engineRaw={marketFresh?market?.engineDiagnostics:null} now={newsClock}/>
+  <SkillManager activation={demoRuntime} token={token} engineRaw={marketFresh?market?.engineDiagnostics:null} now={newsClock}/>
   <section className="mt-u-panel mt-u-market" aria-label="Engine and basket diagnostics">
     <div className="mt-u-panel-head"><div><span className="mt-u-overline">ENGINE EVIDENCE · READ-ONLY</span>
       <h2><I name="shield"/> Adaptive Entry &amp; Basket Risk</h2></div>
@@ -304,7 +185,7 @@ export default function CompactDashboard({data,token,onNavigate,onUpdated}:{
       <div className="mt-u-market-cell"><small>Structural reversal</small><strong>{decision?.structuralReversal===true?'CONFIRMED':decision?.structuralReversal===false?'NOT CONFIRMED':'—'}</strong>
         <span>Last evaluated candle: {newsTime(decision?.candleCloseMs??null)}</span></div>
       <div className="mt-u-market-cell"><small>Durable authorization</small><strong>{engine.authorization}</strong>
-        <span>Expiry: {newsTime(engine.authorizationExpiresMs)} · dashboard dispatch LOCKED</span></div>
+        <span>Expiry: {newsTime(engine.authorizationExpiresMs)} · guarded demo command lane</span></div>
     </div>
     <p className="mt-u-help">L6–L10: {decision?decision.reasons.join(' · '):'NO FRESH ENGINE DECISION'}. Engine report: {newsTime(engine.observedMs)}. Posisi kosong bukan bukti cycle COMPLETE.</p>
   </section>
@@ -327,87 +208,11 @@ export default function CompactDashboard({data,token,onNavigate,onUpdated}:{
       <span>Execution quote <b>{control?.quotesReady?'READY':'NOT VERIFIED'}</b></span>
       <span>Execution adapter <b>{control?.brokerReady?'READY':'NOT READY'}</b></span>
       <span>Commission / slippage <b>NOT VERIFIED</b></span>
-      <span>Demo order authorization <b>LOCKED</b></span>
+      <span>Demo order authorization <b>PER START CONFIRMATION</b></span>
     </div>
-    <p className="mt-u-help">News CLEAR hanya menyatakan di luar window berita. Start Cycle tetap terkunci.</p>
+    <p className="mt-u-help">News CLEAR hanya menyatakan di luar window berita. Start tetap membutuhkan skill aktif, preflight, dan konfirmasi demo.</p>
   </section>
   <div className="mt-u-duo">
-   <section className="mt-u-panel mt-u-commands">
-    <div className="mt-u-panel-head"><div><span className="mt-u-overline">CONTROL DESK</span>
-      <h2>Trading Cycle</h2></div><span className="mt-u-chip">{control?.runStatus||'NOT CONFIGURED'}</span></div>
-    <p className="mt-u-hint">Start/Stop mengontrol evaluasi strategi, bukan proses heartbeat. Perintah diproses worker secara berurutan.</p>
-    <div className="mt-u-buttons">
-      <button type="button" className="mt-u-primary" disabled={!canOperate||!engineReady||commandBusy||
-        control?.runStatus==='RUNNING'} onClick={()=>void command('START')}>
-        <I name="play"/> Start Cycle</button>
-      <button type="button" disabled={!canOperate||commandBusy||control?.runStatus!=='RUNNING'}
-        className="mt-u-secondary" onClick={()=>void command('STOP')}><I name="stop"/> Stop Cycle</button>
-    </div>
-    <div className="mt-u-help">{!operatorAvailable?'Operator command service belum terkonfigurasi.':
-      !workerAvailable?'Worker tidak tersedia, perintah dinonaktifkan.':
-      !engineReady?'Start terkunci: trusted quote, economic calendar, dan paper broker belum tersambung. MT5 Observer saja tidak mengaktifkan trading.':
-      'Safety guard siap dievaluasi saat Start.'}</div>
-    <div className="mt-u-preflight" aria-label="Persyaratan Start Trading demo">
-      <span><I name="shield" size={12}/> Trusted quote <b>{control?.quotesReady?'READY':'WAITING'}</b></span>
-      <span><I name="receipt" size={12}/> Paper broker <b>{control?.brokerReady?'READY':'WAITING'}</b></span>
-      <span><I name="news" size={12}/> News calendar <b>{control?.newsCalendarReady?'READY':'WAITING'}</b></span>
-    </div>
-    <div className="mt-u-settings">
-      <label className="mt-u-label">Jumlah Cycle</label>
-      <div className="mt-u-choice">
-        {(['CONTINUOUS','CUSTOM'] as const).map(value=><button key={value} type="button"
-          className={cycleMode===value?'current':''} aria-pressed={cycleMode===value}
-          disabled={commandBusy} onClick={()=>{setCycleMode(value);setDirty(true);}}>{value==='CONTINUOUS'?'Continuous':'Custom'}</button>)}
-      </div>
-      {cycleMode==='CUSTOM'&&<label className="mt-u-custom">Target evaluasi strategi
-        <input type="number" min="1" max="1000000" step="1" value={target}
-          disabled={commandBusy} onChange={e=>{setTarget(e.target.value);setDirty(true);}}/>
-      </label>}
-      <label className="mt-u-label" htmlFor="mt-u-news-policy"><I name="news" size={15}/> News Trading Policy</label>
-      <select id="mt-u-news-policy" value="AVOID" disabled>
-        <option value="AVOID">Locked · Avoid high-impact news ±60 minutes</option>
-      </select>
-      <p className="mt-u-help">Policy AVOID dikunci. Status kalender tampil pada News Safety Guard; kalender CLEAR saja tidak mengaktifkan order.</p>
-      <button className="mt-u-apply" disabled={!canOperate||commandBusy||
-        control?.runStatus==='RUNNING'} onClick={()=>void command('CONFIGURE')} type="button"
-        title={!canOperate?'Menunggu telemetry operator yang terverifikasi':
-          'Kirim ulang konfigurasi meskipun nilainya belum berubah'}>
-        {working==='CONFIGURE'?'Mengirim konfigurasi…':
-          commandProgress?.phase==='QUEUED'&&commandProgress.action==='CONFIGURE'
-            ?'Menunggu konfirmasi worker…':
-          dirty?'Save Configuration':'Save Configuration · Reapply'}</button>
-    </div>
-    {commandProgress&&<div className="mt-u-command-progress" data-phase={commandProgress.phase}
-      role="status" aria-live="polite" aria-label="Master command progress">
-      <div className="mt-u-progress-head">
-        <strong>{progressText}</strong>
-        <small>{commandProgress.phase==='APPLIED'?'WORKER ACKNOWLEDGED':
-          commandProgress.phase==='REJECTED'?'NOT APPLIED':
-          commandProgress.phase==='DELAYED'?'CHECK COMMAND HISTORY':
-          commandProgress.phase==='SENDING'?'SUBMITTING':'IN PROGRESS'}</small>
-      </div>
-      <div className="mt-u-progress-track" role="progressbar"
-        aria-label="Apply configuration progress" aria-valuetext={progressText}>
-        <span className="mt-u-progress-bar"/>
-      </div>
-      <div className="mt-u-progress-steps">
-        <span data-checked={commandProgress.phase!=='SENDING'}>01 · API received</span>
-        <span data-checked={commandProgress.phase==='APPLIED'}>02 · Worker applied</span>
-      </div>
-      {commandProgress.phase==='DELAYED'&&<p className="mt-u-progress-note">
-        Status belum dikonfirmasi. Periksa Terminal Activity sebelum mencoba lagi.
-      </p>}
-    </div>}
-    {!!feedback&&<p className="mt-u-feedback" role="status">{feedback}</p>}
-    <div className="mt-u-reset">
-      <div><strong>Trial Session</strong><small>{newSession?newSession.slice(0,8)+'…':'Belum tersedia'} · {pending} command pending</small></div>
-      <button type="button" disabled={!canOperate||commandBusy||control?.runStatus==='RUNNING'} onClick={()=>setConfirmReset(v=>!v)}>
-        <I name="reset" size={15}/> Reset Journal</button>
-    </div>
-    {confirmReset&&<div className="mt-u-reset-confirm"><p>Mulai sesi baru. Riwayat order, anomaly, dan audit lama tidak dihapus. Ketik <strong>RESET</strong> untuk konfirmasi.</p>
-      <input aria-label="Konfirmasi reset journal" value={confirmText} onChange={e=>setConfirmText(e.target.value)} placeholder="RESET" autoComplete="off"/>
-      <button type="button" disabled={confirmText!=='RESET'||commandBusy} onClick={()=>void command('RESET_SESSION')}>Confirm New Session</button></div>}
-   </section>
    <section className="mt-u-panel mt-u-terminal">
     <div className="mt-u-panel-head"><div><span className="mt-u-overline">VERIFIED EVENT STREAM</span><h2><I name="terminal"/> Terminal Activity</h2></div>
       <span className="mt-u-chip">15s refresh</span></div>

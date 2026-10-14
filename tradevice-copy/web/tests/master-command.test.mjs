@@ -7,6 +7,7 @@ const read=(p)=>readFileSync(new URL('../'+p,import.meta.url),'utf8');
 const consolePage=read('app/master/master-console.tsx');
 const dashboard=read('app/master/compact-dashboard.tsx');
 const route=read('app/api/master/command/route.ts');
+const demo=read('app/master/demo-control.tsx');
 const workerContract=read('app/api/master/overview/route.ts');
 const masterCSS=read('app/master/master.css');
 const now=Date.parse('2026-10-12T05:00:00Z');
@@ -21,16 +22,11 @@ test('Dashboard is first tab and other six pages remain',()=>{
   assert.match(masterCSS,/grid-template-columns:repeat\(7,minmax\(0,1fr\)\)/);
   assert.match(masterCSS,/\.mt-mobile-nav\[data-active="system"\]\{--mt-nav-index:6\}/);
 });
-test('six live data cards, controls and terminal are present without fixtures',()=>{
-  for(const t of ['Overview','Cycle Monitor','System Health','Risk & Safety','Anomaly Center',
-    'Paper Journal','Terminal Activity','Start Cycle','Stop Cycle','Save Configuration',
-    'Reset Journal','Timestamp','Continuous','Custom','News Trading Policy']) {
-    assert.ok(dashboard.includes(t),t);
-  }
-  assert.doesNotMatch(dashboard,/SIM-001|SIM-2008|EV-009|demoData|Math\.random\(/);
-  assert.match(dashboard,/crypto\.randomUUID\(\)/);
-  assert.match(dashboard,/confirmText!=='RESET'/);
-  assert.match(dashboard,/!engineReady/);
+test('Dashboard presents demo controls first and preserves six factual summaries',()=>{
+ for(const t of ['Overview','Cycle Monitor','System Health','Risk & Safety','Anomaly Center','Paper Journal','Terminal Activity'])assert.ok(dashboard.includes(t),t);
+ assert.ok(dashboard.indexOf('<DemoControl')<dashboard.indexOf('<div className="mt-u-grid">'));
+ for(const t of ['Start Cycle','Pause Cycle','Stop Cycle'])assert.ok(demo.includes(t));
+ assert.doesNotMatch(dashboard,/mt-u-statusline|Save Configuration|Reset Journal|SIM-001|Math\.random\(/);
 });
 test('command route authorizes real app_metadata user and never proxies member orders',()=>{
   assert.match(route,/masterAuthAllowed\(user\)/);
@@ -71,23 +67,20 @@ test('telemetry accepts only verified operator event metadata and no fake fills'
 });
 
 
-test('operator save can reapply the unchanged Continuous and Avoid News policy',()=>{
- const saveControl=dashboard.match(/<button className="mt-u-apply"[\s\S]*?<\/button>/)?.[0]||'';
- assert.match(saveControl,/Save Configuration/);
- assert.match(saveControl,/onClick=\{\(\)=>void command\('CONFIGURE'\)\}/);
- assert.doesNotMatch(saveControl,/!dirty/);
- assert.match(dashboard,/Save Configuration · Reapply/);
+test('demo start is finite and requires a per-run user confirmation',()=>{
+ assert.match(demo,/target<1\|\|target>10/);
+ assert.match(demo,/confirmDemo:action==='START'/);
+ assert.match(demo,/Saya mengizinkan/);
+ assert.match(demo,/!runtime\?\.canStart/);
  assert.match(dashboard,/mt-u-diagnostic/);
- assert.match(workerContract,/MASTER_READ_DB_ACCESS_FAILED/);
 });
-
 test('broker quality panel exists and never fabricates broker metrics or starts trading',()=>{
  for(const field of ['Broker & Market Conditions','Current Spread','Commission','Slippage',
   'Volatility','ATR (14)','MT5 Observer','Last quote','executionAdapter']) {
     assert.ok(dashboard.includes(field),field);
  }
  assert.match(dashboard,/Not connected/);
- assert.match(dashboard,/!engineReady/);
+ assert.match(demo,/!runtime\?\.canStart/);
  assert.doesNotMatch(dashboard,/FAKE_BROKER|spreadPoints:\s*10|atr14:\s*5|commissionUsdPerLot:\s*5/);
 });
 
@@ -114,29 +107,16 @@ test('verified dashboard stays mounted during command save revalidation and JWT 
 });
 
 
-test('submit progress does not pretend HTTP 202 means worker APPLIED',()=>{
- assert.match(dashboard,/type CommandPhase='SENDING'\|'QUEUED'\|'APPLIED'\|'REJECTED'\|'DELAYED'/);
- assert.match(dashboard,/receipt\?\.requestId!==requestId/);
- assert.match(dashboard,/command\.requestId===commandProgress\.requestId/);
- assert.match(dashboard,/row\.status==='APPLIED'/);
- assert.match(dashboard,/row\.status==='REJECTED'/);
- assert.match(dashboard,/role="progressbar"/);
- assert.match(dashboard,/mt-u-command-progress/);
- assert.match(dashboard,/aria-valuetext=\{progressText\}/);
- assert.match(dashboard,/setInterval\(\(\)=>onUpdatedRef\.current\(\),2500\)/);
- assert.match(dashboard,/phase:'DELAYED'/);
- assert.doesNotMatch(dashboard,/setTimeout\(\(\)=>\s*setCommandProgress\(.*phase:'APPLIED'/s);
- assert.match(masterCSS,/MASTER_COMMAND_RECEIPT_PROGRESS_V1/);
- assert.match(masterCSS,/@keyframes mt-u-progress-scan/);
- assert.match(masterCSS,/@media\(prefers-reduced-motion:reduce\)/);
+test('demo progress correlates exact engine receipts and never assumes HTTP acceptance is completion',()=>{
+ assert.match(demo,/c.requestId===request.id/);
+ assert.match(demo,/d.requestId!==id/);
+ assert.match(demo,/phase:'UNCERTAIN'/);
+ assert.doesNotMatch(demo,/setTimeout\([^;]*phase:'APPLIED'/s);
+ assert.match(demo,/setInterval\(\(\)=>void refresh\(\),2500\)/);
 });
-
-test('start remains fail-closed and shows real feed / broker / news readiness',()=>{
- assert.match(dashboard,/control\?\.quotesReady===true/);
- assert.match(dashboard,/control\?\.brokerReady===true/);
- assert.match(dashboard,/control\?\.newsCalendarReady===true/);
- assert.match(dashboard,/data\?\.risk\.killSwitch==='DISENGAGED'/);
- assert.match(dashboard,/disabled=\{!canOperate\|\|!engineReady\|\|commandBusy\|\|/);
- assert.match(dashboard,/Persyaratan Start Trading demo/);
- assert.doesNotMatch(dashboard,/brokerReady:\s*true|newsCalendarReady:\s*true/);
+test('demo start requires fresh independent engine evidence, not paper or observer flags',()=>{
+ assert.match(demo,/now-runtime.observedMs<=8000/);
+ assert.match(demo,/!runtime\?\.canStart/);
+ for(const gate of ['identity','brokerFlat','quote','spread','margin','commission','news','reconciled','engineHash'])assert.ok(demo.includes(gate));
+ assert.doesNotMatch(demo,/brokerReady:\s*true|newsCalendarReady:\s*true/);
 });

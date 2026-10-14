@@ -1,0 +1,128 @@
+"""Reviewed local adapter for the V5.1 isolated clone. Startup/preflight is read-only.
+Only run(), invoked by a fresh authenticated START, constructs an execution adapter.
+"""
+import hashlib,json,threading,time
+from pathlib import Path
+
+APPROVED_HASH='bcdefbaf270419f2dbe5968bd10e5a88dc3fe4efc7086fef5b2869fb40f81cee'
+KEYS=('identity','brokerFlat','quote','spread','margin','commission','news','reconciled','engineHash')
+class Runtime:
+ def __init__(self,root):
+  self.root=Path(root);self.reason=None;self._checks={k:False for k in KEYS};self.checked_at=0
+  from v51_runtime_calendar import RuntimeCalendar
+  self.calendar=RuntimeCalendar();self.calendar.start()
+ def fingerprint(self):
+  manifest=json.loads((self.root/'read_only'/'demo_engine_fingerprint.json').read_text())
+  files=manifest['files']
+  if manifest['skillHash']!=APPROVED_HASH or len(files)<10:raise ValueError('ENGINE_FINGERPRINT_INVALID')
+  for relative,expected in files.items():
+   path=(self.root/relative).resolve()
+   if not path.is_relative_to(self.root.resolve()) or hashlib.sha256(path.read_bytes()).hexdigest()!=expected:raise ValueError('ENGINE_FINGERPRINT_MISMATCH')
+ def activate(self,sha):
+  if sha!=APPROVED_HASH:raise ValueError('SKILL_NOT_APPROVED')
+  self.fingerprint()
+ def checks(self):
+  # Do not promote an old preflight into fresh readiness while a run owns MT5.
+  return dict(self._checks) if time.time()-self.checked_at<=5 else {k:False for k in KEYS}
+ def preflight(self):
+  import MetaTrader5 as mt5
+  from goldtrap_arc.mt5_adapter import MT5ArcAdapter
+  from goldtrap_arc.persistence import ArcLedger,ArcStateStore
+  from v51_batch_research import margin_envelope
+  checks={k:False for k in KEYS};blockers=[]
+  try:self.fingerprint();checks['engineHash']=True
+  except Exception:blockers.append('ENGINE_FINGERPRINT_MISMATCH')
+  a=MT5ArcAdapter(mt5,allow_execution=False)
+  try:
+   a.initialize();a.guard_identity();account,terminal,symbol=a.identity()
+   checks['identity']=account.trade_mode==mt5.ACCOUNT_TRADE_MODE_DEMO and account.server=='Exness-MT5Trial14' and symbol.name=='XAUUSDm'
+   pos,orders=mt5.positions_get(),mt5.orders_get()
+   checks['brokerFlat']=pos is not None and orders is not None and not pos and not orders
+   snap=a.snapshot(require_fresh_tick=False)
+   checks['quote']=a.quote_metrics(snap.tick)['fresh']
+   checks['spread']=checks['quote'] and 0<=a.spread_points(snap)<=a.cfg.spread_limit_points
+   try:margin_envelope(a);checks['margin']=True
+   except Exception:blockers.append('MARGIN_ENVELOPE_UNVERIFIED')
+   deals,_=a._raw_history()
+   owned=[d for d in deals if getattr(d,'symbol','')=='XAUUSDm' and getattr(d,'magic',0)==a.cfg.magic and getattr(d,'type',-1) in (0,1)]
+   checks['commission']=bool(owned) and all(getattr(d,'commission',None)==0 and getattr(d,'fee',None)==0 for d in owned)
+   try:self.reconcile_prior(a,write=False);checks['reconciled']=checks['brokerFlat']
+   except Exception:blockers.append('PRIOR_CYCLE_RECONCILIATION_REQUIRED')
+  except Exception:blockers.append('BROKER_PREFLIGHT_UNAVAILABLE')
+  finally:mt5.shutdown()
+  news=self.calendar.decision();checks['news']=news.get('status')=='CLEAR' and news.get('entries_allowed') is True
+  blockers.extend('PREFLIGHT_'+k.upper() for k,v in checks.items() if not v)
+  self._checks=checks;self.checked_at=time.time()
+  return checks,blockers
+ def reconcile_prior(self,adapter,write=True):
+  from goldtrap_arc.persistence import ArcLedger,ArcStateStore,atomic_json
+  adapter.guard_identity()
+  positions,orders=adapter.mt5.positions_get(),adapter.mt5.orders_get()
+  if positions is None or orders is None or positions or orders:raise ValueError('BROKER_NOT_FLAT')
+  proved=set();evidence=[]
+  for p in (self.root/'logs'/'arc_v1').rglob('arc_state.json'):
+   before=p.read_bytes();state=ArcStateStore(p.parent).load();ledger=ArcLedger(p.parent)
+   if ledger.unresolved_requests():raise ValueError('PRIOR_REQUEST_UNRESOLVED')
+   if not state.get('cycles_started') or str(state.get('state','')).startswith('COMPLETE'):continue
+   if not state.get('cycle_id'):raise ValueError('PRIOR_CYCLE_ID_MISSING')
+   life=adapter.cycle_lifecycle(state['cycle_id'])
+   if life.get('all_closed') is not True or not life.get('entry_deals'):raise ValueError('PRIOR_HISTORY_NOT_CLOSED')
+   if before!=p.read_bytes() or ledger.tail!=ArcLedger(p.parent).tail:raise ValueError('PRIOR_JOURNAL_CHANGED')
+   proved.add(str(p.resolve()))
+   evidence.append(dict(cycle_id=state['cycle_id'],state_sha256=hashlib.sha256(before).hexdigest(),ledger_tail=ledger.tail,
+    history_all_closed=True,entry_count=len(life['entry_deals']),exit_count=len(life['exit_deals'])))
+  if write:
+   atomic_json(self.root/'read_only'/'dashboard_prior_reconciliation.json',dict(observed_ms=int(time.time()*1000),read_only=True,
+    broker_flat=True,evidence=evidence,original_journals_modified=False,counted_in_new_run=False))
+  return proved
+ def prepare(self):self.reason=None
+ def suspend(self,reason):self.reason=reason
+ def run(self,request_id,target,ready,expires_ms):
+  import MetaTrader5 as mt5
+  from v51_demo_batch_runtime import Session
+  from v51_batch_core import run,ArcSafetyError
+  from v51_batch_research import ResearchBatchAdapter
+  from v51_batch_telemetry import report,publish
+  outer=self;batch_id='v51_dashboard_'+request_id.replace('-','')
+  root=self.root/'logs'/'arc_v1'/batch_id
+  class DashboardSession(Session):
+   def decision(self,*,active_cycle=False):
+    if outer.reason:return dict(status='UNKNOWN',reason=outer.reason,entries_allowed=False)
+    return super().decision(active_cycle=active_cycle)
+   def admission(self,adapter):
+    # Authorization may expire while startup is fetching a calendar. Never
+    # dispatch a first order under an expired dashboard START.
+    if not self.manifest or not self.manifest.get('slots'):
+     if time.time()*1000>=expires_ms:raise ArcSafetyError('DASHBOARD_START_EXPIRED')
+    outer.fingerprint()
+    if outer.reason:raise ArcSafetyError('DASHBOARD_ENTRY_SUSPENDED')
+    return super().admission(adapter)
+   def engine(self,*args,**kwargs):
+    engine=super().engine(*args,**kwargs)
+    original=engine.news_provider
+    def admission_guard():
+     if len((self.manifest or {}).get('slots',[]))<=1 and not engine.state.get('cycle_id') and time.time()*1000>=expires_ms:
+      return dict(status='UNKNOWN',reason='DASHBOARD_START_EXPIRED',entries_allowed=False)
+     return original()
+    engine.news_provider=admission_guard
+    ready();return engine
+   def emit(self,m,engine=None,force=False):
+    self.manifest=m;self.last_engine=engine
+    now=self.clock()
+    if not force and now-self.last_emit<1:return
+    self.last_emit=now;slots=m.get('slots',[]);status=m.get('status','PREFLIGHT')
+    completed=sum(s.get('result',{}).get('broker_flat_confirmed') is True and s.get('result',{}).get('layers',0)>0 for s in slots)
+    mapped=('COMPLETED' if completed==target else 'STOPPED') if status=='AUTO_STOP_10_CYCLES' else ('STOPPED' if status.startswith('STOPPED_') else status)
+    if mapped=='WAITING_CALENDAR_REFRESH':mapped='SUSPENDED'
+    blockers=[outer.reason] if outer.reason else []
+    payload=report(batch_id,mapped,slots,blockers,int(now*1000));payload['requested']=target
+    try:publish(payload);self.write_failed=False
+    except Exception:self.write_failed=True
+  session=DashboardSession(batch_id);session.calendar.close();session.calendar=self.calendar
+  session.emit(dict(status='PREFLIGHT',slots=[]),force=True)
+  try:
+   result=run(root,False,mt5,fixed_arming='PREARM_BOTH',engine_class=session.engine,
+    adapter_class=ResearchBatchAdapter,admission=session.admission,reporter=session.emit,cycle_limit=target,stop_requested=lambda:bool(outer.reason),prior_reconciliation=self.reconcile_prior)
+   # run() only returns after cycle history + broker-flat reconciliation.
+   return result==0
+  finally:mt5.shutdown()

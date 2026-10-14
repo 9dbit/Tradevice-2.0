@@ -57,7 +57,7 @@ async function handle(request:Request){
     if(!result.ok){const code=data?.detail?.code;
       return fail([404,409,413,415,422,429].includes(result.status)?result.status:503,
         typeof code==='string'&&/^SKILL_[A-Z_]+$/.test(code)?code:'MASTER_SKILLS_UNAVAILABLE');}
-    if(!Array.isArray(data.skills)||!Number.isSafeInteger(data.revision)||data.executionAuthorized!==false||data.selectionScope!=='STAGING_CONFIGURATION_ONLY')return fail(503,'MASTER_SKILLS_INVALID_RESPONSE');
+    if(!Array.isArray(data.skills)||!Number.isSafeInteger(data.revision)||data.executionAuthorized!==false||data.selectionScope!=='STAGING_DEMO_ENGINE')return fail(503,'MASTER_SKILLS_INVALID_RESPONSE');
     return Response.json(data,{headers:noStore});
   }catch{return fail(503,'MASTER_SKILLS_UNAVAILABLE');}
 }

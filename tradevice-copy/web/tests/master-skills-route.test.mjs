@@ -9,7 +9,7 @@ const {GET,POST}=await import('data:text/javascript;base64,'+Buffer.from(js).toS
 const actor='12345678-1234-4234-8234-123456789abc';
 const admin={id:actor,email_confirmed_at:'2026-01-01',app_metadata:{tradevice_master_admin:true}};
 const env={PLATFORM_ENVIRONMENT:'staging',SUPABASE_PROJECT_REF:'scqzlcivherovlwqypeu',SUPABASE_URL:'https://scqzlcivherovlwqypeu.supabase.co',SUPABASE_PUBLISHABLE_KEY:'sb_publishable_TEST_ONLY',COPY_API_ORIGIN:'https://copy-api-staging-4c33.up.railway.app',MASTER_TELEMETRY_SHARED_SECRET:'a'.repeat(64)};
-const catalog={revision:0,selectedSkillId:null,skills:[],executionAuthorized:false,selectionScope:'STAGING_CONFIGURATION_ONLY'};
+const catalog={revision:0,selectedSkillId:null,skills:[],executionAuthorized:false,selectionScope:'STAGING_DEMO_ENGINE'};
 function req(body,headers={}){return new Request('https://copy-web-staging.up.railway.app/api/master/skills',{method:body===undefined?'GET':'POST',headers:{authorization:'Bearer test-token','content-type':'application/json',origin:'https://copy-web-staging.up.railway.app',...headers},...(body===undefined?{}:{body:typeof body==='string'?body:JSON.stringify(body)})});}
 async function scoped(fn,user=admin,backend=()=>Response.json(catalog)){
  const originalFetch=global.fetch,old={};for(const [key,value]of Object.entries(env)){old[key]=process.env[key];process.env[key]=value;}

@@ -52,3 +52,11 @@ def test_missing_invalid_and_older_reports_do_not_erase_history():
   b.receive(fixture(collected_utc_ms=stamp,demo_batch=replacement,**{'market.tick_time_utc_ms':stamp}),stamp)
   assert b.batch(stamp)['completed']==1
   assert b.batch(stamp)['observed_ms']==NOW
+
+def test_variable_bounded_demo_count_requires_exact_flat_completion():
+ for n in (1,3,10):
+  b=batch();b.update(requested=n,status='COMPLETED',cycles=[cycle(i) for i in range(1,n+1)])
+  assert project_batch(b,NOW)['completed']==n
+  b['cycles'].append(cycle(n+1));assert project_batch(b,NOW) is None
+ for n in (0,11,True,1.5):
+  assert project_batch(dict(batch(),requested=n),NOW) is None

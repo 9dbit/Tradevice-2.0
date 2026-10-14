@@ -111,8 +111,8 @@ def catalog(conn):
     rows=conn.execute('''SELECT id,name,version,description,strategy,kind,sha256,created_at,
         manifest->>'documentation' AS documentation FROM master_skills.packages ORDER BY created_at,id LIMIT 50''').fetchall()
     return dict(revision=state['revision'],selectedSkillId=str(state['selected_skill_id']) if state['selected_skill_id'] else None,
-        executionAuthorized=False,selectionScope='STAGING_CONFIGURATION_ONLY',
-        skills=[dict(id=str(r['id']),name=r['name'],version=r['version'],description=r['description'],strategy=r['strategy'],kind=r['kind'],sha256=r['sha256'],createdAt=r['created_at'].isoformat(),documentation=r['documentation'] or '',active=r['id']==state['selected_skill_id'],executionStatus='REQUIRES_ENGINE_APPROVAL') for r in rows])
+        executionAuthorized=False,selectionScope='STAGING_DEMO_ENGINE',
+        skills=[dict(id=str(r['id']),name=r['name'],version=r['version'],description=r['description'],strategy=r['strategy'],kind=r['kind'],sha256=r['sha256'],createdAt=r['created_at'].isoformat(),documentation=r['documentation'] or '',active=r['id']==state['selected_skill_id'],executionStatus='ADAPTER_AVAILABLE' if r['sha256']=='bcdefbaf270419f2dbe5968bd10e5a88dc3fe4efc7086fef5b2869fb40f81cee' and r['kind']=='BUILTIN' else 'REQUIRES_ENGINE_APPROVAL') for r in rows])
 
 def registry(dsn,payload=None):
     if not allowed_operator_dsn(dsn):raise RuntimeError('SKILL_STAGING_DSN_REQUIRED')
@@ -137,7 +137,17 @@ def registry(dsn,payload=None):
                 conn.execute("INSERT INTO master_skills.audit(actor_id,action,skill_id,revision) VALUES (%s,'UPLOAD',%s,%s)",(actor,uid,state['revision']))
                 return dict(catalog(conn),uploadStatus='UPLOADED',uploadedSkillId=str(uid))
             if state['revision']!=payload['expectedRevision']:raise SkillError('SKILL_REVISION_CONFLICT',409)
-            if item and not conn.execute('SELECT id FROM master_skills.packages WHERE id=%s',(item,)).fetchone():raise SkillError('SKILL_NOT_FOUND',404)
+            if item!=state['selected_skill_id']:
+                from .demo_control import APPROVED_HASH,fresh,BUSY
+                runtime=conn.execute('SELECT snapshot FROM master_demo.runtime WHERE singleton FOR UPDATE').fetchone()['snapshot']
+                now=int(conn.execute('SELECT extract(epoch FROM clock_timestamp())*1000 AS ms').fetchone()['ms'])
+                if not fresh(runtime,now):raise SkillError('SKILL_ENGINE_OFFLINE',409)
+                if runtime.get('state') in BUSY or runtime.get('checks',{}).get('brokerFlat') is not True:raise SkillError('SKILL_STOP_AND_RECONCILE_FIRST',409)
+                if conn.execute("SELECT 1 FROM master_demo.commands WHERE status IN ('PENDING','DISPATCHED','UNCERTAIN') LIMIT 1").fetchone():raise SkillError('SKILL_COMMAND_UNCONFIRMED',409)
+                if item:
+                    package=conn.execute('SELECT kind,sha256 FROM master_skills.packages WHERE id=%s',(item,)).fetchone()
+                    if not package:raise SkillError('SKILL_NOT_FOUND',404)
+                    if package['kind']!='BUILTIN' or package['sha256']!=APPROVED_HASH:raise SkillError('SKILL_ADAPTER_NOT_APPROVED',409)
             if item!=state['selected_skill_id']:
                 conn.execute('UPDATE master_skills.selection SET selected_skill_id=%s,revision=revision+1,updated_by=%s,updated_at=now() WHERE singleton=true',(item,actor))
                 conn.execute("INSERT INTO master_skills.audit(actor_id,action,skill_id,previous_skill_id,revision) VALUES (%s,'SELECT',%s,%s,%s)",(actor,item,state['selected_skill_id'],state['revision']+1))

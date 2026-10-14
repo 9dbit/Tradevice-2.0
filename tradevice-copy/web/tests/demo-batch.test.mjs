@@ -7,3 +7,11 @@ test('expire live status without inventing zero or dropping historical timestamp
 test('reject missing broker-flat proof, duplicate cycles and cycle 11',()=>{const b=batch();for(const rows of [[{...cycle(1),broker_flat:false}],[cycle(1),cycle(1)],Array.from({length:11},(_,i)=>cycle(i+1))]){b.cycles=rows;assert.equal(validateBatch(b,now),null)}});
 test('retired no-fill cycle is not a completed win',()=>{const b=batch();b.cycles=[{...cycle(1),outcome:'COMPLETE_NEWS_RETIRED',layers:0,net_usd:0}];assert.equal(validateBatch(b,now).completed,0)});
 test('completed status needs ten proved cycles',()=>{const b=batch();b.status='COMPLETED';assert.equal(validateBatch(b,now),null);b.cycles=Array.from({length:10},(_,i)=>cycle(i+1));assert.equal(validateBatch(b,now).net_completed_usd,35)});
+test('bounded dashboard runs require their exact requested count and broker-flat proof',()=>{
+ for(const n of [1,3,10]){
+  const b={...batch(),requested:n,status:'COMPLETED',cycles:Array.from({length:n},(_,i)=>cycle(i+1))};
+  assert.equal(validateBatch(b,now).completed,n);
+  b.cycles.push(cycle(n+1));assert.equal(validateBatch(b,now),null);
+ }
+ for(const n of [0,11,true,1.5])assert.equal(validateBatch({...batch(),requested:n},now),null);
+});

@@ -98,7 +98,7 @@ def test_selection_atomically_replaces_pointer_and_audits(monkeypatch):
     import app.master_skills as module
     old,new,actor=uuid4(),uuid4(),uuid4()
     c=MagicMock();c.__enter__.return_value=c
-    c.execute.return_value.fetchone.side_effect=[{'role':'tradevice_master_operator'},{'selected_skill_id':old,'revision':4},{'n':0},{'id':new}]
+    c.execute.return_value.fetchone.side_effect=[{'role':'tradevice_master_operator'},{'selected_skill_id':old,'revision':4},{'n':0},{'snapshot':{'observedMs':100000,'state':'OFF','checks':{'brokerFlat':True}}},{'ms':100000},None,{'kind':'BUILTIN','sha256':'bcdefbaf270419f2dbe5968bd10e5a88dc3fe4efc7086fef5b2869fb40f81cee'}]
     monkeypatch.setattr(module.psycopg,'connect',lambda *a,**kw:c)
     monkeypatch.setattr(module,'catalog',lambda _:dict(selectedSkillId=str(new),revision=5,executionAuthorized=False))
     result=registry('postgresql://tradevice_master_operator:test@db.scqzlcivherovlwqypeu.supabase.co:5432/postgres?sslmode=require',dict(actor_id=str(actor),action='SELECT',skillId=str(new),expectedRevision=4))
@@ -108,3 +108,18 @@ def test_selection_atomically_replaces_pointer_and_audits(monkeypatch):
     audit=[call for call in c.execute.call_args_list if call.args[0].startswith('INSERT')]
     assert len(audit)==1 and audit[0].args[1]==(actor,new,old,5)
     assert c.__exit__.call_args.args[0] is None
+
+@pytest.mark.parametrize('runtime,code',[
+ ({'observedMs':0,'state':'OFF','checks':{'brokerFlat':True}},'ENGINE_OFFLINE'),
+ ({'observedMs':100000,'state':'RUNNING','checks':{'brokerFlat':True}},'STOP_AND_RECONCILE'),
+ ({'observedMs':100000,'state':'READY','checks':{'brokerFlat':False}},'STOP_AND_RECONCILE'),
+])
+def test_selection_does_not_change_during_stale_or_exposed_engine(monkeypatch,runtime,code):
+ from unittest.mock import MagicMock
+ import app.master_skills as module
+ c=MagicMock();c.__enter__.return_value=c
+ c.execute.return_value.fetchone.side_effect=[{'role':'tradevice_master_operator'},{'selected_skill_id':None,'revision':0},{'n':0},{'snapshot':runtime},{'ms':100000}]
+ monkeypatch.setattr(module.psycopg,'connect',lambda *a,**kw:c)
+ with pytest.raises(SkillError,match=code):
+  registry('postgresql://tradevice_master_operator:test@db.scqzlcivherovlwqypeu.supabase.co:5432/postgres?sslmode=require',dict(actor_id=str(uuid4()),action='SELECT',skillId=str(uuid4()),expectedRevision=0))
+ assert not any(call.args[0].startswith(('UPDATE','INSERT')) for call in c.execute.call_args_list)
