@@ -12,20 +12,20 @@ const workerContract=read('app/api/master/overview/route.ts');
 const masterCSS=read('app/master/master.css');
 const now=Date.parse('2026-10-12T05:00:00Z');
 
-test('Dashboard is first tab and other six pages remain',()=>{
+test('Dashboard has five destinations with Risk and Paper in System',()=>{
   assert.match(consolePage,/key:'dashboard',label:'Dashboard'/);
-  for(const k of ['overview','cycles','anomalies','risk','journal','system']) {
+  for(const k of ['overview','cycles','anomalies','system']) {
     assert.match(consolePage,new RegExp("key:'"+k+"'"));
   }
   assert.match(consolePage,/CompactDashboard/);
   assert.match(masterCSS,/MASTER_UNIFIED_COMMAND_DASHBOARD_V1/);
-  assert.match(masterCSS,/grid-template-columns:repeat\(7,minmax\(0,1fr\)\)/);
-  assert.match(masterCSS,/\.mt-mobile-nav\[data-active="system"\]\{--mt-nav-index:6\}/);
+  assert.doesNotMatch(consolePage,/key:'(?:risk|journal)'/);
+  assert.match(consolePage,/tab==='system'&&<section className="mt-panel"><SectionHead eyebrow="PAPER EXECUTION AUDIT"/);
 });
 test('Dashboard presents demo controls first and preserves six factual summaries',()=>{
  for(const t of ['Overview','Cycle Monitor','System Health','Risk & Safety','Anomaly Center','Paper Journal','Terminal Activity'])assert.ok(dashboard.includes(t),t);
  assert.ok(dashboard.indexOf('<DemoControl')<dashboard.indexOf('<div className="mt-u-grid">'));
- for(const t of ['Start Cycle','Pause Cycle','Stop Cycle'])assert.ok(demo.includes(t));
+ for(const t of ['Start Cycle','>Pause<','>Stop<'])assert.ok(demo.includes(t));
  assert.doesNotMatch(dashboard,/mt-u-statusline|Save Configuration|Reset Journal|SIM-001|Math\.random\(/);
 });
 test('command route authorizes real app_metadata user and never proxies member orders',()=>{
@@ -67,10 +67,11 @@ test('telemetry accepts only verified operator event metadata and no fake fills'
 });
 
 
-test('demo start is finite and requires a per-run user confirmation',()=>{
+test('demo start is finite and authorized by explicit Start click',()=>{
  assert.match(demo,/target<1\|\|target>10/);
  assert.match(demo,/confirmDemo:action==='START'/);
- assert.match(demo,/Saya mengizinkan/);
+ assert.doesNotMatch(demo,/Saya mengizinkan|type="checkbox"/);
+ assert.match(demo,/onClick=\{\(\)=>void send\('START'\)\}/);
  assert.match(demo,/!runtime\?\.canStart/);
  assert.match(dashboard,/mt-u-diagnostic/);
 });
@@ -112,10 +113,10 @@ test('demo progress correlates exact engine receipts and never assumes HTTP acce
  assert.match(demo,/d.requestId!==id/);
  assert.match(demo,/phase:'UNCERTAIN'/);
  assert.doesNotMatch(demo,/setTimeout\([^;]*phase:'APPLIED'/s);
- assert.match(demo,/setInterval\(\(\)=>void refresh\(\),2500\)/);
+ assert.match(demo,/setInterval\(\(\)=>void refresh\(\),1000\)/);
 });
 test('demo start requires fresh independent engine evidence, not paper or observer flags',()=>{
- assert.match(demo,/now-runtime.observedMs<=8000/);
+ assert.match(demo,/evidenceNow-runtime.observedMs<=8000/);
  assert.match(demo,/!runtime\?\.canStart/);
  for(const gate of ['identity','brokerFlat','quote','spread','margin','commission','news','reconciled','engineHash'])assert.ok(demo.includes(gate));
  assert.doesNotMatch(demo,/brokerReady:\s*true|newsCalendarReady:\s*true/);

@@ -75,3 +75,38 @@ def test_kill_switch_vetoes_start_and_keeps_active_supervision(tmp_path):
  c.kill=False;invoke(c,cmd(s));assert r.entered.wait(1)
  c.received(dict(killSwitch=True,selection=dict(skillId=s,revision=1,sha256=b.APPROVED_HASH),commands=[],confirmed=[]))
  assert r.reason=='MANUAL_KILL' and c.running();finish(c,r)
+
+class Response:
+ def __init__(self,stamp,secret,status=200,tampered=False):
+  self.status=status;self.body=json.dumps({'serverMs':int(time.time()*1000),'commands':[]}).encode()
+  self.signature=b.sign(secret,stamp,self.body) if not tampered else '0'*64
+ def read(self,n):return self.body[:n]
+ def getheader(self,k,default=''):return self.signature
+
+class Connection:
+ def __init__(self,secret,status=200,tampered=False):self.secret=secret;self.status=status;self.tampered=tampered;self.requests=[];self.closed=False
+ def request(self,method,path,body,headers):self.requests.append((method,path,body,headers))
+ def getresponse(self):return Response(self.requests[-1][3]['x-tradevice-demo-time'],self.secret,self.status,self.tampered)
+ def close(self):self.closed=True
+
+def test_heartbeat_reuses_tls_and_authenticates_each_payload():
+ secret='a'*64;connections=[]
+ def factory(host,timeout):
+  assert host=='copy-api-staging-4c33.up.railway.app' and timeout==6
+  c=Connection(secret);connections.append(c);return c
+ client=b.ExchangeClient(secret,factory)
+ for n in (0,1):client.send({'observedMs':int(time.time()*1000)+n,'receipts':[]})
+ assert len(connections)==1 and len(connections[0].requests)==2
+ for method,path,body,h in connections[0].requests:
+  assert method=='POST' and path=='/internal/master/demo/exchange'
+  assert h['x-tradevice-demo-signature']==b.sign(secret,h['x-tradevice-demo-time'],body)
+
+@pytest.mark.parametrize('status,tampered',[(302,False),(503,False),(200,True)])
+def test_exchange_failure_closes_connection_without_automatic_resend(status,tampered):
+ c=Connection('a'*64,status,tampered);client=b.ExchangeClient('a'*64,lambda *a,**k:c)
+ with pytest.raises(ValueError):client.send({'observedMs':int(time.time()*1000)})
+ assert len(c.requests)==1 and c.closed and client.connection is None
+
+def test_heartbeat_cadence_counts_work_and_respects_rate_limit():
+ assert b.heartbeat_delay(.2)==1.3
+ assert b.heartbeat_delay(2.5)==.5

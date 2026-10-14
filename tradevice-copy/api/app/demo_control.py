@@ -45,25 +45,38 @@ def start_blockers(s,selection,now,news_clear):
 def locked(conn):
     # Every writer uses selection -> runtime lock order, including skill SELECT.
     selection=conn.execute('SELECT selected_skill_id,revision FROM master_skills.selection WHERE singleton FOR UPDATE').fetchone()
-    state=conn.execute('SELECT snapshot,observed_ms,received_at FROM master_demo.runtime WHERE singleton FOR UPDATE').fetchone()
-    now=int(conn.execute('SELECT extract(epoch FROM clock_timestamp())*1000 AS ms').fetchone()['ms'])
+    state=conn.execute('SELECT snapshot,observed_ms,received_at,extract(epoch FROM clock_timestamp())*1000 AS ms FROM master_demo.runtime WHERE singleton FOR UPDATE').fetchone()
+    now=int(state['ms'])
     return selection,state,now
 
+PROJECTION_SQL="""
+SELECT r.snapshot, s.selected_skill_id, s.revision,
+       extract(epoch FROM clock_timestamp())*1000 AS ms,
+       (SELECT kill_switch FROM master_control.worker_state
+        WHERE master_id='tradevice-master-staging') AS kill_switch,
+       EXISTS(SELECT 1 FROM master_demo.commands
+              WHERE status IN ('PENDING','DISPATCHED','UNCERTAIN')) AS unconfirmed,
+       COALESCE((SELECT jsonb_agg(to_jsonb(c) ORDER BY c.created_at DESC)
+                 FROM (SELECT request_id,action,status,error_code,created_at
+                       FROM master_demo.commands ORDER BY created_at DESC LIMIT 12) c),'[]'::jsonb) AS history
+FROM master_demo.runtime r CROSS JOIN master_skills.selection s
+WHERE r.singleton AND s.singleton
+"""
+
 def projection(conn,news_clear=False):
-    selection=conn.execute('SELECT selected_skill_id,revision FROM master_skills.selection WHERE singleton').fetchone()
-    row=conn.execute('SELECT snapshot FROM master_demo.runtime WHERE singleton').fetchone()
-    now=int(conn.execute('SELECT extract(epoch FROM clock_timestamp())*1000 AS ms').fetchone()['ms'])
-    s=row['snapshot']; online=fresh(s,now)
-    history=conn.execute('SELECT * FROM master_demo.commands ORDER BY created_at DESC LIMIT 12').fetchall()
-    blockers=start_blockers(s,selection,now,news_clear)
-    safety=conn.execute("SELECT kill_switch FROM master_control.worker_state WHERE master_id='tradevice-master-staging'").fetchone()
-    if not safety or safety['kill_switch'] is not False:blockers.append('MANUAL_KILL_OR_SAFETY_UNAVAILABLE')
-    if conn.execute("SELECT 1 FROM master_demo.commands WHERE status IN ('PENDING','DISPATCHED','UNCERTAIN') LIMIT 1").fetchone():blockers.append('COMMAND_UNCONFIRMED')
+    # One consistent database snapshot avoids sequential network round trips
+    # consuming the eight-second evidence budget on every dashboard poll.
+    row=conn.execute(PROJECTION_SQL).fetchone()
+    if not row:raise RuntimeError('DEMO_RUNTIME_UNAVAILABLE')
+    s=row['snapshot'];now=int(row['ms']);online=fresh(s,now)
+    blockers=start_blockers(s,row,now,news_clear)
+    if row['kill_switch'] is not False:blockers.append('MANUAL_KILL_OR_SAFETY_UNAVAILABLE')
+    if row['unconfirmed']:blockers.append('COMMAND_UNCONFIRMED')
     return dict(online=online,observedMs=s.get('observedMs'),state=s.get('state') if online else 'OFFLINE',
         activeSkillId=s.get('activeSkillId') if online else None,activeHash=s.get('activeHash') if online else None,
         revision=s.get('revision') if online else None,checks=s.get('checks',{}) if online else {},
         blockers=list(dict.fromkeys(blockers+s.get('blockers',[]))),canStart=not blockers,
-        commands=[dict(requestId=str(c['request_id']),action=c['action'],status=c['status'],errorCode=c['error_code']) for c in history])
+        commands=[dict(requestId=str(c['request_id']),action=c['action'],status=c['status'],errorCode=c['error_code']) for c in row['history']])
 
 def read(dsn,news_clear=False):
     with connection(dsn) as conn:return projection(conn,news_clear)
@@ -129,12 +142,18 @@ def exchange(dsn,p):
                 conn.execute('UPDATE master_demo.commands SET status=%s,error_code=%s,processed_at=now() WHERE request_id=%s',(r['status'],r['errorCode'],r['requestId']))
                 confirmed.append(r['requestId'])
             elif c and c['status']==r['status']:confirmed.append(r['requestId'])
-        conn.execute("UPDATE master_demo.commands SET status=CASE WHEN status='PENDING' THEN 'EXPIRED' ELSE 'UNCERTAIN' END,error_code='COMMAND_EXPIRED' WHERE status IN ('PENDING','DISPATCHED') AND expires_at<=now()")
-        conn.execute('UPDATE master_demo.runtime SET snapshot=%s,observed_ms=%s,received_at=now() WHERE singleton',(Jsonb({k:v for k,v in p.items() if k!='receipts'}),p['observedMs']))
-        cmds=conn.execute("SELECT * FROM master_demo.commands WHERE status IN ('PENDING','DISPATCHED') AND expires_at>now() ORDER BY created_at LIMIT 16 FOR UPDATE").fetchall()
+        # Queue independent statements in the same transaction; preserve the
+        # selection -> runtime lock order and all receipt/lease checks above.
+        with conn.pipeline():
+            conn.execute("UPDATE master_demo.commands SET status=CASE WHEN status='PENDING' THEN 'EXPIRED' ELSE 'UNCERTAIN' END,error_code='COMMAND_EXPIRED' WHERE status IN ('PENDING','DISPATCHED') AND expires_at<=now()")
+            conn.execute('UPDATE master_demo.runtime SET snapshot=%s,observed_ms=%s,received_at=now() WHERE singleton',(Jsonb({k:v for k,v in p.items() if k!='receipts'}),p['observedMs']))
+            pending=conn.execute("SELECT * FROM master_demo.commands WHERE status IN ('PENDING','DISPATCHED') AND expires_at>now() ORDER BY created_at LIMIT 16 FOR UPDATE")
+            safety_query=conn.execute("SELECT kill_switch FROM master_control.worker_state WHERE master_id='tradevice-master-staging'")
+            package_query=conn.execute('SELECT kind,sha256 FROM master_skills.packages WHERE id=%s',(sel['selected_skill_id'],)) if sel['selected_skill_id'] else None
+        cmds=pending.fetchall()
         for c in cmds:conn.execute("UPDATE master_demo.commands SET status='DISPATCHED' WHERE request_id=%s AND status='PENDING'",(c['request_id'],))
-        safety=conn.execute("SELECT kill_switch FROM master_control.worker_state WHERE master_id='tradevice-master-staging'").fetchone()
-        package=conn.execute('SELECT kind,sha256 FROM master_skills.packages WHERE id=%s',(sel['selected_skill_id'],)).fetchone() if sel['selected_skill_id'] else None
+        safety=safety_query.fetchone()
+        package=package_query.fetchone() if package_query else None
         selected_hash=package['sha256'] if package and package['kind']=='BUILTIN' and package['sha256']==APPROVED_HASH else None
         return dict(serverMs=now,killSwitch=not safety or safety['kill_switch'] is not False,selection=dict(skillId=str(sel['selected_skill_id']) if sel['selected_skill_id'] else None,revision=sel['revision'],sha256=selected_hash),confirmed=confirmed,
             commands=[dict(requestId=str(c['request_id']),action=c['action'],targetCycles=c['target_cycles'],skillId=str(c['skill_id']) if c['skill_id'] else None,sha256=c['skill_hash'],revision=c['selection_revision'],expiresMs=int(c['expires_at'].timestamp()*1000)) for c in cmds])

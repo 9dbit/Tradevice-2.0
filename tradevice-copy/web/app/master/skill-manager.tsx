@@ -7,6 +7,7 @@ type Skill={id:string;name:string;version:string;description:string;strategy:str
 type SaveProgress={phase:'SAVING'|'WAITING_ENGINE'|'CONFIRMED'|'FAILED'|'UNCERTAIN';percent:number;label:string};
 type Catalog={revision:number;selectedSkillId:string|null;skills:Skill[];executionAuthorized:false;selectionScope:string};
 const messages:Record<string,string>={
+ SKILL_ENGINE_OFFLINE:'Engine belum terhubung. Tunggu status Ready.',
  SKILL_REVISION_CONFLICT:'Pilihan berubah di tab lain. Daftar sudah diperbarui; periksa sebelum mencoba lagi.',
  SKILL_VERSION_ALREADY_EXISTS:'Nama dan versi ini sudah ada dengan isi berbeda. Naikkan versi pada manifest.',
  SKILL_RATE_LIMIT:'Terlalu banyak perubahan. Tunggu satu menit.',
@@ -16,7 +17,8 @@ const messages:Record<string,string>={
 export default function SkillManager({token,engineRaw,now,activation}:{token:string|null;engineRaw:unknown;now:number;activation?:DemoRuntime|null}){
  const [catalog,setCatalog]=useState<Catalog|null>(null),[busy,setBusy]=useState(false),[error,setError]=useState(''),[notice,setNotice]=useState('');
  const [awaiting,setAwaiting]=useState<{id:string|null;revision:number;hash:string|null;at:number}|null>(null);
- const activationFresh=activation?.online===true&&activation.observedMs!==null&&now-activation.observedMs>=0&&now-activation.observedMs<=8000;
+ const evidenceNow=Math.max(now,Date.now());
+ const activationFresh=activation?.online===true&&activation.observedMs!==null&&evidenceNow-activation.observedMs>=0&&evidenceNow-activation.observedMs<=8000;
  const [progress,setProgress]=useState<SaveProgress|null>(null);
  const [animatedPercent,setAnimatedPercent]=useState(0);const percentRef=useRef(0);
  useEffect(()=>{
@@ -109,15 +111,15 @@ export default function SkillManager({token,engineRaw,now,activation}:{token:str
    <div><span>Pilihan skill · maksimum 1 ON</span><strong>{fresh?(selected?.name||'Semua OFF'):'Status pilihan tidak tersedia'}</strong>
     <small>{fresh&&selected?`Versi ${selected.version} · ${activationFresh&&activation?.activeSkillId===selected.id?'engine memuat skill':'menunggu konfirmasi engine'}`:'Upload baru selalu OFF.'}</small></div>
   </div>
-  <p className="mt-skill-note">ON/OFF meminta engine memuat atau melepas skill yang telah dipetakan ke adapter terverifikasi. ON baru ditampilkan setelah konfirmasi engine. Pergantian skill memerlukan broker-flat; aktivasi tidak memulai cycle.</p>
-  <p className="mt-skill-note">JSON manifest atau ZIP dengan SKILL.md · maksimal 512 KB · isi paket tidak dieksekusi. <a href="/skill-template.json" download>Unduh template JSON</a></p>
+
+  <p className="mt-skill-note">ZIP / JSON · 512 KB. <a href="/skill-template.json" download>Unduh template JSON</a></p>
   <div aria-live="polite">{notice&&<p className="mt-skill-notice">{notice}</p>}{error&&<p role="alert" className="mt-skill-error">{messages[error]||error}</p>}</div>
   {progress&&<div className="mt-skill-progress" data-phase={progress.phase} aria-busy={busy}>
    <div className="mt-skill-progress-heading"><span role="status" aria-live="polite">{progress.label}</span><strong aria-hidden="true">{animatedPercent}%</strong></div>
    <div className="mt-skill-progress-track" role="progressbar" aria-label="Progres penyimpanan pilihan skill" aria-valuemin={0} aria-valuemax={100} aria-valuenow={progress.percent} aria-valuetext={progress.label}>
     <span style={{width:animatedPercent+'%'}}/>
    </div>
-   <small id="skill-save-help">Progres mengikuti tahap: kirim → tersimpan → konfirmasi engine. Untuk ON/OFF, 100% berarti fingerprint dan revisi sudah dikonfirmasi engine.</small>
+
   </div>}
   {!catalog&&<p>Daftar skill belum tersedia. <button type="button" onClick={()=>void refresh()}>Coba lagi</button></p>}
   <div className="mt-skill-list">{catalog?.skills.map(skill=><article key={skill.id} className={'mt-skill-item'+(fresh&&skill.active?' is-selected':'')}>

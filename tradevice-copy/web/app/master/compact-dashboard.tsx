@@ -7,7 +7,7 @@ import SkillManager from './skill-manager';
 import DemoControl,{useDemoRuntime} from './demo-control';
 import {validateNews} from '../../lib/news-calendar.mjs';
 
-type Details='overview'|'cycles'|'anomalies'|'risk'|'journal'|'system';
+type Details='overview'|'cycles'|'anomalies'|'system';
 type IconName='dashboard'|'activity'|'shield'|'alert'|'repeat'|'receipt'|'terminal'|'news'|'play'|'stop'|'reset'|'clock'|'arrow';
 function I({name,size=18}:{name:IconName;size?:number}){
  const props={fill:'none',stroke:'currentColor',strokeWidth:1.7,strokeLinecap:'round' as const,
@@ -97,17 +97,17 @@ export default function CompactDashboard({data,token,onNavigate,onUpdated}:{
       <Datum metric name="Wins / Losses · Demo Batch" value={batch?`${batch.wins} / ${batch.losses}`:'—'}/>
     </Panel>
     <Panel title="Cycle Monitor" icon="repeat" go={()=>onNavigate('cycles')}>
-      <Datum metric name="Total Executed Cycle" value={fmt(executedCycles)} hint="Current demo batch · cycles with broker fills"/>
+      <Datum metric name="Total Executed Cycle" value={fmt(executedCycles)} />
       <Datum metric name="Demo Completed / Requested" value={batch?`${batch.completed} / ${batch.requested}`:'—'}/>
       <Datum name="Demo Batch State" value={batch?.status||'NOT CONNECTED'}/>
-      <p className="mt-u-card-sub">Supervisor ticks: {fmt(data?.master.cycles)} · monitoring only</p>
+
     </Panel>
     <Panel title="System Health" icon="activity" go={()=>onNavigate('system')}>
       <Datum name="Member API" value={data?.infrastructure.memberApi||'UNKNOWN'}/>
       <Datum name="Worker" value={data?.infrastructure.masterWorker||'UNKNOWN'}/>
       <Datum name="Journal" value={data?.infrastructure.journal||'UNKNOWN'}/>
     </Panel>
-    <Panel title="Risk & Safety" icon="shield" go={()=>onNavigate('risk')}>
+    <Panel title="Risk & Safety" icon="shield" go={()=>onNavigate('system')}>
       <Datum name="Kill switch" value={data?.risk.killSwitch||'UNAVAILABLE'}/>
       <Datum name="Drawdown" value={fmt(data?.risk.drawdownPct,'%')}/>
       <Datum name="Quote feed" value={control?.quotesReady?'VERIFIED':'NOT READY'}/>
@@ -117,7 +117,7 @@ export default function CompactDashboard({data,token,onNavigate,onUpdated}:{
       <Datum name="Supervisor state" value={data?.master.state||'OFFLINE'}/>
       <Datum name="Reason" value={data?.master.reason||'—'}/>
     </Panel>
-    <Panel title="Paper Journal" icon="receipt" go={()=>onNavigate('journal')}>
+    <Panel title="Paper Journal" icon="receipt" go={()=>onNavigate('system')}>
       <Datum name="Journal entries" value={data?.paperOrders?String(data.paperOrders.length):'—'}/>
       <Datum name="Accepted paper" value={fmt(data?.queue?.accepted)}/>
       <Datum name="Pending signals" value={fmt(data?.queue?.queued)}/>
@@ -125,14 +125,12 @@ export default function CompactDashboard({data,token,onNavigate,onUpdated}:{
   </div>
   <section className="mt-u-panel mt-u-market">
     <div className="mt-u-panel-head">
-      <div><span className="mt-u-overline">REAL BROKER EVIDENCE · NO SYNTHETIC VALUES</span>
+      <div>
         <h2><I name="activity"/> Broker & Market Conditions</h2>
       </div>
       <span className="mt-u-chip">{market?.status==='OBSERVED_READ_ONLY'?'MT5 DEMO · READ-ONLY':'NOT CONNECTED'}</span>
     </div>
-    <p className="mt-u-hint">{market?.status==='OBSERVED_READ_ONLY'?
-      'Observasi broker demo sudah diterima dengan validasi HMAC. Data ini hanya untuk monitoring; Start Cycle tetap terkunci sampai seluruh preflight dan adapter eksekusi tervalidasi.':
-      'Feed MT5 belum tersedia atau quote terakhir sudah stale. Data broker hanya tampil dari observer staging terautentikasi, bukan simulasi.'}</p>
+
     <div className="mt-u-market-grid">
       <div className="mt-u-market-cell"><small>Broker</small><strong>{market?.brokerName||'Not connected'}</strong>
         <span>Account: {market?.accountMode||'Not linked'}</span></div>
@@ -165,10 +163,10 @@ export default function CompactDashboard({data,token,onNavigate,onUpdated}:{
   </section>
   <SkillManager activation={demoRuntime} token={token} engineRaw={marketFresh?market?.engineDiagnostics:null} now={newsClock}/>
   <section className="mt-u-panel mt-u-market" aria-label="Engine and basket diagnostics">
-    <div className="mt-u-panel-head"><div><span className="mt-u-overline">ENGINE EVIDENCE · READ-ONLY</span>
+    <div className="mt-u-panel-head"><div>
       <h2><I name="shield"/> Adaptive Entry &amp; Basket Risk</h2></div>
       <span className="mt-u-chip">{engine.status.replaceAll('_',' ')}</span></div>
-    <p className="mt-u-hint">Batas strategi: −$120 hard loss dan +$3.50 target. Batas konfigurasi tidak membuktikan pengawasan aktif atau menjamin harga exit. Laporan engine kedaluwarsa dalam 8 detik; P&amp;L evaluasi dalam 5 detik.</p>
+
     <div className="mt-u-market-grid">
       <div className="mt-u-market-cell"><small>Open positions profit + swap</small><strong>{fmt(owned?.value,' USD')}</strong>
         <span>GoldTrap magic + symbol · belum termasuk realized dan seluruh commission</span></div>
@@ -190,10 +188,10 @@ export default function CompactDashboard({data,token,onNavigate,onUpdated}:{
     <p className="mt-u-help">L6–L10: {decision?decision.reasons.join(' · '):'NO FRESH ENGINE DECISION'}. Engine report: {newsTime(engine.observedMs)}. Posisi kosong bukan bukti cycle COMPLETE.</p>
   </section>
   <section className="mt-u-panel mt-u-market" aria-label="Forex Factory news guard">
-    <div className="mt-u-panel-head"><div><span className="mt-u-overline">FOREX FACTORY · HIGH IMPACT · ALL CURRENCIES</span>
+    <div className="mt-u-panel-head"><div>
       <h2><I name="news"/> News Safety Guard</h2></div>
       <span className="mt-u-chip">{calendar.status==='CLEAR'?'NEWS WINDOW CLEAR':'NO TRADE · '+calendar.status}</span></div>
-    <p className="mt-u-hint">Entry baru diblokir 60 menit sebelum hingga 60 menit setelah setiap high-impact event. Window yang bertumpuk digabung. Kalender tidak tersedia atau basi: NO TRADE. Pengawasan basket tetap diperlukan.</p>
+
     <div className="mt-u-market-grid">
       <div className="mt-u-market-cell"><small>Next / active event</small><strong>{calendar.nextEvent?.title||'—'}</strong>
         <span>{calendar.nextEvent?.currency||'No verified upcoming event'} · {newsTime(calendar.nextEvent?.at??null)}</span></div>
@@ -203,25 +201,19 @@ export default function CompactDashboard({data,token,onNavigate,onUpdated}:{
         <span>Confirmed: {newsTime(calendar.observedAt)} · expires: {newsTime(calendar.validUntil)}</span></div>
     </div>
     <p className="mt-u-help">Calendar: {calendar.reason}. Jadwal dapat berubah; kalender ini bukan bukti kesiapan eksekusi.</p>
-    <div className="mt-u-preflight" aria-label="Alasan entry diblokir">
-      <span>News <b>{calendar.status==='CLEAR'?'WINDOW CLEAR':'BLOCKED'}</b></span>
-      <span>Execution quote <b>{control?.quotesReady?'READY':'NOT VERIFIED'}</b></span>
-      <span>Execution adapter <b>{control?.brokerReady?'READY':'NOT READY'}</b></span>
-      <span>Commission / slippage <b>NOT VERIFIED</b></span>
-      <span>Demo order authorization <b>PER START CONFIRMATION</b></span>
-    </div>
-    <p className="mt-u-help">News CLEAR hanya menyatakan di luar window berita. Start tetap membutuhkan skill aktif, preflight, dan konfirmasi demo.</p>
+
+
   </section>
   <div className="mt-u-duo">
    <section className="mt-u-panel mt-u-terminal">
-    <div className="mt-u-panel-head"><div><span className="mt-u-overline">VERIFIED EVENT STREAM</span><h2><I name="terminal"/> Terminal Activity</h2></div>
+    <div className="mt-u-panel-head"><div><h2><I name="terminal"/> Terminal Activity</h2></div>
       <span className="mt-u-chip">15s refresh</span></div>
     <div className="mt-u-filter" role="group" aria-label="Terminal event filter">
       {(['all','warning','critical'] as const).map(f=><button key={f} aria-pressed={terminalFilter===f}
        onClick={()=>setTerminalFilter(f)} className={terminalFilter===f?'active':''}>{f.toUpperCase()}</button>)}
     </div>
     <div className="mt-u-terminal-window" role="log" aria-label="Verified Master Trader terminal events">
-      {terminal.length===0?<p className="mt-u-terminal-empty">Belum ada event command yang tercatat. Tidak ada log sintetis.</p>:
+      {terminal.length===0?<p className="mt-u-terminal-empty">Belum ada event.</p>:
         terminal.map(row=><div className="mt-u-term-line" key={row.id}>
           <span>{time(row.at)}</span><strong data-severity={row.severity}>{row.kind}</strong><p>{row.message}</p>
         </div>)}
@@ -230,7 +222,7 @@ export default function CompactDashboard({data,token,onNavigate,onUpdated}:{
    </section>
   </div>
   <section className="mt-u-panel mt-u-journal">
-    <div className="mt-u-panel-head"><div><span className="mt-u-overline">CURRENT SESSION · VERIFIED ONLY</span><h2><I name="receipt"/> Paper Journal</h2></div>
+    <div className="mt-u-panel-head"><div><h2><I name="receipt"/> Paper Journal</h2></div>
       <button className="mt-u-sort" onClick={()=>setSort(s=>s==='desc'?'asc':'desc')} type="button">
         <I name="clock" size={15}/> Timestamp {sort==='desc'?'Newest ↓':'Oldest ↑'}</button>
     </div>

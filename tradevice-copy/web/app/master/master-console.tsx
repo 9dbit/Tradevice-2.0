@@ -10,7 +10,7 @@ import DemoBatchPanel from './demo-batch-panel';
 import type {EngineDiagnostics,OwnedPnl} from '../../lib/engine-diagnostics.mjs';
 import type {NewsSnapshot} from '../../lib/news-calendar.mjs';
 
-type Tab = 'dashboard'|'overview'|'cycles'|'anomalies'|'risk'|'journal'|'system';
+type Tab = 'dashboard'|'overview'|'cycles'|'anomalies'|'system';
 type Notice = { id: string; at: string; severity: 'info'|'warning'|'critical'; kind: string; note: string };
 type PaperOrder = { id: string; symbol: string; side: string; state: string; quantity: string; at: string };
 export type Snapshot = {
@@ -47,19 +47,20 @@ export type Snapshot = {
 };
 
 const routes: {key:Tab;label:string;icon:string;caption:string}[] = [
-  {key:'dashboard',label:'Dashboard',icon:'grid',caption:'Unified command center'},
-  {key:'overview',label:'Overview',icon:'grid',caption:'Operational summary'},
+  {key:'dashboard',label:'Dashboard',icon:'home',caption:'Unified command center'},
+  {key:'overview',label:'Overview',icon:'chart',caption:'Operational summary'},
   {key:'cycles',label:'Cycle Monitor',icon:'pulse',caption:'Execution progress & cycle history'},
   {key:'anomalies',label:'Anomaly Center',icon:'alert',caption:'Risk event history'},
-  {key:'risk',label:'Risk & Safety',icon:'shield',caption:'Safety guardrails'},
-  {key:'journal',label:'Paper Journal',icon:'receipt',caption:'Simulated order records'},
-  {key:'system',label:'System Health',icon:'layers',caption:'Service connectivity'},
+  {key:'system',label:'System',icon:'settings',caption:'Service connectivity'},
 ];
 function Glyph({name,size=20}:{name:string;size?:number}) {
   const common={fill:'none',stroke:'currentColor',strokeWidth:1.7,strokeLinecap:'round' as const,strokeLinejoin:'round' as const};
   return <svg aria-hidden="true" viewBox="0 0 24 24" width={size} height={size} {...common}>
+    {name==='home'&&<path fill="currentColor" stroke="none" d="M3 10.5 12 3l9 7.5V21h-6v-7H9v7H3z"/>}
+    {name==='chart'&&<><rect fill="currentColor" stroke="none" x="3" y="13" width="4" height="8" rx="1"/><rect fill="currentColor" stroke="none" x="10" y="8" width="4" height="13" rx="1"/><rect fill="currentColor" stroke="none" x="17" y="3" width="4" height="18" rx="1"/></>}
+    {name==='settings'&&<><path d="M4 7h16M4 17h16" strokeWidth="3"/><circle cx="9" cy="7" r="3" fill="currentColor"/><circle cx="16" cy="17" r="3" fill="currentColor"/></>}
     {name==='grid'&&<><rect x="3" y="3" width="8" height="8" rx="1.5"/><rect x="13" y="3" width="8" height="8" rx="1.5"/><rect x="3" y="13" width="8" height="8" rx="1.5"/><rect x="13" y="13" width="8" height="8" rx="1.5"/></>}
-    {name==='pulse'&&<path d="M2 12h5l3-8 4 16 3-8h5"/>}
+    {name==='pulse'&&<><path d="M20 7v5h-5M4 17v-5h5M5 9a7 7 0 0 1 12-2l3 5M4 12l3 5a7 7 0 0 0 12-2" strokeWidth="2.5"/></>}
     {name==='alert'&&<><path d="m12 3 10 18H2L12 3z"/><path d="M12 9v5m0 4h.01"/></>}
     {name==='shield'&&<><path d="m12 2 8 4v6c0 5-4 8-8 10-4-2-8-5-8-10V6z"/><path d="M9 12l2 2 4-4"/></>}
     {name==='receipt'&&<><path d="M5 3h14v18l-3-2-4 2-4-2-3 2V3z"/><path d="M8 8h8M8 12h8M8 16h5"/></>}
@@ -99,7 +100,7 @@ function Graph({numbers}:{numbers:number[]}) {
 }
 function Metric({label,children,desc,icon}:{label:string;children:React.ReactNode;desc:string;icon:string}){
   return <div className="mt-metric"><div className="mt-metric-top"><span>{label}</span><Glyph name={icon} size={17}/></div>
-    <strong>{children}</strong><small>{desc}</small></div>;
+    <strong>{children}</strong></div>;
 }
 function Events({rows}:{rows:Notice[]}) {
   return rows.length?<div className="mt-table-scroll"><table className="mt-table">
@@ -250,15 +251,12 @@ export default function MasterConsole() {
       <header className="mt-topbar">
         <div className="mt-mobile-brand"><Brand/></div>
         <div className="mt-top-crumb"><span>MASTER TRADER</span><Glyph name="chevron" size={14}/><strong>{roleTitle}</strong></div>
-        <div className="mt-top-actions"><span className="mt-env-tag">STAGING</span><span className="mt-env-paper"><i/> PAPER ONLY</span>
+        <div className="mt-top-actions"><span className="mt-env-tag">STAGING</span>
           <button type="button" className="mt-refresh" aria-label="Refresh master status" onClick={()=>setRefreshIndex(i=>i+1)}><Glyph name="refresh" size={18}/></button>
           <button type="button" className="mt-logout" onClick={()=>void signOut()} aria-label="Keluar master admin"><Glyph name="logout" size={18}/></button></div>
       </header>
       <main id="mt-main" className="mt-main mt-report">
-        <div className="mt-page-header"><div><div className="mt-eyebrow">TRADEVICE / COMMAND DESK</div>
-          <h1>{tab==='overview'?'Master overview':roleTitle}<span>.</span></h1>
-          <p>{routes.find(route=>route.key===tab)?.caption}</p>
-        </div><div className="mt-date"><Glyph name="clock" size={18}/><span>Operational telemetry · every 5s</span></div></div>
+        <div className="mt-page-header"><h1>{roleTitle}</h1></div>
         {message&&auth==='authorized'&&!data&&<div role="alert" className="mt-disclosure">
           <Glyph name="alert" size={20}/><div><strong>TELEMETRY TEMPORARILY UNAVAILABLE</strong>
             <span>{message} Semua kontrol trading dinonaktifkan sampai koneksi pulih.</span></div>
@@ -269,7 +267,7 @@ export default function MasterConsole() {
           <FinancialOverview data={data}/>
           <section className="mt-panel mt-performance"><SectionHead eyebrow="PAPER PERFORMANCE" title="Verified paper equity curve" extra={<Pill value={data?.equityCurve.length ? "VERIFIED" : "NO DATA"}/>}/>
             <Graph numbers={data?.equityCurve||[]}/>
-            <p className="mt-panel-caption">Grafik ini khusus eksekusi paper; terpisah dari hasil akun demo di atas.</p>
+
           </section>
         </>}
         {tab==='cycles'&&<>
@@ -280,8 +278,8 @@ export default function MasterConsole() {
               ['02','ANOMALY GATE','Reject unsafe decisions'],
               ['03','RECOVERY','3 clean ticks + cooldown'],
               ['04','PAPER INBOX','Idempotent accepted simulation'],
-            ].map(step=><div className="mt-state-step" key={step[0]}><small>{step[0]}</small><strong>{step[1]}</strong><p>{step[2]}</p></div>)}</div>
-            <div className="mt-explainer"><strong>Fail-closed continuity</strong><p>The heartbeat continues in DEGRADED even when trusted quotes are missing. New orders remain blocked. No automatic release is permitted after HALTED.</p></div>
+            ].map(step=><div className="mt-state-step" key={step[0]}><small>{step[0]}</small><strong>{step[1]}</strong></div>)}</div>
+
           </section>
           <div className="mt-runtime-row">
             <div><small>LAST SUPERVISOR TICK</small><strong>{data?.master.lastCycleAt||'NOT MEASURED'}</strong></div>
@@ -295,8 +293,8 @@ export default function MasterConsole() {
         </>}
         {tab==='anomalies'&&<section className="mt-panel"><SectionHead eyebrow="EXCEPTIONS & RECOVERY" title="Anomaly event log" extra={<Pill value={mode}/>}/>
           <div className="mt-filter" aria-label="Filter anomaly severity">{(['all','warning','critical'] as const).map(v=><button key={v} type="button" aria-pressed={severity===v} onClick={()=>setSeverity(v)} className={severity===v?'current':''}>{v==='all'?'All events':v==='warning'?'Warning':'Critical'}</button>)}</div><Events rows={alertRows}/>
-          <p className="mt-panel-caption">Riwayat anomali berasal dari journal worker. Gunakan filter untuk meninjau warning dan critical events.</p></section>}
-        {tab==='risk'&&<>
+          </section>}
+        {tab==='system'&&<>
           <div className="mt-risk-grid"><section className="mt-panel"><SectionHead eyebrow="EXECUTION GUARDRAILS" title="Risk controls"/>
             {[
               ['Trading mode','PAPER ONLY'],
@@ -306,14 +304,14 @@ export default function MasterConsole() {
               ['Order replay guard',workerOnline?'WORKER GUARDED':'WORKER NOT CONNECTED'],
             ].map(([label,value])=><div className="mt-risk-row" key={label}><span>{label}</span><strong>{value}</strong></div>)}
           </section><section className="mt-panel mt-safety"><div className="mt-safety-icon"><Glyph name="lock" size={28}/></div>
-            <h2>Emergency kill switch</h2><p>Kontrol ini hanya dapat diaktifkan setelah worker master yang terautentikasi dan jalur auditnya selesai terintegrasi.</p>
+            <h2>Emergency kill switch</h2>
             <button type="button" disabled className="mt-kill-disabled">Kill switch unavailable <Glyph name="lock" size={18}/></button>
-            <div className="mt-safety-note">Emergency kill switch belum tersedia. Kontrol siklus ada di Dashboard.</div>
+
           </section></div>
           <div className="mt-metrics mt-three"><Metric icon="shield" label="Drawdown" desc="Requires verified closed paper fills"><Value value={data?.risk.drawdownPct} suffix="%"/></Metric><Metric icon="pulse" label="Open positions" desc="Requires reconciliation"><Value value={data?.risk.positions}/></Metric><Metric icon="receipt" label="Net paper P&L" desc="Requires verified paper execution">{typeof data?.risk.pnlUsd==='number'?'$'+data.risk.pnlUsd.toFixed(2):'—'}</Metric></div>
         </>}
-        {tab==='journal'&&<section className="mt-panel"><SectionHead eyebrow="PAPER EXECUTION AUDIT" title="Paper order journal" extra={<Pill value={data?.paperOrders.length ? "PAPER" : "NO ORDERS"}/>}/>
-          <p className="mt-panel-caption">Accepted paper orders are journal acknowledgements, not executed fills. Live trading is disabled.</p>
+        {tab==='system'&&<section className="mt-panel"><SectionHead eyebrow="PAPER EXECUTION AUDIT" title="Paper order journal" extra={<Pill value={data?.paperOrders.length ? "PAPER" : "NO ORDERS"}/>}/>
+
           <div className="mt-journal-summary">
             <span>Accepted paper acknowledgements: <strong>{data?.queue?.accepted??'—'}</strong></span>
             <span>Rejected paper signals: <strong>{data?.queue?.rejected??'—'}</strong></span>
@@ -327,11 +325,10 @@ export default function MasterConsole() {
               ['Master worker',data?.infrastructure.masterWorker||'OFFLINE/STALE','Database-backed staging heartbeat'],
               ['Master journal',data?.infrastructure.journal||'UNAVAILABLE','Read-only Postgres staging journal'],
               ['Admin authorization',data?.infrastructure.adminAuth||'NOT_CONFIGURED','Supabase app_metadata gate'],
-            ].map(([label,value,note])=><div key={label} className="mt-system-card"><div className="mt-system-card-top"><Glyph name="layers" size={19}/><Pill value={value}/></div><h3>{label}</h3><p>{note}</p></div>)}
-          </div></section><section className="mt-panel mt-system-source"><SectionHead eyebrow="DATA INTEGRITY" title="Reporting boundaries"/>
-            <p>Mode operasional membaca telemetry PostgreSQL melalui API privat, setelah verifikasi Supabase master-admin. Heartbeat dan anomaly journal berasal dari worker aktual. Fill, win rate, dan drawdown tetap tidak diukur sampai ada bukti paper execution yang terverifikasi.</p><span>Data source: {data?.source||'UNAVAILABLE'}</span></section>
+            ].map(([label,value,note])=><div key={label} className="mt-system-card"><div className="mt-system-card-top"><Glyph name="layers" size={19}/><Pill value={value}/></div><h3>{label}</h3></div>)}
+          </div></section>
         </>}
-        <footer className="mt-footer"><span>TRADEVICE / MASTER CONTROL CENTER</span><span>STAGING · ADMIN ONLY · PAPER ONLY</span></footer>
+        <footer className="mt-footer"><span>TRADEVICE / MASTER CONTROL CENTER</span><span>STAGING</span></footer>
       </main>
     </div>
     <nav className="mt-mobile-nav" data-active={tab} aria-label="Master mobile navigation">{routes.map(route=><button type="button" key={route.key} onClick={()=>setTab(route.key)} className={tab===route.key?'current':''} aria-label={route.label} aria-current={tab===route.key?'page':undefined}><Glyph name={route.icon} size={19}/><span>{route.label.split(' ')[0]}</span></button>)}</nav>

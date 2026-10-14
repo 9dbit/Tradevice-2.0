@@ -55,3 +55,16 @@ def test_api_response_is_signed_and_errors_do_not_leak(monkeypatch):
  with TestClient(create_app(Settings(environment='staging',project_ref='scqzlcivherovlwqypeu'))) as c:
   r=c.post('/internal/master/demo/exchange',content=body,headers={'x-tradevice-demo-time':stamp,'x-tradevice-demo-signature':signature('b'*64,stamp,body)})
   assert r.status_code==200 and r.headers['x-tradevice-demo-signature']==signature('b'*64,stamp,r.content)
+
+@pytest.mark.parametrize('age,kill,unconfirmed,expected',[
+ (1000,False,False,True),(8001,False,False,False),
+ (1000,None,False,False),(1000,True,False,False),(1000,False,True,False)])
+def test_projection_uses_consistent_snapshot_and_preserves_guards(age,kill,unconfirmed,expected):
+ s=snapshot()
+ class Conn:
+  def execute(self,query):return self
+  def fetchone(self):return dict(snapshot=s,ms=s['observedMs']+age,selected_skill_id=s['activeSkillId'],revision=1,kill_switch=kill,unconfirmed=unconfirmed,history=[])
+ result=projection(Conn(),news_clear=True)
+ assert result['canStart'] is expected
+ assert result['online'] is (age<=8000)
+ if age>8000:assert result['activeSkillId'] is None and result['checks']=={}

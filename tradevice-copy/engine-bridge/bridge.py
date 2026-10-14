@@ -1,7 +1,7 @@
 """Outbound demo control client. No broker SDK, uploaded code, or shell commands.
 Only the locally reviewed v51_dashboard_runtime adapter can perform demo execution.
 """
-import hashlib,hmac,json,os,re,sqlite3,threading,time,urllib.request,uuid
+import hashlib,hmac,http.client,json,os,re,sqlite3,threading,time,uuid
 from pathlib import Path
 
 API='https://copy-api-staging-4c33.up.railway.app/internal/master/demo/exchange'
@@ -11,17 +11,27 @@ CHECKS=('identity','brokerFlat','quote','spread','margin','commission','news','r
 def sign(secret,stamp,body):
  return hmac.new(bytes.fromhex(secret),b'tradevice-demo-v1\n'+stamp.encode()+b'\n'+body,hashlib.sha256).hexdigest()
 
-def exchange(secret,p):
- body=json.dumps(p,separators=(',',':')).encode();stamp=str(p['observedMs'])
- request=urllib.request.Request(API,body,{'Content-Type':'application/json','x-tradevice-demo-time':stamp,'x-tradevice-demo-signature':sign(secret,stamp,body)})
- class NoRedirect(urllib.request.HTTPRedirectHandler):
-  def redirect_request(self,*args,**kwargs):raise ValueError('BRIDGE_REDIRECT_DENIED')
- with urllib.request.build_opener(NoRedirect).open(request,timeout=6) as r:
-  raw=r.read(32769)
-  if len(raw)>32768 or not hmac.compare_digest(sign(secret,stamp,raw),r.headers.get('x-tradevice-demo-signature','')):raise ValueError('BRIDGE_INVALID_RESPONSE')
-  result=json.loads(raw)
-  if type(result.get('serverMs')) is not int or abs(time.time()*1000-result['serverMs'])>10000:raise ValueError('BRIDGE_STALE_RESPONSE')
-  return result
+class ExchangeClient:
+ """Reuse TLS for heartbeats; a failed exchange is never blindly replayed here."""
+ def __init__(self,secret,connection_factory=http.client.HTTPSConnection):
+  self.secret=secret;self.factory=connection_factory;self.connection=None
+ def send(self,p):
+  body=json.dumps(p,separators=(',',':')).encode();stamp=str(p['observedMs'])
+  try:
+   if self.connection is None:self.connection=self.factory('copy-api-staging-4c33.up.railway.app',timeout=6)
+   self.connection.request('POST','/internal/master/demo/exchange',body,{'Content-Type':'application/json','x-tradevice-demo-time':stamp,'x-tradevice-demo-signature':sign(self.secret,stamp,body)})
+   r=self.connection.getresponse();raw=r.read(32769)
+   if r.status!=200:raise ValueError('BRIDGE_HTTP_'+str(r.status))
+   if len(raw)>32768 or not hmac.compare_digest(sign(self.secret,stamp,raw),r.getheader('x-tradevice-demo-signature','')):raise ValueError('BRIDGE_INVALID_RESPONSE')
+   result=json.loads(raw)
+   if type(result.get('serverMs')) is not int or abs(time.time()*1000-result['serverMs'])>10000:raise ValueError('BRIDGE_STALE_RESPONSE')
+   return result
+  except Exception:
+   if self.connection is not None:self.connection.close()
+   self.connection=None
+   raise
+
+def heartbeat_delay(elapsed):return max(.5,1.5-elapsed)
 
 class Controller:
  def __init__(self,path,runtime,clock=time.time):
@@ -149,9 +159,11 @@ def main():
  from v51_dashboard_runtime import Runtime
  with ProcessLock(root/'read_only'/'demo_bridge.lock'):
   controller=Controller(root/'read_only'/'demo_bridge.sqlite3',Runtime(root))
+  client=ExchangeClient(secret)
   while True:
+   started=time.monotonic()
    try:
-    result=exchange(secret,controller.snapshot());controller.received(result)
+    result=client.send(controller.snapshot());controller.received(result)
    except Exception:controller.disconnected()
-   time.sleep(2)
+   time.sleep(heartbeat_delay(time.monotonic()-started))
 if __name__=='__main__':main()
