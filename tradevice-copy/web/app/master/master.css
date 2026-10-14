@@ -605,3 +605,20 @@
 @media(max-width:760px){.mt-u-preflight{grid-template-columns:1fr 1fr 1fr}.mt-u-preflight span{padding:8px 6px;font-size:9px}}
 @media(max-width:390px){.mt-u-preflight{grid-template-columns:1fr}.mt-u-preflight span{padding:9px 10px}}
 @media(prefers-reduced-motion:reduce){.mt-u-progress-bar{animation:none;width:100%;transform:none;background:#b1b1b1;opacity:.65}}
+
+/* Readable mobile metrics: labels above values, intact numbers, no squeezed columns. */
+.mt-u-datum-metric{flex-direction:column;align-items:flex-start;gap:6px;padding:13px 0}
+.mt-u-datum-metric>span{white-space:normal;line-height:1.45}
+.mt-u-datum-metric strong{max-width:100%;font-size:28px;line-height:1.15;letter-spacing:-.6px;text-align:left;font-weight:750;font-variant-numeric:tabular-nums;white-space:nowrap;overflow-wrap:normal;word-break:normal}
+.mt-u-datum small{font-size:11px;line-height:1.5;color:#999}
+@media(max-width:760px){
+ .mt-u-grid{grid-template-columns:minmax(0,1fr);gap:12px}
+ .mt-u-card{padding:18px}
+ .mt-u-card-title,.mt-u-card-title strong{font-size:14px}
+ .mt-u-detail{font-size:12px;min-height:36px}
+ .mt-u-datum{flex-direction:column;align-items:flex-start;gap:7px;padding:13px 0}
+ .mt-u-datum>span{font-size:12px;white-space:normal;line-height:1.45}
+ .mt-u-datum strong{max-width:100%;text-align:left;font-size:18px;line-height:1.3;overflow-wrap:break-word;word-break:normal}
+ .mt-u-datum-metric strong{font-size:clamp(28px,8vw,36px);line-height:1.15;white-space:nowrap;overflow-wrap:normal}
+ .mt-u-card-sub{font-size:11px;line-height:1.5}
+}

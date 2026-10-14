@@ -51,8 +51,8 @@ function Panel({title,icon,subtitle,children,go}:{
   {children}
  </section>;
 }
-function Datum({name,value}:{name:string;value:string}) {
- return <div className="mt-u-datum"><span>{name}</span><strong>{value}</strong></div>;
+function Datum({name,value,metric=false,hint}:{name:string;value:string;metric?:boolean;hint?:string}) {
+ return <div className={'mt-u-datum'+(metric?' mt-u-datum-metric':'')}><span>{name}</span><strong>{value}</strong>{hint&&<small>{hint}</small>}</div>;
 }
 export default function CompactDashboard({data,token,onNavigate,onUpdated}:{
  data:Snapshot|null;token:string;onNavigate:(tab:Details)=>void;onUpdated:()=>void;
@@ -70,6 +70,8 @@ export default function CompactDashboard({data,token,onNavigate,onUpdated}:{
  const owned=validateOwned(marketFresh?market?.ownedPositionPnl:null);
  const decision=engine.decision;
  const batch=validateBatch(data?.demoBatch??market?.demoBatch,newsClock);
+ const executedCycles=batch?batch.cycles.filter(c=>c.layers>0).length:null;
+ const usd=(value:number)=>'$'+value.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
  const newsTime=(value:number|null)=>value===null?'—':time(new Date(value).toISOString());
  const countdownTarget=calendar.status==='BLACKOUT'?calendar.blackoutUntil:calendar.nextEvent?.blackoutStart;
  const seconds=countdownTarget==null?null:Math.max(0,Math.ceil((countdownTarget-newsClock)/1000));
@@ -209,14 +211,15 @@ export default function CompactDashboard({data,token,onNavigate,onUpdated}:{
   </div>
   <div className="mt-u-grid">
     <Panel title="Overview" icon="dashboard" go={()=>onNavigate('overview')}>
-      <Datum name="Demo equity · current" value={marketFresh&&typeof market?.equity==='number'?'$'+fmt(market.equity):'—'}/>
-      <Datum name="Demo net · completed cycles" value={batch?'$'+fmt(batch.net_completed_usd):'—'}/>
-      <Datum name="Wins / losses · demo batch" value={batch?`${batch.wins} / ${batch.losses}`:'—'}/>
+      <Datum metric name="Demo Equity · Current" value={marketFresh&&typeof market?.equity==='number'?usd(market.equity):'—'}/>
+      <Datum metric name="Demo Net · Completed Cycles" value={batch?usd(batch.net_completed_usd):'—'}/>
+      <Datum metric name="Wins / Losses · Demo Batch" value={batch?`${batch.wins} / ${batch.losses}`:'—'}/>
     </Panel>
     <Panel title="Cycle Monitor" icon="repeat" go={()=>onNavigate('cycles')}>
-      <Datum name="Supervisor ticks" value={fmt(data?.master.cycles)}/>
-      <Datum name="Demo completed / requested" value={batch?`${batch.completed} / ${batch.requested}`:'—'}/>
-      <Datum name="Demo batch state" value={batch?.status||'NOT CONNECTED'}/>
+      <Datum metric name="Total Executed Cycle" value={fmt(executedCycles)} hint="Current demo batch · cycles with broker fills"/>
+      <Datum metric name="Demo Completed / Requested" value={batch?`${batch.completed} / ${batch.requested}`:'—'}/>
+      <Datum name="Demo Batch State" value={batch?.status||'NOT CONNECTED'}/>
+      <p className="mt-u-card-sub">Supervisor ticks: {fmt(data?.master.cycles)} · monitoring only</p>
     </Panel>
     <Panel title="System Health" icon="activity" go={()=>onNavigate('system')}>
       <Datum name="Member API" value={data?.infrastructure.memberApi||'UNKNOWN'}/>
