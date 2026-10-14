@@ -8,6 +8,6 @@ export function cycleProgress(raw,runtime,now=Date.now(),requestId=null){
  if(latest&&b.batch_id!=='v51_dashboard_'+latest.replaceAll('-',''))return null;
  const executed=b.cycles.some(c=>c.layers>0);
  const fresh=b.fresh&&runtime?.online===true&&Number.isSafeInteger(runtime.observedMs)&&now>=runtime.observedMs&&now-runtime.observedMs<=8000;
- return {batchId:b.batch_id,current:b.started,total:b.requested,completed:b.completed,executed,
+ return {batchId:b.batch_id,current:b.started,total:b.requested,completed:b.completed,executed,executedCount:b.cycles.filter(c=>c.layers>0).length,
   percent:100*b.completed/b.requested,fresh,active:fresh&&running&&b.status==='RUNNING',status:b.status};
 }

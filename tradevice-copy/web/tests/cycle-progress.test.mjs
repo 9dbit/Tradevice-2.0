@@ -7,3 +7,5 @@ test('current cycle and completed progress are independent: 2/10 means only 10% 
 test('active final cycle is never 100%; broker-flat completed evidence required',()=>{assert.equal(cycleProgress(batch(10),runtime,now).percent,90);assert.equal(cycleProgress(batch(10,10),runtime,now).percent,100);});
 test('stale heartbeat stops animation, does not renew observed cycle evidence',()=>{const p=cycleProgress(batch(2),runtime,now+8001);assert.equal(p.fresh,false);assert.equal(p.active,false);assert.equal(p.current,2);});
 test('new START cannot show previous batch; zero-fill reservation is not execution',()=>{assert.equal(cycleProgress(batch(2),runtime,now,'22222222-2222-4222-8222-222222222222'),null);const b=batch(1);b.cycles[0].layers=0;assert.equal(cycleProgress(b,runtime,now).executed,false);});
+
+test('stopped no-fill reservation is not an executed cycle',()=>{const b=batch(2);b.status='STOPPED';b.cycles[1].layers=0;const p=cycleProgress(b,{...runtime,state:'READY'},now);assert.equal(p.executedCount,1);assert.equal(p.current,2);});

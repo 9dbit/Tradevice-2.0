@@ -2,13 +2,13 @@ import {test,expect,type Page} from '@playwright/test';
 // Synthetic UI fixtures only. All API traffic intercepted; no broker commands.
 async function setup(page:Page){
  let canStart=true,state='READY',blocked=false;
- let demoBatch:any=null,terminalMirror:any=null;
+ let demoBatch:any=null,terminalMirror:any=null,growthHistory:any=null;
  const marketStamp=Date.now();
  const session={access_token:'fixture.admin.token',refresh_token:'fixture',token_type:'bearer',expires_in:7200,expires_at:Math.floor(Date.now()/1000)+7200,user:{id:'11111111-1111-4111-8111-111111111111',email:'admin@example.invalid',aud:'authenticated',role:'authenticated',app_metadata:{tradevice_master_admin:true}}};
  await page.addInitScript(s=>localStorage.setItem('tradevice-master-console-staging',JSON.stringify(s)),session);
  await page.route('https://scqzlcivherovlwqypeu.supabase.co/**',r=>r.fulfill({json:{user:session.user}}));
  await page.route('**/api/runtime',r=>r.fulfill({json:{configured:true,supabaseUrl:'https://scqzlcivherovlwqypeu.supabase.co',publishableKey:'sb_publishable_fixture'}}));
- await page.route('**/api/master/overview',r=>r.fulfill({json:{source:'STAGING_WORKER_TELEMETRY',environment:'staging',executionMode:'PAPER_ONLY',demoBatch,terminalMirror,market:{status:'OBSERVED_READ_ONLY',observedAt:new Date(marketStamp).toISOString(),brokerName:'Fixture broker',accountMode:'DEMO',symbol:'XAUUSDm',spreadPoints:23,atr14:7.89,positionsCount:2,pendingOrdersCount:3,equity:12345.67,margin:123.45,freeMargin:12222.22,accountCurrency:'USD'},master:{state:'DEGRADED',anomalies:0},risk:{killSwitch:'DISENGAGED'},infrastructure:{memberApi:'ONLINE',masterWorker:'ONLINE',journal:'CONNECTED',adminAuth:'VERIFIED'},activity:[],paperOrders:[],equityCurve:[],terminal:[],commands:[],queue:{queued:0,accepted:0},control:{runStatus:'STOPPED'}}}));
+ await page.route('**/api/master/overview',r=>r.fulfill({json:{source:'STAGING_WORKER_TELEMETRY',environment:'staging',executionMode:'PAPER_ONLY',demoBatch,terminalMirror,growthHistory,market:{status:'OBSERVED_READ_ONLY',observedAt:new Date(marketStamp).toISOString(),brokerName:'Fixture broker',accountMode:'DEMO',symbol:'XAUUSDm',spreadPoints:23,atr14:7.89,positionsCount:2,pendingOrdersCount:3,equity:12345.67,margin:123.45,freeMargin:12222.22,accountCurrency:'USD'},master:{state:'DEGRADED',anomalies:0},risk:{killSwitch:'DISENGAGED'},infrastructure:{memberApi:'ONLINE',masterWorker:'ONLINE',journal:'CONNECTED',adminAuth:'VERIFIED'},activity:[],paperOrders:[],equityCurve:[],terminal:[],commands:[],queue:{queued:0,accepted:0},control:{runStatus:'STOPPED'}}}));
  await page.route('**/api/master/skills',r=>r.fulfill({json:{revision:1,selectedSkillId:'fixture',skills:[{id:'fixture',name:'GoldTrap ARC V5.1',version:'5.1',description:'Synthetic UI fixture only — no trading evidence.',strategy:'PREARM_BOTH',kind:'BUILTIN',sha256:'fixture',documentation:'Fixture documentation',active:true,executionStatus:'ADAPTER_AVAILABLE'}],executionAuthorized:false,selectionScope:'STAGING_DEMO_ENGINE'}}));
  let fail=false,stamp=Date.now(),freeze=false,delay=0,concurrent=0,maxConcurrent=0;
  const posts:any[]=[];
@@ -24,7 +24,7 @@ async function setup(page:Page){
  });
  await page.goto('/master');
  await expect(page.getByLabel('Engine connection')).toHaveText('Ready');
- return {posts,setBatch:(v:any)=>demoBatch=v,setTerminal:(v:any)=>terminalMirror=v,block:()=>{canStart=false;blocked=true;},running:()=>{canStart=false;state='RUNNING';},setFail:(v:boolean)=>fail=v,freeze:()=>freeze=true,setDelay:(v:number)=>delay=v,max:()=>maxConcurrent};
+ return {posts,ready:()=>{state='READY';canStart=true;},setGrowth:(v:any)=>growthHistory=v,setBatch:(v:any)=>demoBatch=v,setTerminal:(v:any)=>terminalMirror=v,block:()=>{canStart=false;blocked=true;},running:()=>{canStart=false;state='RUNNING';},setFail:(v:boolean)=>fail=v,freeze:()=>freeze=true,setDelay:(v:number)=>delay=v,max:()=>maxConcurrent};
 }
 
 test('compact layout: five destinations, aligned status, numeric composer, System contains risk and paper',async({page})=>{
@@ -127,11 +127,38 @@ test('cycle counter, progress, fixed header and read-only terminal follow actual
  const start=await page.getByRole('button',{name:'Start Cycle',exact:true}).boundingBox(),pause=await page.getByRole('button',{name:'Pause',exact:true}).boundingBox();
  expect(start!.width).toBeGreaterThan(pause!.width*3);expect(pause!.width).toBe(pause!.height);
  await expect(page.getByRole('button',{name:'Pause',exact:true})).toHaveText('');
- await expect(page.locator('.mt-ai-connection')).toContainText('Unverified');
+ await expect(page.locator('.mt-ai-connection')).toHaveText('ChatGpt 6 Astra');
  await expect(page.getByRole('log',{name:'PowerShell engine journal'})).toContainText('2222abcd  CYCLE_STARTED  #1');
  await page.screenshot({path:'/tmp/tradevice-cycle-mobile.png',fullPage:true});
  await page.evaluate(()=>scrollTo(0,600));expect((await page.locator('.mt-topbar').boundingBox())!.y).toBe(0);
  expect(await page.locator('.mt-mobile-nav').evaluate(e=>getComputedStyle(e).backdropFilter)).toContain('blur');
  expect(await page.locator('.mt-demo-control').evaluate(e=>getComputedStyle(e).borderBottomWidth)).toBe('1px');
+ expect(f.posts).toHaveLength(0);
+});
+
+
+test('finished batch shows Reset; resetting is local and preserves history',async({page})=>{
+ const f=await setup(page),stamp=Date.now();
+ f.setBatch({schema:'tradevice.v51.demo.batch.v1',read_only:true,batch_id:'v51_dashboard_'+'a'.repeat(32),observed_ms:stamp,status:'STOPPED',requested:10,blockers:[],cycles:Array.from({length:10},(_,i)=>({number:i+1,cycle_id:(i+1).toString(16).padStart(8,'0'),outcome:'COMPLETE_TARGET_HISTORY',broker_flat:true,layers:2,peak_lots:.03,net_usd:3.5}))});
+ await expect(page.getByLabel('Current cycle',{exact:true})).toHaveText('10/10',{timeout:15000});
+ await expect(page.getByRole('progressbar',{name:'Completed cycles'})).toHaveAttribute('aria-valuenow','10');
+ await page.getByRole('button',{name:'Reset',exact:true}).click();
+ await expect(page.getByRole('button',{name:'Start Cycle',exact:true})).toBeVisible();
+ await expect(page.getByLabel('Demo cycle count')).toHaveValue('10');
+ await expect(page.locator('.mt-summary')).toContainText('10 / 10');
+ await page.waitForTimeout(5500);await expect(page.getByRole('button',{name:'Start Cycle',exact:true})).toBeVisible();
+ expect(f.posts).toHaveLength(0);
+});
+
+test('growth chart filters actual timestamped fixtures and remains usable on mobile',async({page})=>{
+ const f=await setup(page),now=Date.now();
+ f.setGrowth({schema:'tradevice.growth.v1',source:'TRADEVICEPC_V51_COMPLETED_JOURNALS',readOnly:true,observedMs:now,status:'AVAILABLE',coverageStartMs:now-400*86400000,currency:'USD',rows:[{cycleId:'1111abcd',closedMs:now-2*86400000,netUsd:3.5},{cycleId:'2222abcd',closedMs:now-1800000,netUsd:-120.5},{cycleId:'3333abcd',closedMs:now-60000,netUsd:3.5}]});
+ await expect(page.locator('.mt-growth-value strong')).toHaveText('-$117.00',{timeout:15000});
+ await page.getByRole('button',{name:'Week',exact:true}).click();await expect(page.locator('.mt-growth-value strong')).toHaveText('-$113.50');
+ const g=await page.locator('.mt-growth').boundingBox(),o=await page.locator('.mt-summary').boundingBox();expect(g!.y).toBeLessThan(o!.y);
+ await page.getByRole('button',{name:'Duration',exact:true}).click();await expect(page.getByLabel('Growth from WIB')).toBeVisible();
+ for(const width of [320,390,1440]){await page.setViewportSize({width,height:844});expect(await page.evaluate(()=>document.documentElement.scrollWidth-innerWidth)).toBeLessThanOrEqual(1);}
+ await page.setViewportSize({width:390,height:844});await page.getByRole('button',{name:'Week',exact:true}).click();await page.screenshot({path:'/tmp/tradevice-growth-mobile.png',fullPage:true});
+ await expect(page.getByLabel('Inspect completed cycle')).toHaveAttribute('max','2');
  expect(f.posts).toHaveLength(0);
 });

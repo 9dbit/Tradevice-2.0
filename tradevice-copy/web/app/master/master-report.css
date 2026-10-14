@@ -302,3 +302,17 @@
 .mt-terminal-heading{font-size:12px}.mt-terminal-heading strong{color:#f18c45}.mt-terminal-heading span{font-size:10px;color:#999}.mt-terminal-heading span[data-live=true]{color:#77cf9a}
 .mt-terminal-mirror pre{max-height:240px;min-height:110px;overflow:auto;background:#0c0d0e;color:#b7c5bd;padding:12px 8px;font:10px/1.8 ui-monospace,SFMono-Regular,Consolas,monospace;white-space:pre;tab-size:2;border-radius:5px;scrollbar-width:thin}
 .mt-terminal-footer{font-size:9px;color:#888}.mt-terminal-footer button{color:#aaa;background:none;border:0;font-size:10px;cursor:pointer;white-space:nowrap}.mt-terminal-footer button[aria-pressed=true]{color:#f18c45}
+
+.mt-ai-connection.mt-ai-label{background:#16884b;color:#fff;font-weight:650}
+.mt-report .mt-growth{grid-column:1/-1;min-width:0}
+.mt-growth-filters{display:flex;gap:5px;margin:4px 0 16px;flex-wrap:wrap}
+.mt-growth-filters button{flex:1;min-width:0;min-height:32px;padding:6px 9px;border:0;border-radius:99px;background:transparent;color:#999;font-size:11px;cursor:pointer}
+.mt-growth-filters button[aria-pressed=true]{background:#ffffff12;color:#ff923d}
+.mt-growth-value{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap}.mt-growth-value strong{font-size:30px;color:#ff923d;font-variant-numeric:tabular-nums}.mt-growth-value span{color:#888;font-size:11px}
+.mt-growth-chart{display:block;width:100%;height:auto;max-height:260px;overflow:visible;margin-top:8px}
+.mt-growth-detail{display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;font-size:10px;color:#999}.mt-growth-detail strong{color:#ff923d}
+.mt-growth-inspect{width:100%;height:16px;accent-color:#ff923d;margin:4px 0 8px}
+.mt-growth-range{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:0 0 16px}.mt-growth-range label{font-size:10px;color:#999;min-width:0}.mt-growth-range input{display:block;width:100%;min-width:0;box-sizing:border-box;background:#171717;color:#eee;border:0;border-radius:6px;padding:8px 5px;font-size:12px;margin-top:5px;color-scheme:dark}
+.mt-growth-empty{padding:30px 0;color:#888;font-size:12px}
+@media(max-width:760px){.mt-growth-filters{gap:1px}.mt-growth-filters button{padding:6px 4px;font-size:10px}.mt-growth-range{grid-template-columns:1fr}.mt-growth-range input{font-size:16px}}
+@media(min-width:1100px){.mt-report .mt-dense-dashboard>.mt-demo-control{grid-column:1/-1}}

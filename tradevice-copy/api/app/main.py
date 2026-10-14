@@ -17,7 +17,7 @@ from .master_control import allowed_operator_dsn,submit_command,validate_command
 from .news_calendar import NewsCalendar
 from .bridge_calendar import BridgeCalendar
 from .master_skills import registry, SkillError, MAX_BODY, json_object
-from . import demo_control,terminal_mirror
+from . import demo_control,terminal_mirror,growth_history
 
 import httpx
 from fastapi import Depends, FastAPI, HTTPException, Query, Request
@@ -129,6 +129,7 @@ def create_app(settings: Settings | None = None, transport: httpx.AsyncBaseTrans
     application.state.observer_market = ObserverBuffer()
     application.state.news_calendar = BridgeCalendar()
     application.state.terminal_mirror = terminal_mirror.TerminalBuffer()
+    application.state.growth_history = growth_history.GrowthBuffer()
     if settings.cors_origins:
         application.add_middleware(CORSMiddleware, allow_origins=list(settings.cors_origins),
                                    allow_methods=["GET", "POST"], allow_headers=["Authorization", "Content-Type"])
@@ -196,6 +197,24 @@ def create_app(settings: Settings | None = None, transport: httpx.AsyncBaseTrans
             answer["demoBatchAck"] = {"batch_id": batch["batch_id"], "observed_ms": batch["observed_ms"], "completed": batch["completed"]}
         return answer
 
+    @application.post('/internal/master/growth', status_code=202)
+    async def internal_growth_history(request: Request):
+        if settings.environment!='staging' or settings.project_ref!='scqzlcivherovlwqypeu':
+            raise problem(503,'MASTER_STAGING_ONLY')
+        secret=os.getenv('MASTER_OBSERVER_SHARED_SECRET','')
+        if not re.fullmatch('[a-f0-9]{64}',secret):raise problem(503,'GROWTH_NOT_CONFIGURED')
+        body=bytearray()
+        async for chunk in request.stream():
+            body.extend(chunk)
+            if len(body)>growth_history.MAX_BODY:raise problem(413,'GROWTH_BODY_TOO_LARGE')
+        now=int(time.time()*1000)
+        try:growth_history.authenticate(secret,request.headers.get('x-tradevice-growth-time',''),request.headers.get('x-tradevice-growth-signature',''),bytes(body),now)
+        except ValueError:raise problem(401,'GROWTH_AUTH_DENIED') from None
+        try:accepted=application.state.growth_history.receive(bytes(body),now)
+        except OverflowError:raise problem(429,'GROWTH_RATE_LIMIT') from None
+        except (ValueError,TypeError,KeyError):raise problem(422,'GROWTH_INVALID_REPORT') from None
+        return {'status':'ACCEPTED_READ_ONLY','observedMs':accepted}
+
     @application.post('/internal/master/terminal', status_code=202)
     async def internal_terminal_viewer(request: Request):
         if settings.environment!='staging' or settings.project_ref!='scqzlcivherovlwqypeu':
@@ -233,6 +252,7 @@ def create_app(settings: Settings | None = None, transport: httpx.AsyncBaseTrans
             payload["market"] = application.state.observer_market.market(int(time.time()*1000))
             payload["demoBatch"] = application.state.observer_market.batch(int(time.time()*1000))
             payload["news"] = application.state.news_calendar.projection()
+            payload["growthHistory"] = application.state.growth_history.projection(int(time.time()*1000))
             payload["terminalMirror"] = application.state.terminal_mirror.projection(int(time.time()*1000))
             payload["control"]["operatorConfigured"] = allowed_operator_dsn(
                 os.getenv("MASTER_OPERATOR_DATABASE_URL",""))

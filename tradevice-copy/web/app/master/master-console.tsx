@@ -43,6 +43,7 @@ export type Snapshot = {
     operatorConfigured:boolean;quotesReady:boolean;brokerReady:boolean;newsCalendarReady:boolean;
   };
   terminalMirror?:unknown;
+  growthHistory?:unknown;
   terminal?: Array<{id:string;at:string;source:string;severity:'info'|'warning'|'critical';kind:string;message:string}>;
   commands?: Array<{id:string;requestId:string|null;action:string;status:string;errorCode:string|null;at:string|null}>;
 };
@@ -257,7 +258,7 @@ export default function MasterConsole() {
           <button type="button" className="mt-logout" onClick={()=>void signOut()} aria-label="Sign out"><Glyph name="logout" size={18}/></button></div>
       </header>
       <main id="mt-main" className="mt-main mt-report">
-        <div className="mt-page-header"><h1>{roleTitle}</h1>{tab==='dashboard'&&<span className="mt-ai-connection" data-connected="false" title="No authenticated AI connection or model identity is reported by the engine.">ChatGPT 6 Astra <span>Unverified</span></span>}</div>
+        <div className="mt-page-header"><h1>{roleTitle}</h1>{tab==='dashboard'&&<span className="mt-ai-connection mt-ai-label" title="Display label; does not indicate a verified AI connection.">ChatGpt 6 Astra</span>}</div>
         {message&&auth==='authorized'&&!data&&<div role="alert" className="mt-disclosure">
           <Glyph name="alert" size={20}/><div><strong>TELEMETRY TEMPORARILY UNAVAILABLE</strong>
             <span>{message} Trading controls are disabled until the connection recovers.</span></div>

@@ -18,7 +18,7 @@ export function useDemoRuntime(token:string){
  return {runtime,refresh};
 }
 export default function DemoControl({token,runtime,refresh,now,batchRaw}:{token:string;runtime:DemoRuntime|null;refresh:()=>void;now:number;batchRaw?:unknown}){
- const [count,setCount]=useState('1'),[pending,setPending]=useState(false),[configure,setConfigure]=useState(false);
+ const [count,setCount]=useState('1'),[pending,setPending]=useState(false),[resetBatch,setResetBatch]=useState<string|null>(null);
  const [request,setRequest]=useState<{id:string;action:string;phase:string;error?:string}|null>(null);
  const evidenceNow=Math.max(now,Date.now());
  const fresh=runtime?.online===true&&runtime.observedMs!==null&&evidenceNow-runtime.observedMs>=0&&evidenceNow-runtime.observedMs<=8000;
@@ -34,7 +34,7 @@ export default function DemoControl({token,runtime,refresh,now,batchRaw}:{token:
   if(pending||!fresh)return;
   const target=Number(count);
   if(action==='START'&&(!runtime?.canStart||busy||!Number.isInteger(target)||target<1||target>10))return;
-  const id=crypto.randomUUID();if(action==='START')setConfigure(false);setPending(true);setRequest({id,action,phase:'SENDING'});
+  const id=crypto.randomUUID();if(action==='START')setResetBatch(null);setPending(true);setRequest({id,action,phase:'SENDING'});
   try{
    const r=await fetch('/api/master/demo',{method:'POST',headers:{Authorization:'Bearer '+token,'content-type':'application/json'},
     body:JSON.stringify({requestId:id,action,targetCycles:action==='START'?target:null,confirmDemo:action==='START',expectedRevision:runtime?.revision}),signal:AbortSignal.timeout(12000)});
@@ -46,24 +46,28 @@ export default function DemoControl({token,runtime,refresh,now,batchRaw}:{token:
   finally{setPending(false);}
  }
  const progress=cycleProgress(batchRaw,runtime,evidenceNow,request?.action==='START'&&!['REJECTED','EXPIRED'].includes(request.phase)?request.id:null);
- const showCycle=progress?.executed&&!configure;
+ const showCycle=progress?.executed&&(resetBatch!==progress.batchId||['STARTING','RUNNING','PAUSING','PAUSED','STOPPING'].includes(runtime?.state||''));
  const runtimeRunning=['STARTING','RUNNING','PAUSING','PAUSED','STOPPING'].includes(runtime?.state||'');
+ const ended=!!progress&&['COMPLETED','STOPPED','SAFETY_STOP','BLOCKED'].includes(progress.status)&&!runtimeRunning;
+ const showReset=!!showCycle&&ended;
+ function resetComposer(){if(!showReset||busy)return;setResetBatch(progress!.batchId);setCount(String(progress!.total));setRequest(null);}
+ const displayedProgress=resetBatch===progress?.batchId&&!runtimeRunning?null:progress;
  const verifiedCount=preflightChecks.filter(([key])=>fresh&&runtime?.checks[key]===true).length;
  const status=!fresh?'Stale':runtime?.canStart?'Ready':({STARTING:'Starting',RUNNING:'Running',PAUSING:'Pausing',PAUSED:'Paused',STOPPING:'Stopping'} as Record<string,string>)[runtime?.state||'']||'Blocked';
  const blocker=!fresh?'Engine heartbeat unavailable':runtime?.canStart?'':runtime?.blockers.join(' · ')||(['STARTING','RUNNING','PAUSING','PAUSED','STOPPING'].includes(runtime?.state||'')?'':'Preflight incomplete');
  return <section className="mt-u-panel mt-demo-control" aria-labelledby="demo-control-title">
   <div className="mt-u-panel-head mt-demo-heading"><h2 id="demo-control-title"><I name="repeat"/> Trading Cycle</h2><strong aria-label="Engine connection" data-state={status}>{status}</strong></div>
-  <div className="mt-demo-inputs"><label htmlFor={showCycle?undefined:'demo-cycle-count'}>{showCycle?'Current cycle':'Cycle count'}<small>Demo · XAUUSDm{showCycle?(progress?.fresh?'':' · Last reported'):' · 1–10'}</small></label>
-   {showCycle?<output className="mt-current-cycle" aria-label="Current cycle">{progress!.current}/{progress!.total}</output>:<input id="demo-cycle-count" aria-label="Demo cycle count" type="text" inputMode="numeric" pattern="[0-9]*" maxLength={2} value={count} disabled={busy||runtimeRunning} onChange={e=>setCount(e.target.value.replace(/\D/g,''))}/>}
+  <div className="mt-demo-inputs"><label htmlFor={showCycle?undefined:'demo-cycle-count'}>{showCycle?(ended?'Executed cycles':'Current cycle'):'Cycle count'}<small>Demo · XAUUSDm{showCycle?(progress?.fresh?'':' · Last reported'):' · 1–10'}</small></label>
+   {showCycle?<output className="mt-current-cycle" aria-label="Current cycle">{ended?progress!.executedCount:progress!.current}/{progress!.total}</output>:<input id="demo-cycle-count" aria-label="Demo cycle count" type="text" inputMode="numeric" pattern="[0-9]*" maxLength={2} value={count} disabled={busy||runtimeRunning} onChange={e=>setCount(e.target.value.replace(/\D/g,''))}/>}
   </div>
   <div className="mt-u-buttons">
-   <button className="mt-u-primary" type="button" disabled={!!showCycle||!fresh||!runtime?.canStart||busy||!/^([1-9]|10)$/.test(count)} onClick={()=>void send('START')}><I name="play" size={15}/>Start Cycle</button>
+   <button className="mt-u-primary" type="button" disabled={showReset?busy:!!showCycle||!fresh||!runtime?.canStart||busy||!/^([1-9]|10)$/.test(count)} onClick={()=>showReset?resetComposer():void send('START')}><I name={showReset?"repeat":"play"} size={15}/>{showReset?'Reset':'Start Cycle'}</button>
    <button className="mt-u-secondary mt-cycle-icon" type="button" aria-label="Pause" title="Pause" disabled={!fresh||pending||!['STARTING','RUNNING'].includes(runtime?.state||'')} onClick={()=>void send('PAUSE')}><I name="pause" size={19}/></button>
    <button className="mt-u-secondary mt-cycle-icon" type="button" aria-label="Stop" title="Stop" disabled={!fresh||pending||!['STARTING','RUNNING','PAUSING','PAUSED'].includes(runtime?.state||'')} onClick={()=>void send('STOP')}><I name="stop" size={19}/></button>
   </div>
-  <div className="mt-cycle-progress" data-running={progress?.active===true} data-stale={progress?!progress.fresh:false}>
-   <div className="mt-cycle-track" role="progressbar" aria-label="Completed cycles" aria-valuemin={0} aria-valuemax={progress?.total??10} {...(progress?{'aria-valuenow':progress.completed}:{})} aria-valuetext={progress?`${progress.completed} of ${progress.total} completed${progress.fresh?'':' · last reported'}`:'Awaiting batch evidence'}><span style={{width:(progress?.percent??0)+'%'}}/>{progress?.active&&<i aria-hidden="true" style={{left:(Math.min(progress.percent,97))+'%'}}/>}</div>
-   <div className="mt-cycle-progress-meta"><small>{progress?`${progress.completed} / ${progress.total} completed`:'Awaiting batch evidence'}</small>{showCycle&&!runtimeRunning&&!busy&&<button type="button" onClick={()=>setConfigure(true)}>New batch</button>}</div>
+  <div className="mt-cycle-progress" data-running={displayedProgress?.active===true} data-stale={displayedProgress?!displayedProgress.fresh:false}>
+   <div className="mt-cycle-track" role="progressbar" aria-label="Completed cycles" aria-valuemin={0} aria-valuemax={displayedProgress?.total??10} {...(displayedProgress?{'aria-valuenow':displayedProgress.completed}:{})} aria-valuetext={displayedProgress?`${displayedProgress.completed} of ${displayedProgress.total} completed${displayedProgress.fresh?'':' · last reported'}`:'Awaiting batch evidence'}><span style={{width:(displayedProgress?.percent??0)+'%'}}/>{displayedProgress?.active&&<i aria-hidden="true" style={{left:(Math.min(displayedProgress.percent,97))+'%'}}/>}</div>
+   <div className="mt-cycle-progress-meta"><small>{displayedProgress?`${displayedProgress.completed} / ${displayedProgress.total} completed`:'Awaiting batch evidence'}</small></div>
   </div>
   {blocker&&<p className="mt-inline-blocker"><I name="alert" size={14}/><span>{blocker}</span></p>}
   <ReportDrawer title="Preflight" meta={`${verifiedCount} / ${preflightChecks.length}`}>

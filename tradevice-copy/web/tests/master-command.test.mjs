@@ -72,7 +72,7 @@ test('demo start is finite and authorized by explicit Start click',()=>{
  assert.match(demo,/target<1\|\|target>10/);
  assert.match(demo,/confirmDemo:action==='START'/);
  assert.doesNotMatch(demo,/Saya mengizinkan|type="checkbox"/);
- assert.match(demo,/onClick=\{\(\)=>void send\('START'\)\}/);
+ assert.match(demo,/onClick=\{\(\)=>showReset\?resetComposer\(\):void send\('START'\)\}/);
  assert.match(demo,/!runtime\?\.canStart/);
  assert.match(dashboard,/mt-u-diagnostic/);
 });

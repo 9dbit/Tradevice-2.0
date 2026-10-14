@@ -3,6 +3,7 @@ import {useEffect,useMemo,useState} from 'react';
 import type {Snapshot} from './master-console';
 import {validateEngine,validateOwned} from '../../lib/engine-diagnostics.mjs';
 import {validateBatch} from '../../lib/demo-batch.mjs';
+import GrowthChart from './growth-chart';
 import TerminalMirror from './terminal-mirror';
 import SkillManager from './skill-manager';
 import DemoControl,{useDemoRuntime} from './demo-control';
@@ -50,6 +51,7 @@ export default function CompactDashboard({data,token,onNavigate}:{
    <div><strong>Telemetry unavailable</strong><p>{diagnostic}</p></div></div>}
   <DemoControl token={token} runtime={demoRuntime} refresh={refreshDemo} now={now} batchRaw={data?.demoBatch??data?.market?.demoBatch}/>
 
+  <GrowthChart raw={data?.growthHistory} now={now}/>
   <section className="mt-u-panel mt-summary" aria-labelledby="summary-title">
    <div className="mt-u-panel-head"><h2 id="summary-title"><I name="dashboard"/> Overview</h2>
     <button className="mt-u-detail" type="button" onClick={()=>onNavigate('overview')}>Detail <I name="arrow" size={14}/></button></div>

@@ -3,6 +3,7 @@ export interface MasterWorkerSnapshot {
  source:'STAGING_WORKER_TELEMETRY';
  observedAt:string;
  demoBatch:DemoBatch|null;
+ growthHistory:import('./growth-history.mjs').GrowthHistory|null;
  terminalMirror:import('./terminal-mirror.mjs').TerminalMirror|null;
  executionMode:'PAPER_ONLY';
  master:{id:string|null;state:string;heartbeatAt:string|null;lastCycleAt:string|null;
