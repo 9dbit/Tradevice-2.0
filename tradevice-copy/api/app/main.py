@@ -17,7 +17,7 @@ from .master_control import allowed_operator_dsn,submit_command,validate_command
 from .news_calendar import NewsCalendar
 from .bridge_calendar import BridgeCalendar
 from .master_skills import registry, SkillError, MAX_BODY, json_object
-from . import demo_control
+from . import demo_control,terminal_mirror
 
 import httpx
 from fastapi import Depends, FastAPI, HTTPException, Query, Request
@@ -128,6 +128,7 @@ def create_app(settings: Settings | None = None, transport: httpx.AsyncBaseTrans
     # Ephemeral, single-instance staging market DISPLAY cache. No database writes.
     application.state.observer_market = ObserverBuffer()
     application.state.news_calendar = BridgeCalendar()
+    application.state.terminal_mirror = terminal_mirror.TerminalBuffer()
     if settings.cors_origins:
         application.add_middleware(CORSMiddleware, allow_origins=list(settings.cors_origins),
                                    allow_methods=["GET", "POST"], allow_headers=["Authorization", "Content-Type"])
@@ -195,6 +196,24 @@ def create_app(settings: Settings | None = None, transport: httpx.AsyncBaseTrans
             answer["demoBatchAck"] = {"batch_id": batch["batch_id"], "observed_ms": batch["observed_ms"], "completed": batch["completed"]}
         return answer
 
+    @application.post('/internal/master/terminal', status_code=202)
+    async def internal_terminal_viewer(request: Request):
+        if settings.environment!='staging' or settings.project_ref!='scqzlcivherovlwqypeu':
+            raise problem(503,'MASTER_STAGING_ONLY')
+        secret=os.getenv('MASTER_OBSERVER_SHARED_SECRET','')
+        if not re.fullmatch('[a-f0-9]{64}',secret):raise problem(503,'TERMINAL_NOT_CONFIGURED')
+        body=bytearray()
+        async for chunk in request.stream():
+            body.extend(chunk)
+            if len(body)>terminal_mirror.MAX_BODY:raise problem(413,'TERMINAL_BODY_TOO_LARGE')
+        now=int(time.time()*1000)
+        try:terminal_mirror.authenticate(secret,request.headers.get('x-tradevice-terminal-time',''),request.headers.get('x-tradevice-terminal-signature',''),bytes(body),now)
+        except ValueError:raise problem(401,'TERMINAL_AUTH_DENIED') from None
+        try:application.state.terminal_mirror.receive(bytes(body),now)
+        except OverflowError:raise problem(429,'TERMINAL_RATE_LIMIT') from None
+        except (ValueError,TypeError,KeyError):raise problem(422,'TERMINAL_INVALID_REPORT') from None
+        return {'status':'ACCEPTED_READ_ONLY','observedMs':application.state.terminal_mirror.projection(now)['observedMs']}
+
     @application.get("/internal/master/telemetry")
     async def internal_master_telemetry(request: Request):
         # Authenticated server-to-server access ONLY, never forwarded to browser or member routes.
@@ -214,6 +233,7 @@ def create_app(settings: Settings | None = None, transport: httpx.AsyncBaseTrans
             payload["market"] = application.state.observer_market.market(int(time.time()*1000))
             payload["demoBatch"] = application.state.observer_market.batch(int(time.time()*1000))
             payload["news"] = application.state.news_calendar.projection()
+            payload["terminalMirror"] = application.state.terminal_mirror.projection(int(time.time()*1000))
             payload["control"]["operatorConfigured"] = allowed_operator_dsn(
                 os.getenv("MASTER_OPERATOR_DATABASE_URL",""))
             return payload

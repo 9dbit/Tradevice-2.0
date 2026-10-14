@@ -8,12 +8,12 @@ type Skill={id:string;name:string;version:string;description:string;strategy:str
 type SaveProgress={phase:'SAVING'|'WAITING_ENGINE'|'CONFIRMED'|'FAILED'|'UNCERTAIN';percent:number;label:string};
 type Catalog={revision:number;selectedSkillId:string|null;skills:Skill[];executionAuthorized:false;selectionScope:string};
 const messages:Record<string,string>={
- SKILL_ENGINE_OFFLINE:'Engine belum terhubung. Tunggu status Ready.',
- SKILL_REVISION_CONFLICT:'Pilihan berubah di tab lain. Daftar sudah diperbarui; periksa sebelum mencoba lagi.',
- SKILL_VERSION_ALREADY_EXISTS:'Nama dan versi ini sudah ada dengan isi berbeda. Naikkan versi pada manifest.',
- SKILL_RATE_LIMIT:'Terlalu banyak perubahan. Tunggu satu menit.',
- SKILL_UPLOAD_TOO_LARGE:'Ukuran maksimum 512 KB.',
- SKILL_ARCHIVE_REQUIRES_ONE_SKILL_MD:'ZIP harus berisi tepat satu SKILL.md.',
+ SKILL_ENGINE_OFFLINE:'Engine unavailable. Wait for Ready.',
+ SKILL_REVISION_CONFLICT:'Selection changed in another tab. Review the refreshed list before retrying.',
+ SKILL_VERSION_ALREADY_EXISTS:'This name and version already exist with different content. Update the manifest version.',
+ SKILL_RATE_LIMIT:'Too many changes. Wait one minute.',
+ SKILL_UPLOAD_TOO_LARGE:'Maximum size: 512 KB.',
+ SKILL_ARCHIVE_REQUIRES_ONE_SKILL_MD:'ZIP must contain exactly one SKILL.md.',
 };
 export default function SkillManager({token,engineRaw,now,activation}:{token:string|null;engineRaw:unknown;now:number;activation?:DemoRuntime|null}){
  const [catalog,setCatalog]=useState<Catalog|null>(null),[busy,setBusy]=useState(false),[error,setError]=useState(''),[notice,setNotice]=useState('');
@@ -51,14 +51,14 @@ export default function SkillManager({token,engineRaw,now,activation}:{token:str
  async function mutate(body:Record<string,unknown>){
   if(!token||pending.current)return;const id=generation.current;pending.current=true;setBusy(true);setError('');setNotice('');
   percentRef.current=0;setAnimatedPercent(0);
-  setProgress({phase:'SAVING',percent:25,label:body.action==='SELECT'?'Mengirim perubahan pilihan…':'Mengirim paket skill…'});
+  setProgress({phase:'SAVING',percent:25,label:body.action==='SELECT'?'Sending selection…':'Uploading skill…'});
   let rejected=false,waiting=false;
   try{
    const response=fetch('/api/master/skills',{method:'POST',headers:{Authorization:'Bearer '+token,'content-type':'application/json'},body:JSON.stringify(body),signal:AbortSignal.timeout(15000)});
-   setProgress({phase:'SAVING',percent:50,label:'Menunggu konfirmasi server…'});
+   setProgress({phase:'SAVING',percent:50,label:'Awaiting server confirmation…'});
    const r=await response;if(id!==generation.current)return;
    rejected=r.status>=400&&r.status<500;
-   setProgress({phase:'SAVING',percent:75,label:'Memeriksa respons server…'});
+   setProgress({phase:'SAVING',percent:75,label:'Validating server response…'});
    const data=await r.json();if(id!==generation.current)return;
    if(!r.ok)throw new Error(data?.detail?.code||'MASTER_SKILLS_UNAVAILABLE');
    const selected=data.skills?.filter((s:Skill)=>s.active);
@@ -70,11 +70,11 @@ export default function SkillManager({token,engineRaw,now,activation}:{token:str
    setCatalog(data);setLoadedAt(Date.now());
    if(body.action==='SELECT'){
     waiting=true;setAwaiting({id:data.selectedSkillId,revision:data.revision,hash:selected[0]?.sha256||null,at:Date.now()});
-    setProgress({phase:'WAITING_ENGINE',percent:75,label:'Pilihan tersimpan · menunggu engine memuat skill…'});
-   }else setProgress({phase:'CONFIRMED',percent:100,label:'Paket tersimpan · OFF'});
-   setNotice(body.action==='UPLOAD'?(data.uploadStatus==='ALREADY_UPLOADED'?'Paket ini sudah tersimpan.':'Skill tersimpan dalam keadaan OFF.'):'Pilihan tersimpan. Belum ada konfirmasi aktivasi dari engine.');
+    setProgress({phase:'WAITING_ENGINE',percent:75,label:'Selection saved · awaiting engine activation…'});
+   }else setProgress({phase:'CONFIRMED',percent:100,label:'Package saved · OFF'});
+   setNotice(body.action==='UPLOAD'?(data.uploadStatus==='ALREADY_UPLOADED'?'Package already saved.':'Skill saved · OFF.'):'Selection saved. Engine activation not yet confirmed.');
   }catch(e){if(id===generation.current){
-   setProgress(current=>({phase:rejected?'FAILED':'UNCERTAIN',percent:Math.min(current?.percent??0,75),label:rejected?'Perubahan ditolak server':'Konfirmasi belum diterima · periksa status pilihan'}));
+   setProgress(current=>({phase:rejected?'FAILED':'UNCERTAIN',percent:Math.min(current?.percent??0,75),label:rejected?'Change rejected by server':'No confirmation · check selection status'}));
    await refresh();
    if(id===generation.current)setError(e instanceof Error?e.message:'MASTER_SKILLS_UNAVAILABLE');
   }}
@@ -83,20 +83,20 @@ export default function SkillManager({token,engineRaw,now,activation}:{token:str
  useEffect(()=>{
   if(!awaiting)return;
   if(activationFresh&&activation?.revision===awaiting.revision&&activation.activeSkillId===awaiting.id&&activation.activeHash===awaiting.hash){
-   setProgress({phase:'CONFIRMED',percent:100,label:awaiting.id?'Skill aktif · engine mengonfirmasi fingerprint':'Skill OFF · engine mengonfirmasi'});
-   setNotice(awaiting.id?'Engine memuat skill. Gunakan Start Cycle setelah preflight dan konfirmasi demo.':'Skill dinonaktifkan.');
+   setProgress({phase:'CONFIRMED',percent:100,label:awaiting.id?'Skill active · engine fingerprint confirmed':'Skill OFF · engine confirmed'});
+   setNotice(awaiting.id?'Engine loaded the skill. Start Cycle requires verified preflight and explicit demo authorization.':'Skill deactivated.');
    setAwaiting(null);pending.current=false;setBusy(false);
   }else if(now-awaiting.at>30000){
-   setProgress({phase:'UNCERTAIN',percent:75,label:'Konfirmasi engine belum diterima'});setAwaiting(null);pending.current=false;setBusy(false);
-   setError('Aktivasi belum dikonfirmasi. Periksa status engine sebelum mencoba lagi.');
+   setProgress({phase:'UNCERTAIN',percent:75,label:'Engine confirmation pending'});setAwaiting(null);pending.current=false;setBusy(false);
+   setError('Activation unconfirmed. Check engine status before retrying.');
   }
  },[awaiting,activation,activationFresh,now]);
  async function upload(f:File){
   if(f.size>524288){setError('SKILL_UPLOAD_TOO_LARGE');return;}
-  if(!/\.(zip|json)$/i.test(f.name)){setError('Gunakan file .zip atau .json.');return;}
+  if(!/\.(zip|json)$/i.test(f.name)){setError('Use a .zip or .json file.');return;}
   try{const bytes=new Uint8Array(await f.arrayBuffer());let binary='';for(const byte of bytes)binary+=String.fromCharCode(byte);
    await mutate({action:'UPLOAD',filename:f.name,contentBase64:btoa(binary)});
-  }catch{setError('File tidak dapat dibaca.');}
+  }catch{setError('Unable to read file.');}
  }
  const selected=catalog?.skills.find(s=>s.id===catalog.selectedSkillId);
  return <section className="mt-u-card mt-skills" aria-labelledby="skill-heading">
@@ -104,26 +104,26 @@ export default function SkillManager({token,engineRaw,now,activation}:{token:str
    <button type="button" disabled={!token||busy||!fresh} onClick={()=>file.current?.click()}>Upload skill</button>
    <input ref={file} type="file" hidden accept=".zip,.json" onChange={e=>{const f=e.target.files?.[0];e.target.value='';if(f)void upload(f);}}/>
   </div>
-  <p className="mt-compact-note">{!fresh?'Pilihan belum terverifikasi':selected?(activationFresh&&activation?.activeSkillId===selected.id&&activation?.activeHash===selected.sha256?'Engine memuat skill':'Menunggu konfirmasi engine'):'Semua OFF'} · maks. 1 aktif</p>
+  <p className="mt-compact-note">{!fresh?'Selection unverified':selected?(activationFresh&&activation?.activeSkillId===selected.id&&activation?.activeHash===selected.sha256?'Engine loaded skill':'Awaiting engine confirmation'):'All OFF'} · max. 1 active</p>
   <div aria-live="polite">{notice&&<p className="mt-skill-notice">{notice}</p>}{error&&<p role="alert" className="mt-skill-error">{messages[error]||error}</p>}</div>
   {progress&&<div className="mt-skill-progress" data-phase={progress.phase} aria-busy={busy}>
    <div className="mt-skill-progress-heading"><span id="skill-save-help" role="status" aria-live="polite">{progress.label}</span><strong aria-hidden="true">{animatedPercent}%</strong></div>
-   <div className="mt-skill-progress-track" role="progressbar" aria-label="Progres penyimpanan pilihan skill" aria-valuemin={0} aria-valuemax={100} aria-valuenow={progress.percent} aria-valuetext={progress.label}>
+   <div className="mt-skill-progress-track" role="progressbar" aria-label="Skill selection progress" aria-valuemin={0} aria-valuemax={100} aria-valuenow={progress.percent} aria-valuetext={progress.label}>
     <span style={{width:animatedPercent+'%'}}/>
    </div>
 
   </div>}
-  {!catalog&&<p>Daftar skill belum tersedia. <button type="button" onClick={()=>void refresh()}>Coba lagi</button></p>}
+  {!catalog&&<p>Skill list unavailable. <button type="button" onClick={()=>void refresh()}>Retry</button></p>}
   <div className="mt-skill-list">{catalog?.skills.map(skill=><article key={skill.id} className={'mt-skill-item'+(fresh&&skill.active?' is-selected':'')}>
-   <div className="mt-skill-item-top"><div><h3>{skill.name}</h3><span>v{skill.version} · {skill.kind==='BUILTIN'?'Kandidat bawaan':'Paket upload'}</span></div>
-    <button type="button" role="switch" aria-checked={activationFresh&&activation?.activeSkillId===skill.id} aria-label={'Pilih '+skill.name+' versi '+skill.version} disabled={busy||!fresh||(!skill.active&&skill.executionStatus!=='ADAPTER_AVAILABLE')}
+   <div className="mt-skill-item-top"><div><h3>{skill.name}</h3><span>v{skill.version} · {skill.kind==='BUILTIN'?'Built-in candidate':'Uploaded package'}</span></div>
+    <button type="button" role="switch" aria-checked={activationFresh&&activation?.activeSkillId===skill.id} aria-label={'Select '+skill.name+' version '+skill.version} disabled={busy||!fresh||(!skill.active&&skill.executionStatus!=='ADAPTER_AVAILABLE')}
      onClick={()=>void mutate({action:'SELECT',skillId:skill.active?null:skill.id,expectedRevision:catalog.revision})} className="mt-skill-toggle mt-skill-slider" aria-busy={busy} aria-describedby={progress?'skill-save-help':undefined}><span className="mt-skill-slider-label">{activationFresh?(activation?.activeSkillId===skill.id?'ON':'OFF'):'—'}</span><span className="mt-skill-slider-thumb" aria-hidden="true">{busy&&<span className="mt-skill-slider-spinner"/>}</span></button></div>
-   {skill.executionStatus!=='ADAPTER_AVAILABLE'&&<small>Adapter engine belum disetujui.</small>}
-   <ReportDrawer title="Informasi skill & fingerprint"><p>{skill.description}</p><p>Strategi: {skill.strategy}</p><p className="mt-skill-hash">SHA-256: {skill.sha256}</p><pre>{skill.documentation||'Dokumentasi tidak disertakan.'}</pre></ReportDrawer>
+   {skill.executionStatus!=='ADAPTER_AVAILABLE'&&<small>Engine adapter not approved.</small>}
+   <ReportDrawer title="Skill details & fingerprint"><p>{skill.description}</p><p>Strategy: {skill.strategy}</p><p className="mt-skill-hash">SHA-256: {skill.sha256}</p><pre>{skill.documentation||'No documentation provided.'}</pre></ReportDrawer>
   </article>)}</div>
   <ReportDrawer title="Upload & engine details">
-   <p className="mt-skill-note">ZIP / JSON · maks. 512 KB · upload baru OFF. <a href="/skill-template.json" download>Template JSON</a></p>
-   <p className="mt-compact-note">{activationFresh?`Engine ${activation?.state} · fingerprint ${activation?.activeHash?'terkonfirmasi':'belum dimuat'}`:reported?`${engine.state} · cycle ${engine.cycleId||'—'}`:'Telemetry engine belum terverifikasi.'}</p>
+   <p className="mt-skill-note">ZIP / JSON · max. 512 KB · new uploads OFF. <a href="/skill-template.json" download>JSON template</a></p>
+   <p className="mt-compact-note">{activationFresh?`Engine ${activation?.state} · fingerprint ${activation?.activeHash?'confirmed':'not loaded'}`:reported?`${engine.state} · cycle ${engine.cycleId||'—'}`:'Engine telemetry unverified.'}</p>
   </ReportDrawer>
  </section>;
 }

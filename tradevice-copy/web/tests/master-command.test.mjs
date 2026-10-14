@@ -23,9 +23,9 @@ test('Dashboard has five destinations with Risk and Paper in System',()=>{
   assert.match(consolePage,/tab==='system'&&<section className="mt-panel"><SectionHead eyebrow="PAPER EXECUTION AUDIT"/);
 });
 test('Dashboard presents demo controls first and concise summaries with supporting drawers',()=>{
- for(const t of ['Overview','Cycle Monitor','Telemetry','Basket &amp; Adaptive','News Guard','System &amp; Activity','Terminal activity'])assert.ok(dashboard.includes(t),t);
+ for(const t of ['Overview','Cycle Monitor','Telemetry','Basket &amp; Adaptive','News Guard','System &amp; Activity','Worker events'])assert.ok(dashboard.includes(t),t);
  assert.ok(dashboard.indexOf('<DemoControl')<dashboard.indexOf('aria-labelledby="summary-title"'));
- for(const t of ['Start Cycle','/>Pause<','/>Stop<'])assert.ok(demo.includes(t));
+ for(const t of ['Start Cycle','aria-label="Pause"','aria-label="Stop"'])assert.ok(demo.includes(t));
  assert.match(dashboard,/ReportDrawer/);
  assert.doesNotMatch(dashboard,/mt-u-statusline|Save Configuration|Reset Journal|SIM-001|Math\.random\(/);
 });
@@ -81,7 +81,7 @@ test('broker quality panel exists and never fabricates broker metrics or starts 
   'Volatility','ATR 14','MT5 observer','Last snapshot','executionAdapter']) {
     assert.ok(dashboard.includes(field),field);
  }
- assert.match(dashboard,/Broker belum terverifikasi/);
+ assert.match(dashboard,/Broker unverified/);
  assert.match(demo,/!runtime\?\.canStart/);
  assert.doesNotMatch(dashboard,/FAKE_BROKER|spreadPoints:\s*10|atr14:\s*5|commissionUsdPerLot:\s*5/);
 });

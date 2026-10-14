@@ -1,6 +1,7 @@
 /** Fail-closed projection for server-to-server staging master telemetry. No synthetic fallback. */
 import {validateEngine,validateOwned} from './engine-diagnostics.mjs';
 import {validateBatch} from './demo-batch.mjs';
+import {validateTerminal} from './terminal-mirror.mjs';
 import {validateNews} from './news-calendar.mjs';
 const allowedModes=new Set(['ACTIVE','DEGRADED','RECOVERING','HALTED','OFFLINE/STALE']);
 const allowedSeverities=new Set(['info','warning','critical']);
@@ -131,7 +132,7 @@ export function validateWorkerTelemetry(raw, now=Date.now()) {
       operatorConfigured:control.operatorConfigured===true,
       // Read-only observer is never a trusted executable quote adapter.
       quotesReady:false,brokerReady:false,newsCalendarReady:false},
-    terminal,commands,
+    terminal,terminalMirror:validateTerminal(raw.terminalMirror,now),commands,
     queue:{queued:count(queue.queued),retry:count(queue.retry),expired:count(queue.expired),
       rejected:count(queue.rejected),accepted:count(queue.accepted),deadLetter:count(queue.deadLetter)},
     paperExecution:{accepted:count(paper.accepted),rejected:count(paper.rejected),fillsVerified:false},

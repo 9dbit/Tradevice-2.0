@@ -3,6 +3,7 @@ import {useEffect,useMemo,useState} from 'react';
 import type {Snapshot} from './master-console';
 import {validateEngine,validateOwned} from '../../lib/engine-diagnostics.mjs';
 import {validateBatch} from '../../lib/demo-batch.mjs';
+import TerminalMirror from './terminal-mirror';
 import SkillManager from './skill-manager';
 import DemoControl,{useDemoRuntime} from './demo-control';
 import {validateNews} from '../../lib/news-calendar.mjs';
@@ -14,7 +15,7 @@ function fmt(value:number|null|undefined,unit=''){
 }
 function time(ts:string|null|undefined) {
  if(!ts || !Number.isFinite(Date.parse(ts)))return '—';
- return new Intl.DateTimeFormat('id-ID',{timeZone:'Asia/Jakarta',hour:'2-digit',minute:'2-digit',
+ return new Intl.DateTimeFormat('en-GB',{timeZone:'Asia/Jakarta',hour:'2-digit',minute:'2-digit',
    second:'2-digit',day:'2-digit',month:'short',hour12:false}).format(new Date(ts))+' WIB';
 }
 export default function CompactDashboard({data,token,onNavigate}:{
@@ -46,8 +47,8 @@ export default function CompactDashboard({data,token,onNavigate}:{
 
  return <div className="mt-unified mt-dense-dashboard">
   {diagnostic&&<div className="mt-u-diagnostic" role="alert"><I name="alert"/>
-   <div><strong>Telemetry belum tersambung</strong><p>{diagnostic}</p></div></div>}
-  <DemoControl token={token} runtime={demoRuntime} refresh={refreshDemo} now={now}/>
+   <div><strong>Telemetry unavailable</strong><p>{diagnostic}</p></div></div>}
+  <DemoControl token={token} runtime={demoRuntime} refresh={refreshDemo} now={now} batchRaw={data?.demoBatch??data?.market?.demoBatch}/>
 
   <section className="mt-u-panel mt-summary" aria-labelledby="summary-title">
    <div className="mt-u-panel-head"><h2 id="summary-title"><I name="dashboard"/> Overview</h2>
@@ -60,7 +61,7 @@ export default function CompactDashboard({data,token,onNavigate}:{
    </div>
    <div className="mt-summary-foot"><span>Wins / losses <strong>{batch?`${batch.wins} / ${batch.losses}`:'—'}</strong></span>
     <button className="mt-u-detail" type="button" onClick={()=>onNavigate('cycles')}>Cycle Monitor <I name="arrow" size={14}/></button></div>
-   <p className="mt-compact-note">Batch <strong>{batch?.status.replaceAll('_',' ')||'Belum tersedia'}</strong>{batch&&!batch.fresh&&' · Snapshot historis'}</p>
+   <p className="mt-compact-note">Batch <strong>{batch?.status.replaceAll('_',' ')||'Unavailable'}</strong>{batch&&!batch.fresh&&' · Historical snapshot'}</p>
    {!!batch?.blockers.length&&<p className="mt-inline-blocker"><I name="alert" size={14}/><span>{batch.blockers.join(' · ')}</span></p>}
   </section>
 
@@ -75,7 +76,7 @@ export default function CompactDashboard({data,token,onNavigate}:{
     <Datum icon="wallet" label="Used margin" value={fmt(market?.margin)} hint={market?.accountCurrency||'—'}/>
     <Datum icon="shield" label="Free margin" value={fmt(market?.freeMargin)} hint={market?.accountCurrency||'—'}/>
    </div>
-   <p className="mt-compact-note">{market?.brokerName||'Broker belum terverifikasi'} · {market?.symbol||'—'} · {market?.accountMode||'—'}</p>
+   <p className="mt-compact-note">{market?.brokerName||'Broker unverified'} · {market?.symbol||'—'} · {market?.accountMode||'—'}</p>
    <ReportDrawer title="Market details" meta={market?'Fresh':'Stale'}>
     <div className="mt-telemetry-grid">
      <Datum icon="spread" label="Bid / Ask" value={`${fmt(market?.bid)} / ${fmt(market?.ask)}`}/>
@@ -90,7 +91,7 @@ export default function CompactDashboard({data,token,onNavigate}:{
      <div><dt>Paper adapter</dt><dd>{market?.executionAdapter==='INTERNAL_PAPER_ONLY'?'Internal paper only':'Unverified'}</dd></div>
      <div><dt>Last snapshot</dt><dd>{time(observed)}</dd></div>
     </dl>
-    {market?.atrRecomputed&&<p className="mt-compact-note">ATR dihitung ulang dari closed M1.</p>}
+    {market?.atrRecomputed&&<p className="mt-compact-note">ATR recalculated from closed M1 bars.</p>}
    </ReportDrawer>
   </section>
 
@@ -104,7 +105,7 @@ export default function CompactDashboard({data,token,onNavigate}:{
     <Datum icon="shield" label="Hard loss" value={usd(engine.hardLossUsd)} hint={engine.riskExitCommitted===true?'Exit committed':'engine report'}/>
     <Datum icon="check" label="Basket TP" value={usd(engine.targetUsd)} hint="engine report"/>
    </div>
-   {engine.entrySuspended===true&&<p className="mt-inline-blocker"><I name="alert" size={14}/><span>Entry dihentikan · cek blocker dan rekonsiliasi sebelum cycle baru.</span></p>}
+   {engine.entrySuspended===true&&<p className="mt-inline-blocker"><I name="alert" size={14}/><span>Entries suspended · resolve blockers and reconcile before a new cycle.</span></p>}
    <ReportDrawer title="L6–L10 & risk details" meta={decision?'L'+decision.layer:'No decision'}>
     <div className="mt-telemetry-grid">
      <Datum icon="wallet" label="Open P&L + swap" value={usd(owned?.value)} hint="owned positions"/>
@@ -121,16 +122,16 @@ export default function CompactDashboard({data,token,onNavigate}:{
      <div><dt>Cycle</dt><dd>{engine.cycleId||'—'}</dd></div>
      <div><dt>Engine report</dt><dd>{newsTime(engine.observedMs)}</dd></div>
     </dl>
-    <p className="mt-compact-note">Basket estimate memakai cached realized. Open P&amp;L belum termasuk realized dan seluruh commission. Fresh report bukan bukti proteksi terverifikasi.</p>
+    <p className="mt-compact-note">Basket estimate uses cached realized results. Open P&amp;L excludes realized results and some costs. A fresh report does not verify protection.</p>
    </ReportDrawer>
   </section>
 
   <section className="mt-u-panel" aria-labelledby="news-title">
    <div className="mt-u-panel-head"><h2 id="news-title"><I name="news"/> News Guard</h2>
     <span className="mt-u-chip">{calendar.status==='CLEAR'?'Clear':calendar.status==='BLACKOUT'?'Blackout':'Unavailable'}</span></div>
-   <div className="mt-news-summary"><div><strong>{calendar.nextEvent?.title||(calendar.status==='CLEAR'?'Tidak ada event dalam coverage':'Jadwal belum terverifikasi')}</strong>
+   <div className="mt-news-summary"><div><strong>{calendar.nextEvent?.title||(calendar.status==='CLEAR'?'No events within coverage':'Schedule unverified')}</strong>
     <span>{calendar.nextEvent?.currency||'—'} · {newsTime(calendar.nextEvent?.at??null)}</span></div>
-    <div><small>{calendar.status==='BLACKOUT'?'Berakhir dalam':'Blackout dalam'}</small><strong>{countdown}</strong></div></div>
+    <div><small>{calendar.status==='BLACKOUT'?'Blackout ends in':'Blackout starts in'}</small><strong>{countdown}</strong></div></div>
    {calendar.status!=='CLEAR'&&<p className="mt-inline-blocker"><I name="alert" size={14}/><span>No trade · {calendar.reason}</span></p>}
    <ReportDrawer title="Calendar details" meta="±60 min · all currencies">
     <dl className="mt-detail-list">
@@ -140,7 +141,7 @@ export default function CompactDashboard({data,token,onNavigate}:{
      <div><dt>Next refresh</dt><dd>{newsTime(calendar.nextRefreshAt)}</dd></div>
      <div><dt>Policy</dt><dd>{calendar.reason}</dd></div>
     </dl>
-    <p className="mt-compact-note">Jadwal dapat berubah. News clear bukan bukti quote, spread, margin atau broker-flat siap.</p>
+    <p className="mt-compact-note">Schedules may change. News clear does not verify quote, spread, margin or broker-flat readiness.</p>
    </ReportDrawer>
   </section>
 
@@ -150,13 +151,14 @@ export default function CompactDashboard({data,token,onNavigate}:{
    <div className="mt-system-summary"><span>API <strong>{data?.infrastructure.memberApi||'Unknown'}</strong></span>
     <span>Worker <strong>{data?.infrastructure.masterWorker||'Unknown'}</strong></span>
     <button type="button" className="mt-u-detail" onClick={()=>onNavigate('anomalies')}>Anomalies <strong>{fmt(data?.master.anomalies)}</strong><I name="arrow" size={14}/></button></div>
-   <ReportDrawer title="Terminal activity" meta={data?.terminal?`${data.terminal.length} events`:'Unavailable'}>
+   <TerminalMirror raw={data?.terminalMirror} now={now}/>
+   <ReportDrawer title="Worker events" meta={data?.terminal?`${data.terminal.length} events`:'Unavailable'}>
     <div className="mt-u-filter" role="group" aria-label="Terminal event filter">
      {(['all','warning','critical'] as const).map(f=><button type="button" key={f} aria-pressed={terminalFilter===f}
       onClick={()=>setTerminalFilter(f)} className={terminalFilter===f?'active':''}>{f}</button>)}
     </div>
     <div className="mt-u-terminal-window" role="log" aria-label="Verified Master Trader terminal events">
-     {terminal.length===0?<p className="mt-u-terminal-empty">Belum ada event.</p>:terminal.map(row=><div className="mt-u-term-line" key={row.id}>
+     {terminal.length===0?<p className="mt-u-terminal-empty">No events yet.</p>:terminal.map(row=><div className="mt-u-term-line" key={row.id}>
       <span>{time(row.at)}</span><strong data-severity={row.severity}>{row.kind}</strong><p>{row.message}</p></div>)}
     </div>
     <p className="mt-compact-note">Supervisor · {time(data?.master.heartbeatAt)}</p>

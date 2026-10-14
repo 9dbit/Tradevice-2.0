@@ -1,5 +1,6 @@
 'use client';
 import {useCallback,useEffect,useRef,useState} from 'react';
+import {cycleProgress} from '../../lib/cycle-progress.mjs';
 import {ReportDrawer,ReportIcon as I} from './report-ui';
 const preflightChecks=[['identity','Demo identity'],['brokerFlat','Broker flat'],['quote','Fresh quote'],['spread','Spread'],['margin','Margin'],['commission','Commission'],['news','News'],['reconciled','Reconciliation'],['engineHash','Engine hash']];
 export type DemoRuntime={online:boolean;observedMs:number|null;state:string;activeSkillId:string|null;activeHash:string|null;revision:number|null;checks:Record<string,boolean>;blockers:string[];canStart:boolean;commands:Array<{requestId:string;action:string;status:string;errorCode:string|null}>};
@@ -16,8 +17,8 @@ export function useDemoRuntime(token:string){
  useEffect(()=>{generation.current++;setRuntime(null);void refresh();const t=setInterval(()=>void refresh(),1000);return()=>{generation.current++;clearInterval(t);};},[refresh]);
  return {runtime,refresh};
 }
-export default function DemoControl({token,runtime,refresh,now}:{token:string;runtime:DemoRuntime|null;refresh:()=>void;now:number}){
- const [count,setCount]=useState('1'),[pending,setPending]=useState(false);
+export default function DemoControl({token,runtime,refresh,now,batchRaw}:{token:string;runtime:DemoRuntime|null;refresh:()=>void;now:number;batchRaw?:unknown}){
+ const [count,setCount]=useState('1'),[pending,setPending]=useState(false),[configure,setConfigure]=useState(false);
  const [request,setRequest]=useState<{id:string;action:string;phase:string;error?:string}|null>(null);
  const evidenceNow=Math.max(now,Date.now());
  const fresh=runtime?.online===true&&runtime.observedMs!==null&&evidenceNow-runtime.observedMs>=0&&evidenceNow-runtime.observedMs<=8000;
@@ -33,7 +34,7 @@ export default function DemoControl({token,runtime,refresh,now}:{token:string;ru
   if(pending||!fresh)return;
   const target=Number(count);
   if(action==='START'&&(!runtime?.canStart||busy||!Number.isInteger(target)||target<1||target>10))return;
-  const id=crypto.randomUUID();setPending(true);setRequest({id,action,phase:'SENDING'});
+  const id=crypto.randomUUID();if(action==='START')setConfigure(false);setPending(true);setRequest({id,action,phase:'SENDING'});
   try{
    const r=await fetch('/api/master/demo',{method:'POST',headers:{Authorization:'Bearer '+token,'content-type':'application/json'},
     body:JSON.stringify({requestId:id,action,targetCycles:action==='START'?target:null,confirmDemo:action==='START',expectedRevision:runtime?.revision}),signal:AbortSignal.timeout(12000)});
@@ -44,25 +45,34 @@ export default function DemoControl({token,runtime,refresh,now}:{token:string;ru
   }catch{setRequest({id,action,phase:'UNCERTAIN',error:'CONNECTION_LOST_VERIFY_COMMAND_HISTORY'});}
   finally{setPending(false);}
  }
+ const progress=cycleProgress(batchRaw,runtime,evidenceNow,request?.action==='START'&&!['REJECTED','EXPIRED'].includes(request.phase)?request.id:null);
+ const showCycle=progress?.executed&&!configure;
+ const runtimeRunning=['STARTING','RUNNING','PAUSING','PAUSED','STOPPING'].includes(runtime?.state||'');
  const verifiedCount=preflightChecks.filter(([key])=>fresh&&runtime?.checks[key]===true).length;
  const status=!fresh?'Stale':runtime?.canStart?'Ready':({STARTING:'Starting',RUNNING:'Running',PAUSING:'Pausing',PAUSED:'Paused',STOPPING:'Stopping'} as Record<string,string>)[runtime?.state||'']||'Blocked';
- const blocker=!fresh?'Heartbeat engine tidak tersedia':runtime?.canStart?'':runtime?.blockers.join(' · ')||(['STARTING','RUNNING','PAUSING','PAUSED','STOPPING'].includes(runtime?.state||'')?'':'Preflight belum lengkap');
+ const blocker=!fresh?'Engine heartbeat unavailable':runtime?.canStart?'':runtime?.blockers.join(' · ')||(['STARTING','RUNNING','PAUSING','PAUSED','STOPPING'].includes(runtime?.state||'')?'':'Preflight incomplete');
  return <section className="mt-u-panel mt-demo-control" aria-labelledby="demo-control-title">
   <div className="mt-u-panel-head mt-demo-heading"><h2 id="demo-control-title"><I name="repeat"/> Trading Cycle</h2><strong aria-label="Engine connection" data-state={status}>{status}</strong></div>
-  <div className="mt-demo-inputs"><label htmlFor="demo-cycle-count">Jumlah cycle <small>Demo · XAUUSDm · 1–10</small></label><input id="demo-cycle-count" aria-label="Jumlah cycle demo" type="text" inputMode="numeric" pattern="[0-9]*" maxLength={2} value={count} disabled={busy} onChange={e=>setCount(e.target.value.replace(/\D/g,''))}/></div>
+  <div className="mt-demo-inputs"><label htmlFor={showCycle?undefined:'demo-cycle-count'}>{showCycle?'Current cycle':'Cycle count'}<small>Demo · XAUUSDm{showCycle?(progress?.fresh?'':' · Last reported'):' · 1–10'}</small></label>
+   {showCycle?<output className="mt-current-cycle" aria-label="Current cycle">{progress!.current}/{progress!.total}</output>:<input id="demo-cycle-count" aria-label="Demo cycle count" type="text" inputMode="numeric" pattern="[0-9]*" maxLength={2} value={count} disabled={busy||runtimeRunning} onChange={e=>setCount(e.target.value.replace(/\D/g,''))}/>}
+  </div>
   <div className="mt-u-buttons">
-   <button className="mt-u-primary" type="button" disabled={!fresh||!runtime?.canStart||busy||!/^([1-9]|10)$/.test(count)} onClick={()=>void send('START')}><I name="play" size={15}/>Start Cycle</button>
-   <button className="mt-u-secondary" type="button" disabled={!fresh||pending||!['STARTING','RUNNING'].includes(runtime?.state||'')} onClick={()=>void send('PAUSE')}><I name="pause" size={15}/>Pause</button>
-   <button className="mt-u-secondary" type="button" disabled={!fresh||pending||!['STARTING','RUNNING','PAUSING','PAUSED'].includes(runtime?.state||'')} onClick={()=>void send('STOP')}><I name="stop" size={15}/>Stop</button>
+   <button className="mt-u-primary" type="button" disabled={!!showCycle||!fresh||!runtime?.canStart||busy||!/^([1-9]|10)$/.test(count)} onClick={()=>void send('START')}><I name="play" size={15}/>Start Cycle</button>
+   <button className="mt-u-secondary mt-cycle-icon" type="button" aria-label="Pause" title="Pause" disabled={!fresh||pending||!['STARTING','RUNNING'].includes(runtime?.state||'')} onClick={()=>void send('PAUSE')}><I name="pause" size={19}/></button>
+   <button className="mt-u-secondary mt-cycle-icon" type="button" aria-label="Stop" title="Stop" disabled={!fresh||pending||!['STARTING','RUNNING','PAUSING','PAUSED'].includes(runtime?.state||'')} onClick={()=>void send('STOP')}><I name="stop" size={19}/></button>
+  </div>
+  <div className="mt-cycle-progress" data-running={progress?.active===true} data-stale={progress?!progress.fresh:false}>
+   <div className="mt-cycle-track" role="progressbar" aria-label="Completed cycles" aria-valuemin={0} aria-valuemax={progress?.total??10} {...(progress?{'aria-valuenow':progress.completed}:{})} aria-valuetext={progress?`${progress.completed} of ${progress.total} completed${progress.fresh?'':' · last reported'}`:'Awaiting batch evidence'}><span style={{width:(progress?.percent??0)+'%'}}/>{progress?.active&&<i aria-hidden="true" style={{left:(Math.min(progress.percent,97))+'%'}}/>}</div>
+   <div className="mt-cycle-progress-meta"><small>{progress?`${progress.completed} / ${progress.total} completed`:'Awaiting batch evidence'}</small>{showCycle&&!runtimeRunning&&!busy&&<button type="button" onClick={()=>setConfigure(true)}>New batch</button>}</div>
   </div>
   {blocker&&<p className="mt-inline-blocker"><I name="alert" size={14}/><span>{blocker}</span></p>}
   <ReportDrawer title="Preflight" meta={`${verifiedCount} / ${preflightChecks.length}`}>
    <ul className="mt-preflight-grid" aria-label="Demo preflight checks">{preflightChecks.map(([key,label])=>{
     const checked=fresh&&runtime?.checks[key]===true;
     return <li key={key} data-verified={checked}><span role="img" aria-label={checked?'Verified':'Not verified'} title={checked?'Verified':'Not verified'}><I name={checked?'check':'minus'} size={17}/></span><span>{label}</span></li>;
-   })}</ul><p className="mt-compact-note">✓ Terverifikasi · — Belum terverifikasi</p>
+   })}</ul><p className="mt-compact-note">✓ Verified · — Unverified</p>
   </ReportDrawer>
-  {request&&<div role="status" aria-live="polite" className="mt-demo-command"><strong>{request.action} · {request.phase}</strong><p>{request.error||(['PENDING','DISPATCHED','SENDING'].includes(request.phase)?'Menunggu konfirmasi engine…':request.phase==='APPLIED'?'Engine telah menerapkan command. Lihat state untuk status basket.':'Tidak ada konfirmasi sukses; jangan kirim ulang Start.')}</p></div>}
-  <ReportDrawer title="Riwayat command" meta={runtime?runtime.commands.length:'—'}>{runtime?.commands.length?<ul className="mt-command-list">{runtime.commands.map(c=><li key={c.requestId}><strong>{c.action} · {c.status}</strong><small>{c.requestId.slice(0,8)}</small>{c.errorCode&&<span>{c.errorCode}</span>}</li>)}</ul>:<p className="mt-compact-note">Belum ada command.</p>}</ReportDrawer>
+  {request&&<div role="status" aria-live="polite" className="mt-demo-command"><strong>{request.action} · {request.phase}</strong><p>{request.error||(['PENDING','DISPATCHED','SENDING'].includes(request.phase)?'Awaiting engine confirmation…':request.phase==='APPLIED'?'Command applied. Basket status is reported separately.':'Not confirmed. Check command history before retrying Start.')}</p></div>}
+  <ReportDrawer title="Command history" meta={runtime?runtime.commands.length:'—'}>{runtime?.commands.length?<ul className="mt-command-list">{runtime.commands.map(c=><li key={c.requestId}><strong>{c.action} · {c.status}</strong><small>{c.requestId.slice(0,8)}</small>{c.errorCode&&<span>{c.errorCode}</span>}</li>)}</ul>:<p className="mt-compact-note">No commands yet.</p>}</ReportDrawer>
  </section>;
 }

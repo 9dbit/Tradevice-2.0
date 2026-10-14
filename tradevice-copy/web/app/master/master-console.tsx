@@ -42,6 +42,7 @@ export type Snapshot = {
     newsPolicy:'AVOID'|'ALLOW'|'ONLY';sessionId:string|null;lastRejection:string|null;
     operatorConfigured:boolean;quotesReady:boolean;brokerReady:boolean;newsCalendarReady:boolean;
   };
+  terminalMirror?:unknown;
   terminal?: Array<{id:string;at:string;source:string;severity:'info'|'warning'|'critical';kind:string;message:string}>;
   commands?: Array<{id:string;requestId:string|null;action:string;status:string;errorCode:string|null;at:string|null}>;
 };
@@ -86,12 +87,12 @@ function Pill({value}:{value:string}) {
   return <span className={'mt-pill '+(safe?'mt-pill-good':bad?'mt-pill-bad':'mt-pill-muted')}><i/>{value.replaceAll('_',' ')}</span>;
 }
 function Graph({numbers}:{numbers:number[]}) {
-  if(numbers.length<2)return <div className="mt-graph-empty"><Glyph name="pulse" size={27}/><strong>Belum ada data equity master</strong><p>Belum ada hasil paper trading terverifikasi. Grafik akan terisi dari data eksekusi yang sah.</p></div>;
+  if(numbers.length<2)return <div className="mt-graph-empty"><Glyph name="pulse" size={27}/><strong>No master equity data</strong><p>No verified paper trading results yet.</p></div>;
   const width=740,height=205,pad=20,min=Math.min(...numbers)-7,max=Math.max(...numbers)+7;
   const pts=numbers.map((v,i)=>({x:pad+i/(numbers.length-1)*(width-pad*2),y:height-pad-(v-min)/(max-min)*(height-pad*2)}));
   const line=pts.map(p=>p.x.toFixed(1)+','+p.y.toFixed(1)).join(' ');
   const area=pts[0].x+','+(height-pad)+' '+line+' '+pts[pts.length-1].x+','+(height-pad);
-  return <svg className="mt-graph" viewBox={'0 0 '+width+' '+height} role="img" aria-label="Grafik equity dari eksekusi paper yang telah diverifikasi">
+  return <svg className="mt-graph" viewBox={'0 0 '+width+' '+height} role="img" aria-label="Equity chart from verified paper execution">
     {[44,93,142,191].map(y=><line key={y} x1={pad} y1={y} x2={width-pad} y2={y} stroke="#2e2e2e" strokeDasharray="3 7"/>)}
     <polyline points={area} fill="#ff7900" fillOpacity=".07"/>
     <polyline points={line} fill="none" stroke="#ff7900" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"/>
@@ -108,14 +109,14 @@ function Events({rows}:{rows:Notice[]}) {
     <tbody>{rows.map(row=><tr key={row.id}><td className="mt-event-id">{row.id}</td>
       <td><span className={'mt-severity '+row.severity}>{row.severity.toUpperCase()}</span> {row.kind}</td>
       <td>{row.at}</td><td className="mt-faint">{row.note}</td></tr>)}</tbody>
-  </table></div>:<div className="mt-empty-small">Belum ada event master yang terhubung.</div>;
+  </table></div>:<div className="mt-empty-small">No master events available.</div>;
 }
 function Orders({rows}:{rows:PaperOrder[]}) {
   return rows.length?<div className="mt-table-scroll"><table className="mt-table">
     <thead><tr><th>Order ID</th><th>Symbol</th><th>Side</th><th>Lots</th><th>Paper status</th><th>Time</th></tr></thead>
     <tbody>{rows.map(row=><tr key={row.id}><td className="mt-event-id">{row.id}</td><td><strong>{row.symbol}</strong></td>
       <td>{row.side}</td><td>{row.quantity}</td><td><Pill value={row.state}/></td><td>{row.at}</td></tr>)}</tbody>
-  </table></div>:<div className="mt-empty-small">Tidak ada order paper yang dapat diverifikasi. Journal worker belum terhubung.</div>;
+  </table></div>:<div className="mt-empty-small">No verified paper orders available.</div>;
 }
 function SectionHead({eyebrow,title,extra}:{eyebrow:string;title:string;extra?:React.ReactNode}){
   return <div className="mt-section-head"><div><small>{eyebrow}</small><h2>{title}</h2></div>{extra}</div>;
@@ -153,7 +154,7 @@ export default function MasterConsole() {
         const {data:{session}}=await authClient.auth.getSession();
         if(mounted){setToken(session?.access_token||'');setAuth(session?'checking':'login');}
       }catch{
-        if(mounted){setAuth('forbidden');setMessage('Konfigurasi autentikasi staging belum tersedia.');}
+        if(mounted){setAuth('forbidden');setMessage('Staging authentication unavailable.');}
       }
     }
     void boot();
@@ -171,8 +172,8 @@ export default function MasterConsole() {
           headers:{Authorization:'Bearer '+token},cache:'no-store',
         });
         if(!active)return;
-        if(response.status===401){setAuth('login');setSnapshot(null);setMessage('Sesi kedaluwarsa, silakan masuk lagi.');return;}
-        if(response.status===403){setAuth('forbidden');setSnapshot(null);setMessage('Akses Master Trader hanya untuk administrator yang telah disetujui.');return;}
+        if(response.status===401){setAuth('login');setSnapshot(null);setMessage('Session expired. Please sign in again.');return;}
+        if(response.status===403){setAuth('forbidden');setSnapshot(null);setMessage('Master Trader access is restricted to approved administrators.');return;}
         if(!response.ok)throw new Error('Service unavailable');
         const data=await response.json() as Snapshot;
         if(!['STAGING_INFRASTRUCTURE','STAGING_WORKER_TELEMETRY'].includes(data.source) || data.executionMode!=='PAPER_ONLY')throw new Error('Invalid mode');
@@ -183,7 +184,7 @@ export default function MasterConsole() {
           // Clear all market/control data to fail closed while retaining the console shell.
           setSnapshot(null);
           setAuth(current=>current==='authorized'?current:'forbidden');
-          setMessage('Koneksi monitoring sementara tidak tersedia. Periksa System Health dan coba refresh.');
+          setMessage('Monitoring is temporarily unavailable. Check System Health and refresh.');
         }
       }finally{loading=false;}
     }
@@ -200,9 +201,9 @@ export default function MasterConsole() {
     setBusy(true);setMessage('');
     try{
       const {error}=await client.auth.signInWithPassword({email,password});
-      if(error){setMessage('Login gagal. Periksa kredensial dan izin administrator.');setAuth('login');}
+      if(error){setMessage('Sign-in failed. Check credentials and administrator access.');setAuth('login');}
       else{setAuth('checking');}
-    }catch{setMessage('Layanan autentikasi belum dapat diakses.');}
+    }catch{setMessage('Authentication service unavailable.');}
     finally{setPassword('');setBusy(false);}
   }
   async function signOut(){
@@ -219,15 +220,15 @@ export default function MasterConsole() {
     <div className="mt-login-card"><Brand/><div className="mt-login-line"/>
       <div className="mt-eyebrow">PRIVATE OPERATOR CONSOLE / STAGING</div>
       <h1>Master Trader<br/><span>Control Center.</span></h1>
-      <p>Area operasional terpisah dari dashboard member. Hanya akun Supabase dengan izin master admin yang dapat mengakses informasi internal.</p>
-      {auth==='checking'||auth==='loading'?<div className="mt-login-wait"><span className="mt-spinner"/>Memverifikasi sesi administrator...</div>:
+      <p>Private operations console for approved master administrators.</p>
+      {auth==='checking'||auth==='loading'?<div className="mt-login-wait"><span className="mt-spinner"/>Verifying administrator session…</div>:
       <form onSubmit={signIn} className="mt-login-form">
-        <label htmlFor="mt-email">Email administrator</label>
+        <label htmlFor="mt-email">Administrator email</label>
         <input id="mt-email" type="email" autoComplete="username" placeholder="admin@company.com" value={email} required onChange={e=>setEmail(e.target.value)}/>
         <label htmlFor="mt-password">Password</label>
         <input id="mt-password" type="password" autoComplete="current-password" placeholder="Password" value={password} required onChange={e=>setPassword(e.target.value)}/>
         {message&&<p role="alert" className="mt-login-error">{message}</p>}
-        <button type="submit" className="mt-primary" disabled={busy||!client}>{busy?'Memverifikasi...':'Masuk sebagai admin'} <Glyph name="arrow" size={18}/></button>
+        <button type="submit" className="mt-primary" disabled={busy||!client}>{busy?'Verifying…':'Sign in as admin'} <Glyph name="arrow" size={18}/></button>
       </form>}
       <div className="mt-login-foot"><span><Glyph name="lock" size={16}/> Server-verified role</span><span>Staging · paper only</span></div>
     </div>
@@ -238,7 +239,7 @@ export default function MasterConsole() {
   </main>;
 
   return <div className="mt mt-shell">
-    <a className="mt-skip" href="#mt-main">Langsung ke konten</a>
+    <a className="mt-skip" href="#mt-main">Skip to content</a>
     <aside className="mt-sidebar"><a href="/master" aria-label="Master Trader Control Center"><Brand/></a>
       <div className="mt-sidebar-divider"/>
       <div className="mt-side-caption">WORKSPACE</div>
@@ -253,13 +254,13 @@ export default function MasterConsole() {
         <div className="mt-top-crumb"><span>MASTER TRADER</span><Glyph name="chevron" size={14}/><strong>{roleTitle}</strong></div>
         <div className="mt-top-actions"><span className="mt-env-tag">STAGING</span>
           <button type="button" className="mt-refresh" aria-label="Refresh master status" onClick={()=>setRefreshIndex(i=>i+1)}><Glyph name="refresh" size={18}/></button>
-          <button type="button" className="mt-logout" onClick={()=>void signOut()} aria-label="Keluar master admin"><Glyph name="logout" size={18}/></button></div>
+          <button type="button" className="mt-logout" onClick={()=>void signOut()} aria-label="Sign out"><Glyph name="logout" size={18}/></button></div>
       </header>
       <main id="mt-main" className="mt-main mt-report">
-        <div className="mt-page-header"><h1>{roleTitle}</h1></div>
+        <div className="mt-page-header"><h1>{roleTitle}</h1>{tab==='dashboard'&&<span className="mt-ai-connection" data-connected="false" title="No authenticated AI connection or model identity is reported by the engine.">ChatGPT 6 Astra <span>Unverified</span></span>}</div>
         {message&&auth==='authorized'&&!data&&<div role="alert" className="mt-disclosure">
           <Glyph name="alert" size={20}/><div><strong>TELEMETRY TEMPORARILY UNAVAILABLE</strong>
-            <span>{message} Semua kontrol trading dinonaktifkan sampai koneksi pulih.</span></div>
+            <span>{message} Trading controls are disabled until the connection recovers.</span></div>
         </div>}
         {tab==='dashboard'&&<CompactDashboard data={data} token={token} onNavigate={setTab}/>}
         {tab==='overview'&&<>
