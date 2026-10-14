@@ -1,0 +1,84 @@
+/* Master report presentation. Content has no cards, outlines or divider frames. */
+.mt-report{--report-orange:#ff923d;max-width:1440px}
+.mt-report :is(section,article,div,p,table,td,th,footer):not(.mt-u-progress-track){border:0!important;box-shadow:none!important;background:transparent!important}
+.mt-report .mt-metric::after{display:none}
+.mt-report .mt-metrics{padding:0;border-radius:0}
+.mt-report .mt-u-terminal-window:has(.mt-u-terminal-empty){height:auto;min-height:0;padding:0}
+.mt-report .mt-u-paper-empty{padding:20px 0;text-align:left}
+.mt-report .mt-graph-empty{min-height:130px}
+.mt-report .mt-metric:first-child>strong{color:var(--report-orange)}
+.mt-report :is(section,.mt-metric,.mt-system-card,.mt-state-step,.mt-runtime-row>div,
+ .mt-u-market-grid,.mt-u-market-cell,.mt-u-datum,.mt-risk-row,.mt-cycle-stats,
+ .mt-skill-item,.mt-u-terminal-window,.mt-u-term-line,.mt-u-paper-wrap,.mt-journal-summary,
+ .mt-u-statusline,.mt-u-market-foot,.mt-u-terminal-foot,.mt-explainer,.mt-note,.mt-disclosure,
+ .mt-u-diagnostic,.mt-u-command-progress,.mt-u-preflight span,.mt-u-reset,.mt-u-settings,
+ .mt-u-reset-confirm,.mt-performance-foot,.mt-filter,.mt-footer,.mt-table th,.mt-table td,
+ .mt-u-paper-table th,.mt-u-paper-table td){
+ border:0!important;box-shadow:none!important;outline:0;background:transparent!important;border-radius:0;
+}
+.mt-report :is(.mt-panel,.mt-u-panel,.mt-u-card,.mt-skills){padding:0;margin-bottom:32px}
+.mt-report :is(.mt-metric,.mt-system-card,.mt-state-step,.mt-runtime-row>div,.mt-skill-item){padding:10px 0;min-width:0}
+.mt-report :is(h1,h2,h3,.mt-u-card-title,.mt-u-card-title svg,strong,b,.mt-pill,.mt-u-chip,.mt-table td,.mt-u-paper-table td){color:var(--report-orange)}
+.mt-report :is(.mt-pill,.mt-u-chip){border:0;background:transparent;box-shadow:none;padding:0;white-space:normal;overflow-wrap:anywhere}
+.mt-report :is(.mt-section-head,.mt-u-panel-head){align-items:flex-start;gap:16px;margin-bottom:20px}
+.mt-report :is(.mt-section-head h2,.mt-u-panel-head h2){font-size:21px;line-height:1.4}
+.mt-report :is(.mt-u-overline,.mt-section-head small){color:#999;letter-spacing:1.2px}
+.mt-report :is(.mt-u-grid,.mt-metrics,.mt-system-grid,.mt-state-flow,.mt-runtime-row){gap:28px 32px}
+.mt-report .mt-u-grid{margin:24px 0 12px}
+.mt-report .mt-u-card-top{align-items:flex-start;flex-wrap:wrap;gap:6px;margin-bottom:12px}
+.mt-report .mt-u-card-title{font-size:16px;line-height:1.4}
+.mt-report .mt-u-detail{padding:0;min-height:28px}
+.mt-report .mt-u-datum{display:flex;flex-direction:column;align-items:flex-start;gap:6px;padding:10px 0}
+.mt-report .mt-u-datum>span{font-size:12px;white-space:normal;line-height:1.5}
+.mt-report .mt-u-datum strong{font-size:19px;text-align:left;max-width:100%;white-space:normal;overflow-wrap:anywhere;word-break:normal}
+.mt-report .mt-u-datum-metric strong{font-size:28px;font-weight:750;line-height:1.2;font-variant-numeric:tabular-nums}
+.mt-report .mt-metric{min-height:0}
+.mt-report .mt-metric>strong{white-space:normal;overflow:visible;text-overflow:clip;overflow-wrap:anywhere;font-size:28px;line-height:1.25;margin-top:10px}
+.mt-report .mt-u-market-grid{gap:20px 28px;margin:18px 0}
+.mt-report .mt-u-market-cell{padding:0!important;min-width:0}
+.mt-report .mt-u-market-cell strong{font-size:19px;line-height:1.4}
+.mt-report .mt-u-market-cell small{font-size:12px}
+.mt-report .mt-u-market-cell span{font-size:11px;line-height:1.6}
+.mt-report .mt-risk-row{align-items:flex-start;flex-direction:column;gap:5px;padding:12px 0}
+.mt-report .mt-risk-row strong{text-align:left;font-size:15px}
+.mt-report .mt-system-card-top{flex-wrap:wrap;justify-content:flex-start}
+.mt-report .mt-system-card h3{font-size:17px;margin-top:10px}
+.mt-report .mt-state-step:after{display:none}
+.mt-report .mt-state-step{max-width:100%;overflow-wrap:anywhere}
+.mt-report .mt-runtime-row strong{font-size:15px}
+.mt-report .mt-skill-status strong{font-size:23px}
+.mt-report .mt-skill-note{color:#aaa}
+.mt-report .mt-skill-note a{color:var(--report-orange)}
+.mt-report .mt-skill-item-top{align-items:flex-start}
+.mt-report .mt-skills button{background:#222;border:0;color:#eee;min-height:44px}
+.mt-report .mt-skill-toggle[aria-checked=true]{background:#ff923d;color:#161616}
+.mt-report .mt-u-preflight{gap:12px}
+.mt-report .mt-u-preflight span{padding:6px 0}
+.mt-report .mt-u-journal{margin-top:12px}
+.mt-report .mt-table,.mt-report .mt-u-paper-table{border:0;box-shadow:none}
+.mt-report .mt-table tbody tr:hover{background:transparent}
+.mt-report .mt-footer{margin-top:32px;padding-top:0}
+@media(max-width:760px){
+ .mt-report{padding-left:18px;padding-right:18px}
+ .mt-report :is(.mt-u-grid,.mt-metrics,.mt-three,.mt-system-grid,.mt-state-flow,.mt-runtime-row,.mt-u-market-grid,.mt-skill-status,.mt-u-preflight){grid-template-columns:repeat(2,minmax(0,1fr));gap:24px 18px}
+ .mt-report :is(.mt-u-card,.mt-metric,.mt-system-card){min-width:0}
+ .mt-report :is(.mt-panel,.mt-u-panel,.mt-skills){margin-bottom:34px}
+ .mt-report .mt-u-grid>.mt-u-card{margin-bottom:0}
+ .mt-report .mt-u-card-title,.mt-report .mt-u-card-title strong{font-size:15px;white-space:normal}
+ .mt-report .mt-u-card-title svg{width:16px;height:16px}
+ .mt-report .mt-u-datum strong{font-size:16px}
+ .mt-report .mt-u-datum-metric strong,.mt-report .mt-metric>strong{font-size:clamp(20px,5.6vw,26px);letter-spacing:-.5px}
+ .mt-report .mt-u-market-cell strong{font-size:18px}
+ .mt-report .mt-skill-status strong{font-size:20px}
+ .mt-report .mt-u-panel-head{flex-direction:column;gap:8px}
+ .mt-report .mt-section-head h2,.mt-report .mt-u-panel-head h2{font-size:20px}
+ .mt-report .mt-u-duo,.mt-report .mt-risk-grid{grid-template-columns:minmax(0,1fr);gap:0}
+ .mt-report .mt-state-flow{display:grid}
+ .mt-report .mt-state-step{padding:0}
+ .mt-report .mt-u-preflight span{flex-direction:column;align-items:flex-start;white-space:normal}
+ .mt-report .mt-u-preflight b{white-space:normal}
+ .mt-report .mt-journal-summary{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px;padding:0}
+ .mt-report .mt-journal-summary strong{display:block;margin-top:6px}
+ .mt-report .mt-u-card-sub,.mt-report .mt-u-datum small{font-size:11px;overflow-wrap:anywhere}
+ .mt-report .mt-runtime-row strong{font-size:14px}
+}
