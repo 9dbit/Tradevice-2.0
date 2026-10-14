@@ -1,0 +1,8 @@
+{
+  "schema": "tradevice.trading.skill.v1",
+  "name": "My Research Skill",
+  "version": "1.0.0",
+  "description": "Describe the strategy and its research limitations.",
+  "strategy": "CUSTOM_RESEARCH",
+  "documentation": "Document entry, exit, risk limits, news policy, data requirements and validation evidence. Selection does not authorize trading."
+}

@@ -4,6 +4,7 @@ import type {Snapshot} from './master-console';
 import {validateEngine,validateOwned} from '../../lib/engine-diagnostics.mjs';
 import {validateBatch} from '../../lib/demo-batch.mjs';
 import DemoBatchPanel from './demo-batch-panel';
+import SkillManager from './skill-manager';
 import {validateNews} from '../../lib/news-calendar.mjs';
 
 type Details='overview'|'cycles'|'anomalies'|'risk'|'journal'|'system';
@@ -282,6 +283,7 @@ export default function CompactDashboard({data,token,onNavigate,onUpdated}:{
       <span>Last quote: <strong>{time(market?.observedAt)}</strong></span>
     </div>
   </section>
+  <SkillManager token={token} engineRaw={marketFresh?market?.engineDiagnostics:null} now={newsClock}/>
   <DemoBatchPanel raw={batch} now={newsClock}/>
   <section className="mt-u-panel mt-u-market" aria-label="Engine and basket diagnostics">
     <div className="mt-u-panel-head"><div><span className="mt-u-overline">ENGINE EVIDENCE · READ-ONLY</span>

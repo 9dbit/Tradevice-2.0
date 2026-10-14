@@ -14,6 +14,7 @@ from fastapi.concurrency import run_in_threadpool
 from .master_telemetry import read_database, allowed_reader_dsn
 from .master_control import allowed_operator_dsn,submit_command,validate_command
 from .news_calendar import NewsCalendar
+from .master_skills import registry, SkillError, MAX_BODY, json_object
 
 import httpx
 from fastapi import Depends, FastAPI, HTTPException, Query, Request
@@ -250,6 +251,34 @@ def create_app(settings: Settings | None = None, transport: httpx.AsyncBaseTrans
             return await run_in_threadpool(submit_command, dsn, payload)
         except (psycopg.Error, RuntimeError):
             raise problem(503, "MASTER_COMMAND_UNAVAILABLE") from None
+
+    @application.api_route("/internal/master/skills", methods=["GET", "POST"])
+    async def internal_master_skills(request: Request):
+        if settings.environment != "staging" or settings.project_ref != "scqzlcivherovlwqypeu":
+            raise problem(503, "MASTER_STAGING_ONLY")
+        secret = os.getenv("MASTER_TELEMETRY_SHARED_SECRET", "")
+        if not re.fullmatch(r"[0-9a-f]{64}", secret):
+            raise problem(503, "MASTER_SKILL_SECRET_NOT_CONFIGURED")
+        if not hmac.compare_digest(request.headers.get("x-tradevice-master-secret", ""), secret):
+            raise problem(401, "MASTER_INTERNAL_AUTH_REQUIRED")
+        try:
+            payload = None
+            if request.method == "POST":
+                if request.headers.get("content-type", "").split(";")[0].strip() != "application/json":
+                    raise SkillError("SKILL_JSON_REQUIRED", 415)
+                body = bytearray()
+                async for chunk in request.stream():
+                    if len(body) + len(chunk) > MAX_BODY:
+                        raise SkillError("SKILL_UPLOAD_TOO_LARGE", 413)
+                    body.extend(chunk)
+                payload = json_object(body)
+            result = await run_in_threadpool(registry, os.getenv("MASTER_OPERATOR_DATABASE_URL", ""), payload)
+            from fastapi.responses import JSONResponse
+            return JSONResponse(result, headers={"Cache-Control":"private, no-store"})
+        except SkillError as exc:
+            raise problem(exc.status, exc.code) from None
+        except (psycopg.Error, RuntimeError):
+            raise problem(503, "MASTER_SKILLS_UNAVAILABLE") from None
 
     @application.get("/api/v1/me")
     async def me(identity: Member = Depends(member)):
