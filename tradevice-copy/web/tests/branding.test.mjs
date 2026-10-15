@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 const read = (p) => readFileSync(new URL('../'+p, import.meta.url), 'utf8');
 const svg=read('public/brand/tradevice-arrow.svg');
-const icon=read('app/icon.svg');
+const icon=read('public/icons/tradevice-source-v3.svg');
 const page=read('app/page.tsx');
 const demo=read('app/demo/page.tsx');
 const css=read('app/globals.css');
@@ -28,15 +28,16 @@ test('remade app icon uses solid orange and versioned iOS metadata',()=>{
   assert.match(icon, /fill="#F58220"/);
   assert.match(icon, /fill="#080808"/);
   assert.doesNotMatch(icon, /linearGradient|filter=/);
-  assert.match(layout, /icon\.svg\?v=sharp-20261015/);
-  assert.match(layout, /apple:.*tradevice-180-v2\.png.*180x180/);
+  assert.match(layout, /tradevice-48-v3\.png/);
+  assert.doesNotMatch(layout, /image\/svg\+xml/);
+  assert.match(layout, /apple:.*tradevice-180-v3\.png.*180x180/);
   assert.match(layout, /manifest: '\/manifest\.webmanifest'/);
   assert.match(layout, /themeColor: '#0D0F14'/);
 });
 test('home-screen PNG exports are opaque, correctly sized and match vector source',async()=>{
   const {default:sharp}=await import('sharp');
-  for(const size of [180,192,512,1024]){
-    const png=readFileSync(new URL(`../public/icons/tradevice-${size}-v2.png`,import.meta.url));
+  for(const size of [48,180,192,512,1024]){
+    const png=readFileSync(new URL(`../public/icons/tradevice-${size}-v3.png`,import.meta.url));
     const meta=await sharp(png).metadata();
     assert.equal(meta.format,'png');assert.equal(meta.width,size);assert.equal(meta.height,size);
     assert.equal(meta.hasAlpha,false);
