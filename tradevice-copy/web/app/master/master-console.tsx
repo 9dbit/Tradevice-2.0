@@ -261,7 +261,7 @@ export default function MasterConsole() {
           <button type="button" className="mt-logout" onClick={()=>void signOut()} aria-label="Sign out"><Glyph name="logout" size={18}/></button></div>
       </header>
       <main id="mt-main" className="mt-main mt-report">
-        <div className="mt-page-header"><h1>{roleTitle}</h1>{tab==='dashboard'&&<span className="mt-ai-connection mt-ai-label" title="Display label; does not indicate a verified AI connection.">ChatGpt 6 Astra</span>}</div>
+        <div className="mt-page-header"><h1>{roleTitle}</h1>{tab==='dashboard'&&<span className="mt-ai-connection mt-ai-label" title="Display label; does not indicate a verified AI connection."><img src="/brand/openai-blossom-white.svg" width="28" height="28" alt="" aria-hidden="true"/><span>ChatGPT 6 Astra</span></span>}</div>
         {message&&auth==='authorized'&&!data&&<div role="alert" className="mt-disclosure">
           <Glyph name="alert" size={20}/><div><strong>TELEMETRY TEMPORARILY UNAVAILABLE</strong>
             <span>{message} Trading controls are disabled until the connection recovers.</span></div>

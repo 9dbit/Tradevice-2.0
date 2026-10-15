@@ -170,7 +170,7 @@ test('cycle counter, progress, fixed header and read-only terminal follow actual
  const start=await page.getByRole('button',{name:'Start Cycle',exact:true}).boundingBox(),pause=await page.getByRole('button',{name:'Pause',exact:true}).boundingBox();
  expect(start!.width).toBeGreaterThan(pause!.width*3);expect(pause!.width).toBe(pause!.height);
  await expect(page.getByRole('button',{name:'Pause',exact:true})).toHaveText('');
- await expect(page.locator('.mt-ai-connection')).toHaveText('ChatGpt 6 Astra');
+ await expect(page.locator('.mt-ai-connection')).toHaveText('ChatGPT 6 Astra');
  await expect(page.getByRole('log',{name:'PowerShell engine journal'})).toContainText('2222abcd  CYCLE_STARTED  #1');
  await page.screenshot({path:'/tmp/tradevice-cycle-mobile.png',fullPage:true});
  await page.evaluate(()=>scrollTo(0,600));expect((await page.locator('.mt-topbar').boundingBox())!.y).toBe(0);
