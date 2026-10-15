@@ -1,4 +1,5 @@
 'use client';
+import {ReportSection} from './report-ui';
 import {useEffect,useState} from 'react';
 import type {Snapshot} from './master-console';
 import {validateBatch} from '../../lib/demo-batch.mjs';
@@ -16,11 +17,11 @@ export default function FinancialOverview({data}:{data:Snapshot|null}){
   ['Wins / Losses',b?`${b.wins} / ${b.losses}`:'—','Completed cycles with broker fills only'],
   ['Free Margin',money(fresh?m?.freeMargin:null),'Available demo account margin'],
  ];
- return <section className="mt-panel" aria-label="Financial overview">
-  <div className="mt-section-head"><div><small>ACCOUNT & RESULTS</small><h2>Financial Overview</h2></div></div>
+ return <ReportSection title="Financial Overview" className="mt-panel" aria-label="Financial overview" header={<div className="mt-section-head"><div><small>ACCOUNT & RESULTS</small><h2>Financial Overview</h2></div></div>}>
+
   <div className="mt-metrics">{metrics.map(([label,value,note])=><div className="mt-metric" key={label}>
    <div className="mt-metric-top"><span>{label}</span></div><strong>{value}</strong><small>{note}</small>
   </div>)}</div>
   <p className="mt-panel-caption">{b?'Results from batch '+b.batch_id+'.':'No verified batch results yet.'} Equity and margin require fresh observations. Completed results remain historical. See Cycle Monitor for execution details.</p>
- </section>;
+ </ReportSection>;
 }

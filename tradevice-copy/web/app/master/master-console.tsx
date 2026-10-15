@@ -5,6 +5,7 @@ import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import './master.css';
 import './master-report.css';
 import NewsNotifications from './news-status';
+import {ReportSection} from './report-ui';
 import FinancialOverview from './financial-overview';
 import CompactDashboard from './compact-dashboard';
 import DemoBatchPanel from './demo-batch-panel';
@@ -268,14 +269,14 @@ export default function MasterConsole() {
         {tab==='overview'&&<>
           <FinancialOverview data={data}/>
           <DemoBatchPanel raw={data?.demoBatch??data?.market?.demoBatch}/>
-          <section className="mt-panel mt-performance"><SectionHead eyebrow="PAPER PERFORMANCE" title="Verified paper equity curve" extra={<Pill value={data?.equityCurve.length ? "VERIFIED" : "NO DATA"}/>}/>
+          <ReportSection className="mt-panel mt-performance" title="Verified paper equity curve" header={<SectionHead eyebrow="PAPER PERFORMANCE" title="Verified paper equity curve" extra={<Pill value={data?.equityCurve.length ? "VERIFIED" : "NO DATA"}/>}/>}>
             <Graph numbers={data?.equityCurve||[]}/>
 
-          </section>
+          </ReportSection>
         </>}
         {tab==='cycles'&&<>
 
-          <section className="mt-panel"><SectionHead eyebrow="MASTER ENGINE" title="Supervisor continuity" extra={<Pill value={mode}/>}/>
+          <ReportSection className="mt-panel" title="Supervisor continuity" header={<SectionHead eyebrow="MASTER ENGINE" title="Supervisor continuity" extra={<Pill value={mode}/>}/>}>
             <div className="mt-state-flow">{[
               ['01','MARKET DATA','Source quality and freshness'],
               ['02','ANOMALY GATE','Reject unsafe decisions'],
@@ -283,7 +284,7 @@ export default function MasterConsole() {
               ['04','PAPER INBOX','Idempotent accepted simulation'],
             ].map(step=><div className="mt-state-step" key={step[0]}><small>{step[0]}</small><strong>{step[1]}</strong></div>)}</div>
 
-          </section>
+          </ReportSection>
           <div className="mt-runtime-row">
             <div><small>LAST SUPERVISOR TICK</small><strong>{data?.master.lastCycleAt||'NOT MEASURED'}</strong></div>
             <div><small>RUNTIME UPTIME</small><strong>{typeof data?.master.uptimeSeconds==='number'?Math.floor(data.master.uptimeSeconds/60)+' min':'NOT MEASURED'}</strong></div>
@@ -294,11 +295,11 @@ export default function MasterConsole() {
             <Metric icon="alert" label="Anomaly count" desc="Observed quality failures"><Value value={data?.master.anomalies}/></Metric>
             <Metric icon="shield" label="Recovery ticks" desc="Consecutive clean observations"><Value value={data?.master.recoveryTicks}/></Metric></div>
         </>}
-        {tab==='anomalies'&&<section className="mt-panel"><SectionHead eyebrow="EXCEPTIONS & RECOVERY" title="Anomaly event log" extra={<Pill value={mode}/>}/>
+        {tab==='anomalies'&&<ReportSection className="mt-panel" title="Anomaly event log" header={<SectionHead eyebrow="EXCEPTIONS & RECOVERY" title="Anomaly event log" extra={<Pill value={mode}/>}/>}>
           <div className="mt-filter" aria-label="Filter anomaly severity">{(['all','warning','critical'] as const).map(v=><button key={v} type="button" aria-pressed={severity===v} onClick={()=>setSeverity(v)} className={severity===v?'current':''}>{v==='all'?'All events':v==='warning'?'Warning':'Critical'}</button>)}</div><Events rows={alertRows}/>
-          </section>}
+          </ReportSection>}
         {tab==='system'&&<>
-          <div className="mt-risk-grid"><section className="mt-panel"><SectionHead eyebrow="EXECUTION GUARDRAILS" title="Risk controls"/>
+          <div className="mt-risk-grid"><ReportSection className="mt-panel" title="Risk controls" header={<SectionHead eyebrow="EXECUTION GUARDRAILS" title="Risk controls"/>}>
             {[
               ['Trading mode','PAPER ONLY'],
               ['Live execution','DISABLED'],
@@ -306,30 +307,30 @@ export default function MasterConsole() {
               ['Master kill switch',data?.risk.killSwitch||'NOT_CONNECTED'],
               ['Order replay guard',workerOnline?'WORKER GUARDED':'WORKER NOT CONNECTED'],
             ].map(([label,value])=><div className="mt-risk-row" key={label}><span>{label}</span><strong>{value}</strong></div>)}
-          </section><section className="mt-panel mt-safety"><div className="mt-safety-icon"><Glyph name="lock" size={28}/></div>
-            <h2>Emergency kill switch</h2>
+          </ReportSection><ReportSection className="mt-panel mt-safety" title="Emergency kill switch" header={<div className="mt-section-head"><h2>Emergency kill switch</h2></div>}>
+            <div className="mt-safety-icon"><Glyph name="lock" size={28}/></div>
             <button type="button" disabled className="mt-kill-disabled">Kill switch unavailable <Glyph name="lock" size={18}/></button>
 
-          </section></div>
+          </ReportSection></div>
           <div className="mt-metrics mt-three"><Metric icon="shield" label="Drawdown" desc="Requires verified closed paper fills"><Value value={data?.risk.drawdownPct} suffix="%"/></Metric><Metric icon="pulse" label="Open positions" desc="Requires reconciliation"><Value value={data?.risk.positions}/></Metric><Metric icon="receipt" label="Net paper P&L" desc="Requires verified paper execution">{typeof data?.risk.pnlUsd==='number'?'$'+data.risk.pnlUsd.toFixed(2):'—'}</Metric></div>
         </>}
-        {tab==='system'&&<section className="mt-panel"><SectionHead eyebrow="PAPER EXECUTION AUDIT" title="Paper order journal" extra={<Pill value={data?.paperOrders.length ? "PAPER" : "NO ORDERS"}/>}/>
+        {tab==='system'&&<ReportSection className="mt-panel" title="Paper order journal" header={<SectionHead eyebrow="PAPER EXECUTION AUDIT" title="Paper order journal" extra={<Pill value={data?.paperOrders.length ? "PAPER" : "NO ORDERS"}/>}/>}>
 
           <div className="mt-journal-summary">
             <span>Accepted paper acknowledgements: <strong>{data?.queue?.accepted??'—'}</strong></span>
             <span>Rejected paper signals: <strong>{data?.queue?.rejected??'—'}</strong></span>
             <span>Verified fills: <strong>NOT MEASURED</strong></span>
           </div>
-          <Orders rows={data?.paperOrders||[]}/></section>}
+          <Orders rows={data?.paperOrders||[]}/></ReportSection>}
         {tab==='system'&&<>
-          <section className="mt-panel"><SectionHead eyebrow="INFRASTRUCTURE" title="Connectivity & data provenance"/><div className="mt-system-grid">
+          <ReportSection className="mt-panel" title="Connectivity & data provenance" header={<SectionHead eyebrow="INFRASTRUCTURE" title="Connectivity & data provenance"/>}><div className="mt-system-grid">
             {[
               ['Member API',data?.infrastructure.memberApi||'UNKNOWN','Railway staging health'],
               ['Master worker',data?.infrastructure.masterWorker||'OFFLINE/STALE','Database-backed staging heartbeat'],
               ['Master journal',data?.infrastructure.journal||'UNAVAILABLE','Read-only Postgres staging journal'],
               ['Admin authorization',data?.infrastructure.adminAuth||'NOT_CONFIGURED','Supabase app_metadata gate'],
             ].map(([label,value,note])=><div key={label} className="mt-system-card"><div className="mt-system-card-top"><Glyph name="layers" size={19}/><Pill value={value}/></div><h3>{label}</h3></div>)}
-          </div></section>
+          </div></ReportSection>
         </>}
         <footer className="mt-footer"><span>TRADEVICE / MASTER CONTROL CENTER</span><span>STAGING</span></footer>
       </main>

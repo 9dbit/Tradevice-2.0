@@ -1,11 +1,12 @@
 'use client';
 import {useEffect,useRef,useState} from 'react';
+import {ReportDrawer} from './report-ui';
 import {newsTiming,remaining,wib} from '../../lib/news-timing.mjs';
 export function NewsStatus({raw,now,compact=false}:{raw:unknown;now:number;compact?:boolean}){
  const {calendar:c,group:g,active,release}=newsTiming(raw,now);
- if(c.status==='UNKNOWN')return <div className="mt-news-explanation" data-status="UNKNOWN"><strong>News unavailable</strong><p>Calendar cannot be verified. New entries remain blocked.</p><small>{c.reason.replaceAll('_',' ')}</small></div>;
+ if(c.status==='UNKNOWN')return <div className="mt-news-explanation" data-status="UNKNOWN"><ReportDrawer title="News unavailable" defaultOpen><p>Calendar cannot be verified. New entries remain blocked.</p><small>{c.reason.replaceAll('_',' ')}</small></ReportDrawer></div>;
  return <div className="mt-news-explanation" data-status={c.status}>
-  <strong>{active?'Entry blocked · High-impact news':'News clear'}</strong>
+  <ReportDrawer title={active?'Entry blocked · High-impact news':'News clear'} defaultOpen>
   {compact&&!active&&<p>Blackout has cleared. Waiting for engine preflight confirmation.</p>}
   {g?<><p className="mt-news-window">No-trade window: {wib(g.start)} – {wib(g.end)}</p>
    <ul>{g.events.map(e=><li key={e.currency+e.title+e.at}><b>{e.currency} · {e.title}</b><span>{wib(e.at)} · High impact</span>{active&&<small>{now<e.at?'Pre-news blackout':now<=e.blackoutEnd?'Post-news cooldown':'Event cooldown ended'}</small>}</li>)}</ul>
@@ -15,7 +16,7 @@ export function NewsStatus({raw,now,compact=false}:{raw:unknown;now:number;compa
    </div>
    {active&&!compact&&<small>Overlapping news windows are combined. New entries require a fresh preflight after blackout.</small>}
   </>:<p>No upcoming high-impact event within verified coverage.</p>}
- </div>;
+ </ReportDrawer></div>;
 }
 export default function NewsNotifications({raw}:{raw:unknown}){
  const [now,setNow]=useState(Date.now()),dialog=useRef<HTMLDialogElement>(null);

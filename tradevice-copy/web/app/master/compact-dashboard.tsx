@@ -9,7 +9,7 @@ import TerminalMirror from './terminal-mirror';
 import SkillManager from './skill-manager';
 import DemoControl,{useDemoRuntime} from './demo-control';
 import {validateNews} from '../../lib/news-calendar.mjs';
-import {ReportIcon as I,ReportDrawer,TelemetryDatum as Datum} from './report-ui';
+import {ReportSection,ReportIcon as I,ReportDrawer,TelemetryDatum as Datum} from './report-ui';
 
 type Details='overview'|'cycles'|'anomalies'|'system';
 function fmt(value:number|null|undefined,unit=''){
@@ -50,9 +50,9 @@ export default function CompactDashboard({data,token,onNavigate}:{
   <DemoControl token={token} runtime={demoRuntime} refresh={refreshDemo} now={now} batchRaw={data?.demoBatch??data?.market?.demoBatch} newsRaw={data?.news}/>
 
   <GrowthChart raw={data?.growthHistory} now={now}/>
-  <section className="mt-u-panel mt-summary" aria-labelledby="summary-title">
-   <div className="mt-u-panel-head"><h2 id="summary-title"><I name="dashboard"/> Overview</h2>
-    <button className="mt-u-detail" type="button" onClick={()=>onNavigate('overview')}>Detail <I name="arrow" size={14}/></button></div>
+  <ReportSection title="Overview" className="mt-u-panel mt-summary" aria-labelledby="summary-title" header={<div className="mt-u-panel-head"><h2 id="summary-title"><I name="dashboard"/> Overview</h2>
+    <button className="mt-u-detail" type="button" onClick={()=>onNavigate('overview')}>Detail <I name="arrow" size={14}/></button></div>}>
+
    <div className="mt-summary-grid">
     <Datum icon="wallet" label="Demo Equity · Current" value={usd(market?.equity)}/>
     <Datum icon="receipt" label="Net · Completed Cycles" value={usd(batch?.net_completed_usd)}/>
@@ -63,11 +63,11 @@ export default function CompactDashboard({data,token,onNavigate}:{
     <button className="mt-u-detail" type="button" onClick={()=>onNavigate('cycles')}>Cycle Monitor <I name="arrow" size={14}/></button></div>
    <p className="mt-compact-note">Batch <strong>{batch?.status.replaceAll('_',' ')||'Unavailable'}</strong>{batch&&!batch.fresh&&' · Historical snapshot'}</p>
    {!!batch?.blockers.length&&<p className="mt-inline-blocker"><I name="alert" size={14}/><span>{batch.blockers.join(' · ')}</span></p>}
-  </section>
+  </ReportSection>
 
-  <section className="mt-u-panel" aria-labelledby="telemetry-title">
-   <div className="mt-u-panel-head"><h2 id="telemetry-title"><I name="activity"/> Telemetry</h2>
-    <span className="mt-u-chip">{market?'Fresh':'Stale'}</span></div>
+  <ReportSection title="Telemetry" className="mt-u-panel" aria-labelledby="telemetry-title" header={<div className="mt-u-panel-head"><h2 id="telemetry-title"><I name="activity"/> Telemetry</h2>
+    <span className="mt-u-chip">{market?'Fresh':'Stale'}</span></div>}>
+
    <div className="mt-telemetry-grid">
     <Datum icon="spread" label="Spread" value={fmt(market?.spreadPoints)} hint="points"/>
     <Datum icon="activity" label="ATR 14" value={fmt(market?.atr14)} hint={market?.atrTimeframe||'M1'}/>
@@ -93,13 +93,31 @@ export default function CompactDashboard({data,token,onNavigate}:{
     </dl>
     {market?.atrRecomputed&&<p className="mt-compact-note">ATR recalculated from closed M1 bars.</p>}
    </ReportDrawer>
-  </section>
+  </ReportSection>
 
   <SkillManager activation={demoRuntime} token={token} engineRaw={market?.engineDiagnostics} now={now}/>
 
-  <section className="mt-u-panel" aria-labelledby="risk-title">
-   <div className="mt-u-panel-head"><h2 id="risk-title"><I name="shield"/> Basket &amp; Adaptive</h2>
-    <span className="mt-u-chip">{engine.entrySuspended===true?'Entry suspended':engine.status==='ENGINE_REPORTED'?engine.state||'Reported':'Unverified'}</span></div>
+
+
+  <ReportSection title="News Guard" className="mt-u-panel" aria-labelledby="news-title" header={<div className="mt-u-panel-head"><h2 id="news-title"><I name="news"/> News Guard</h2>
+    <span className="mt-u-chip">{calendar.status==='CLEAR'?'Clear':calendar.status==='BLACKOUT'?'Blackout':'Unavailable'}</span></div>}>
+
+   <NewsStatus raw={data?.news} now={now}/>
+   <ReportDrawer title="Calendar details" meta="±60 min · all currencies">
+    <dl className="mt-detail-list">
+     <div><dt>Source</dt><dd>Forex Factory · high impact</dd></div>
+     <div><dt>Confirmed</dt><dd>{newsTime(calendar.observedAt)}</dd></div>
+     <div><dt>Valid until</dt><dd>{newsTime(calendar.validUntil)}</dd></div>
+     <div><dt>Next refresh</dt><dd>{newsTime(calendar.nextRefreshAt)}</dd></div>
+     <div><dt>Policy</dt><dd>{calendar.reason}</dd></div>
+    </dl>
+    <p className="mt-compact-note">Schedules may change. News clear does not verify quote, spread, margin or broker-flat readiness.</p>
+   </ReportDrawer>
+  </ReportSection>
+
+  <ReportSection title="Basket &amp; Adaptive" className="mt-u-panel" aria-labelledby="risk-title" header={<div className="mt-u-panel-head"><h2 id="risk-title"><I name="shield"/> Basket &amp; Adaptive</h2>
+    <span className="mt-u-chip">{engine.entrySuspended===true?'Entry suspended':engine.status==='ENGINE_REPORTED'?engine.state||'Reported':'Unverified'}</span></div>}>
+
    <div className="mt-telemetry-grid">
     <Datum icon="activity" label="Basket estimate" value={usd(engine.pnl?.value)} hint="costs unverified"/>
     <Datum icon="shield" label="Hard loss" value={usd(engine.hardLossUsd)} hint={engine.riskExitCommitted===true?'Exit committed':'engine report'}/>
@@ -124,27 +142,11 @@ export default function CompactDashboard({data,token,onNavigate}:{
     </dl>
     <p className="mt-compact-note">Basket estimate uses cached realized results. Open P&amp;L excludes realized results and some costs. A fresh report does not verify protection.</p>
    </ReportDrawer>
-  </section>
+  </ReportSection>
 
-  <section className="mt-u-panel" aria-labelledby="news-title">
-   <div className="mt-u-panel-head"><h2 id="news-title"><I name="news"/> News Guard</h2>
-    <span className="mt-u-chip">{calendar.status==='CLEAR'?'Clear':calendar.status==='BLACKOUT'?'Blackout':'Unavailable'}</span></div>
-   <NewsStatus raw={data?.news} now={now}/>
-   <ReportDrawer title="Calendar details" meta="±60 min · all currencies">
-    <dl className="mt-detail-list">
-     <div><dt>Source</dt><dd>Forex Factory · high impact</dd></div>
-     <div><dt>Confirmed</dt><dd>{newsTime(calendar.observedAt)}</dd></div>
-     <div><dt>Valid until</dt><dd>{newsTime(calendar.validUntil)}</dd></div>
-     <div><dt>Next refresh</dt><dd>{newsTime(calendar.nextRefreshAt)}</dd></div>
-     <div><dt>Policy</dt><dd>{calendar.reason}</dd></div>
-    </dl>
-    <p className="mt-compact-note">Schedules may change. News clear does not verify quote, spread, margin or broker-flat readiness.</p>
-   </ReportDrawer>
-  </section>
+  <ReportSection title="System &amp; Activity" className="mt-u-panel" aria-labelledby="system-summary-title" header={<div className="mt-u-panel-head"><h2 id="system-summary-title"><I name="terminal"/> System &amp; Activity</h2>
+    <button className="mt-u-detail" type="button" onClick={()=>onNavigate('system')}>Detail <I name="arrow" size={14}/></button></div>}>
 
-  <section className="mt-u-panel" aria-labelledby="system-summary-title">
-   <div className="mt-u-panel-head"><h2 id="system-summary-title"><I name="terminal"/> System &amp; Activity</h2>
-    <button className="mt-u-detail" type="button" onClick={()=>onNavigate('system')}>Detail <I name="arrow" size={14}/></button></div>
    <div className="mt-system-summary"><span>API <strong>{data?.infrastructure.memberApi||'Unknown'}</strong></span>
     <span>Worker <strong>{data?.infrastructure.masterWorker||'Unknown'}</strong></span>
     <button type="button" className="mt-u-detail" onClick={()=>onNavigate('anomalies')}>Anomalies <strong>{fmt(data?.master.anomalies)}</strong><I name="arrow" size={14}/></button></div>
@@ -160,6 +162,6 @@ export default function CompactDashboard({data,token,onNavigate}:{
     </div>
     <p className="mt-compact-note">Supervisor · {time(data?.master.heartbeatAt)}</p>
    </ReportDrawer>
-  </section>
+  </ReportSection>
  </div>;
 }

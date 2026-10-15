@@ -2,7 +2,7 @@
 import {useCallback,useEffect,useRef,useState} from 'react';
 import type {DemoRuntime} from './demo-control';
 import {validateEngine} from '../../lib/engine-diagnostics.mjs';
-import {ReportDrawer,ReportIcon} from './report-ui';
+import {ReportSection,ReportDrawer,ReportIcon} from './report-ui';
 
 type Skill={id:string;name:string;version:string;description:string;strategy:string;kind:string;sha256:string;documentation:string;active:boolean;executionStatus:string};
 type SaveProgress={phase:'SAVING'|'WAITING_ENGINE'|'CONFIRMED'|'FAILED'|'UNCERTAIN';percent:number;label:string};
@@ -99,11 +99,11 @@ export default function SkillManager({token,engineRaw,now,activation}:{token:str
   }catch{setError('Unable to read file.');}
  }
  const selected=catalog?.skills.find(s=>s.id===catalog.selectedSkillId);
- return <section className="mt-u-card mt-skills" aria-labelledby="skill-heading">
-  <div className="mt-skill-heading"><h2 id="skill-heading"><ReportIcon name="layers"/> Trading Skills</h2>
+ return <ReportSection title="Trading Skills" className="mt-u-card mt-skills" aria-labelledby="skill-heading" header={<div className="mt-skill-heading"><h2 id="skill-heading"><ReportIcon name="layers"/> Trading Skills</h2>
    <button type="button" disabled={!token||busy||!fresh} onClick={()=>file.current?.click()}>Upload skill</button>
    <input ref={file} type="file" hidden accept=".zip,.json" onChange={e=>{const f=e.target.files?.[0];e.target.value='';if(f)void upload(f);}}/>
-  </div>
+  </div>}>
+
   <p className="mt-compact-note">{!fresh?'Selection last reported · refresh pending':selected?(activationFresh&&activation?.activeSkillId===selected.id&&activation?.activeHash===selected.sha256?'Engine loaded skill':'Selected · engine confirmation pending'):'All OFF'} · selection switch · max. 1 active</p>
   <div aria-live="polite">{notice&&<p className="mt-skill-notice">{notice}</p>}{error&&<p role="alert" className="mt-skill-error">{messages[error]||error}</p>}</div>
   {progress&&<div className="mt-skill-progress" data-phase={progress.phase} aria-busy={busy}>
@@ -125,5 +125,5 @@ export default function SkillManager({token,engineRaw,now,activation}:{token:str
    <p className="mt-skill-note">ZIP / JSON · max. 512 KB · new uploads OFF. <a href="/skill-template.json" download>JSON template</a></p>
    <p className="mt-compact-note">{activationFresh?`Engine ${activation?.state} · fingerprint ${activation?.activeHash?'confirmed':'not loaded'}`:reported?`${engine.state} · cycle ${engine.cycleId||'—'}`:'Engine telemetry unverified.'}</p>
   </ReportDrawer>
- </section>;
+ </ReportSection>;
 }

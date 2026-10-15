@@ -1,5 +1,5 @@
 'use client';
-import {useId,useState,type ReactNode} from 'react';
+import {useId,useState,type ReactNode,type ComponentPropsWithoutRef} from 'react';
 
 export type ReportIconName='dashboard'|'activity'|'shield'|'alert'|'repeat'|'receipt'|'terminal'|'news'|'play'|'pause'|'stop'|'clock'|'arrow'|'chevron'|'wallet'|'spread'|'layers'|'check'|'minus';
 export function ReportIcon({name,size=18}:{name:ReportIconName;size?:number}){
@@ -33,7 +33,7 @@ export function ReportDrawer({title,meta,children,defaultOpen=false,className=''
  const [open,setOpen]=useState(defaultOpen),id=useId();
  return <div className={'mt-report-drawer '+className} data-open={open}>
   <button type="button" className="mt-drawer-trigger" id={id+'-toggle'} aria-expanded={open} aria-controls={id+'-body'} onClick={()=>setOpen(v=>!v)}>
-   <span>{title}</span>{meta!=null&&<small>{meta}</small>}<ReportIcon name="chevron" size={16}/>
+   <span>{title}</span>{meta!=null&&<small>{meta}</small>}<span className="mt-expand-circle" aria-hidden="true"><ReportIcon name="chevron" size={16}/></span>
   </button>
   <div id={id+'-body'} className="mt-drawer-body" aria-hidden={!open} inert={!open}>
    <div className="mt-drawer-clip"><div className="mt-drawer-content">{children}</div></div>
@@ -44,4 +44,21 @@ export function ReportDrawer({title,meta,children,defaultOpen=false,className=''
 export function TelemetryDatum({icon,label,value,hint}:{icon:ReportIconName;label:string;value:ReactNode;hint?:ReactNode}){
  return <div className="mt-telemetry-datum"><span className="mt-telemetry-label"><ReportIcon name={icon} size={15}/>{label}</span>
   <strong>{value}</strong>{hint&&<small>{hint}</small>}</div>;
+}
+
+/** Collapse only presentation: children stay mounted and polling keeps running.
+ * Dialogs live outside the inert body so stop notifications remain available. */
+export function ReportSection({title,header,children,overlay,defaultOpen=true,className='',...props}:{
+ title:string;header:ReactNode;children:ReactNode;overlay?:ReactNode;defaultOpen?:boolean;
+}&Omit<ComponentPropsWithoutRef<'section'>,'title'>){
+ const [open,setOpen]=useState(defaultOpen),id=useId();
+ return <section {...props} className={className+' mt-collapsible-section'} data-open={open}>
+  {overlay}
+  <div className="mt-section-heading-row">{header}<button className="mt-section-toggle" type="button"
+   aria-label={(open?'Collapse ':'Expand ')+title} aria-expanded={open} aria-controls={id+'-content'}
+   onClick={()=>setOpen(v=>!v)}><span className="mt-expand-circle" aria-hidden="true"><ReportIcon name="chevron" size={18}/></span></button></div>
+  <div id={id+'-content'} className="mt-section-body" aria-hidden={!open} inert={!open}>
+   <div className="mt-section-clip"><div className="mt-section-content">{children}</div></div>
+  </div>
+ </section>;
 }

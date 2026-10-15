@@ -332,3 +332,29 @@
 
 .mt-preflight-state{display:block;font-size:10px;line-height:1.4;color:#888}
 .mt-preflight-grid li[data-status=Blocked]>span:first-child{color:#e3b28d}
+
+/* Shared, visible orange expand controls for every section and detail drawer. */
+.mt-report .mt-section-heading-row{display:flex;align-items:center;gap:8px;margin-bottom:12px}
+.mt-report .mt-section-heading-row>:first-child{flex:1;min-width:0;margin-bottom:0}
+.mt-report .mt-section-heading-row h2{min-width:0;overflow-wrap:anywhere}
+.mt-report .mt-section-heading-row .mt-u-chip{max-width:40%;overflow-wrap:anywhere}
+.mt-report .mt-section-toggle{display:grid;place-items:center;flex:none;width:44px;height:44px;min-height:44px;padding:0;border:0;border-radius:50%;background:transparent;color:#111;cursor:pointer}
+.mt-expand-circle{display:inline-flex;align-items:center;justify-content:center;flex:none;width:30px;height:30px;border-radius:50%;background:#ff923d!important;color:#111!important}
+.mt-expand-circle svg{transition:transform .24s ease}
+.mt-section-toggle[aria-expanded=true] .mt-expand-circle svg,.mt-drawer-trigger[aria-expanded=true] .mt-expand-circle svg{transform:rotate(180deg)}
+.mt-report .mt-drawer-trigger>.mt-expand-circle{margin-left:auto}
+.mt-report .mt-drawer-trigger>small+.mt-expand-circle{margin-left:0}
+.mt-section-body{display:grid;grid-template-rows:1fr;opacity:1;visibility:visible;transition:grid-template-rows .24s ease,opacity .2s ease}
+.mt-collapsible-section[data-open=false]>.mt-section-body{grid-template-rows:0fr;opacity:0;visibility:hidden;transition:grid-template-rows .24s ease,opacity .2s ease,visibility 0s .24s}
+.mt-section-clip{min-height:0;overflow:hidden}
+.mt-section-content{min-width:0}
+.mt-report .mt-collapsible-section[data-open=false]>.mt-section-heading-row{margin-bottom:0}
+.mt-report .mt-section-heading-row .mt-skill-heading{display:flex;flex-wrap:wrap}
+.mt-report .mt-section-toggle:focus-visible{outline:2px solid #ff923d;outline-offset:2px}
+.mt-news-explanation .mt-drawer-trigger{display:flex;align-items:center;gap:8px;width:100%;min-height:44px;padding:4px 0;border:0;background:transparent;color:#ff923d;text-align:left;font:inherit;font-weight:650}
+.mt-news-explanation .mt-drawer-trigger>.mt-expand-circle{margin-left:auto}
+.mt-news-explanation .mt-drawer-body{display:grid;grid-template-rows:0fr;visibility:hidden}
+.mt-news-explanation [data-open=true]>.mt-drawer-body{grid-template-rows:1fr;visibility:visible}
+@media(prefers-reduced-motion:reduce){.mt-section-body,.mt-collapsible-section[data-open=false]>.mt-section-body,.mt-expand-circle svg{transition:none}}
+
+.mt-report .mt-skills .mt-section-toggle{background:transparent}

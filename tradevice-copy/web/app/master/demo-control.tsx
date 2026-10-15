@@ -4,7 +4,7 @@ import {preflightVerified,preflightDeferred,preflightStatus,preflightBlockers} f
 import {NewsStatus} from './news-status';
 import {batchStopNotice} from '../../lib/batch-stop.mjs';
 import {cycleProgress} from '../../lib/cycle-progress.mjs';
-import {ReportDrawer,ReportIcon as I} from './report-ui';
+import {ReportSection,ReportDrawer,ReportIcon as I} from './report-ui';
 const preflightChecks=[['identity','Demo identity'],['brokerFlat','Broker flat'],['quote','Fresh quote'],['spread','Spread'],['margin','Margin'],['commission','Commission'],['news','News'],['reconciled','Reconciliation'],['engineHash','Engine hash'],['engineReady','Engine ready']];
 export type DemoRuntime={online:boolean;observedMs:number|null;state:string;activeSkillId:string|null;activeHash:string|null;revision:number|null;checks:Record<string,boolean>;blockers:string[];canStart:boolean;commands:Array<{requestId:string;action:string;status:string;errorCode:string|null}>};
 export function useDemoRuntime(token:string){
@@ -72,16 +72,16 @@ export default function DemoControl({token,runtime,refresh,now,batchRaw,newsRaw}
  const verifiedCount=preflightChecks.filter(([key])=>checkedKey(key)).length;
  const status=!fresh?'Stale':runtime?.canStart?'Ready':({STARTING:'Starting',RUNNING:'Running',PAUSING:'Pausing',PAUSED:'Paused',STOPPING:'Stopping'} as Record<string,string>)[runtime?.state||'']||'Blocked';
  const blocker=!fresh?'Engine heartbeat unavailable':runtime?.canStart?'':visibleBlockers.filter(b=>!['PREFLIGHT_NEWS','NEWS_NOT_CLEAR'].includes(b)).join(' · ')||(['STARTING','RUNNING','PAUSING','PAUSED','STOPPING'].includes(runtime?.state||'')?'':'Preflight incomplete');
- return <section className="mt-u-panel mt-demo-control" aria-labelledby="demo-control-title">
-  <dialog ref={stopDialog} className="mt-stop-dialog" aria-labelledby="batch-stop-title" aria-describedby="batch-stop-reason" onCancel={e=>{e.preventDefault();dismissStop();}}>
+ return <ReportSection title="Trading Cycle" className="mt-u-panel mt-demo-control" aria-labelledby="demo-control-title" header={<div className="mt-u-panel-head mt-demo-heading"><h2 id="demo-control-title"><I name="repeat"/> Trading Cycle</h2><strong aria-label="Engine connection" data-state={status}>{status}</strong></div>} overlay={<dialog ref={stopDialog} className="mt-stop-dialog" aria-labelledby="batch-stop-title" aria-describedby="batch-stop-reason" onCancel={e=>{e.preventDefault();dismissStop();}}>
    <h2 id="batch-stop-title">{stopNotice?.title}</h2>
    <strong>{progress?.completed??0} / {progress?.total??0} cycles completed</strong>
    <p id="batch-stop-reason">{stopNotice?.reason}</p>
    {progress?.lastNet!=null&&<p>Last cycle: {progress.lastNet.toFixed(2)} USD</p>}
    <p className="mt-compact-note">{stopNotice?.resetSafe?'Reset prepares a new cycle count. Start still requires verified preflight.':'Broker reconciliation is still required. Reset is unavailable.'}</p>
    <div className="mt-stop-actions"><button type="button" autoFocus onClick={dismissStop}>Close</button><button type="button" disabled={!ended||busy||!stopNotice?.resetSafe} onClick={()=>{resetComposer();dismissStop();}}>Reset</button></div>
-  </dialog>
-  <div className="mt-u-panel-head mt-demo-heading"><h2 id="demo-control-title"><I name="repeat"/> Trading Cycle</h2><strong aria-label="Engine connection" data-state={status}>{status}</strong></div>
+  </dialog>}>
+
+
   <div className="mt-demo-inputs"><label htmlFor={showCycle?undefined:'demo-cycle-count'}>{showCycle?(ended?'Executed cycles':'Current cycle'):'Cycle count'}<small>Demo · XAUUSDm{showCycle?` · ${ended?'Last side':'Side'}: ${progress?.side||'Unverified'}`:''}{showCycle?(progress?.fresh?'':' · Last reported'):' · 1–10'}</small></label>
    {showCycle?<output className="mt-current-cycle" aria-label="Current cycle">{ended?progress!.executedCount:progress!.current}/{progress!.total}</output>:<input id="demo-cycle-count" aria-label="Demo cycle count" type="text" inputMode="numeric" pattern="[0-9]*" maxLength={2} value={count} disabled={busy||runtimeRunning} onChange={e=>setCount(e.target.value.replace(/\D/g,''))}/>}
   </div>
@@ -107,5 +107,5 @@ export default function DemoControl({token,runtime,refresh,now,batchRaw,newsRaw}
   </ReportDrawer>
   {request&&<div role="status" aria-live="polite" className="mt-demo-command"><strong>{request.action} · {request.phase}</strong><p>{request.error||(['PENDING','DISPATCHED','SENDING'].includes(request.phase)?'Awaiting engine confirmation…':request.phase==='APPLIED'?'Command applied. Basket status is reported separately.':'Not confirmed. Check command history before retrying Start.')}</p></div>}
   <ReportDrawer title="Command history" meta={runtime?runtime.commands.length:'—'}>{runtime?.commands.length?<ul className="mt-command-list">{runtime.commands.map(c=><li key={c.requestId}><strong>{c.action} · {c.status}</strong><small>{c.requestId.slice(0,8)}</small>{c.errorCode&&<span>{c.errorCode}</span>}</li>)}</ul>:<p className="mt-compact-note">No commands yet.</p>}</ReportDrawer>
- </section>;
+ </ReportSection>;
 }

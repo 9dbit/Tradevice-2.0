@@ -80,7 +80,7 @@ test('compact layout: five destinations, aligned status, numeric composer, Syste
  await page.setViewportSize({width:390,height:844});
  await page.screenshot({path:'/tmp/tradevice-dense-mobile.png',fullPage:true});
  await expect(page.locator('#telemetry-title')).toHaveText('Telemetry');
- const cells=page.locator('[aria-labelledby=telemetry-title] > .mt-telemetry-grid .mt-telemetry-datum');
+ const cells=page.locator('[aria-labelledby=telemetry-title] > .mt-section-body > .mt-section-clip > .mt-section-content > .mt-telemetry-grid .mt-telemetry-datum');
  const boxes=await Promise.all([0,1,2,3].map(i=>cells.nth(i).boundingBox()));
  expect(Math.abs(boxes[0]!.y-boxes[2]!.y)).toBeLessThan(2);
  expect(boxes[1]!.x).toBeGreaterThan(boxes[0]!.x);
@@ -138,7 +138,7 @@ test('fresh heartbeat cannot imply Ready with blocked preflight, and stale evide
  await expect(page.getByLabel('Engine connection')).toHaveText('Stale',{timeout:10000});
  await expect(page.getByRole('img',{name:'Verified',exact:true})).toHaveCount(0);
  await expect(page.getByRole('img',{name:'Stale',exact:true})).toHaveCount(10);
- await expect(page.locator('[aria-labelledby=telemetry-title] > .mt-telemetry-grid .mt-telemetry-datum > strong')).toHaveText(['—','—','—','—','—','—']);
+ await expect(page.locator('[aria-labelledby=telemetry-title] > .mt-section-body > .mt-section-clip > .mt-section-content > .mt-telemetry-grid .mt-telemetry-datum > strong')).toHaveText(['—','—','—','—','—','—']);
  expect(f.posts).toHaveLength(0);
 });
 
@@ -217,10 +217,12 @@ test('growth chart filters actual timestamped fixtures and remains usable on mob
 
  test('interrupted batch explains stop; Close dismisses and Reset never sends a command',async({page})=>{
  const f=await setup(page);await page.setViewportSize({width:390,height:844});
+ await page.getByRole('button',{name:'Collapse Trading Cycle',exact:true}).click();
  const stoppedBatch={schema:'tradevice.v51.demo.batch.v1',read_only:true,batch_id:'v51_dashboard_'+'a'.repeat(32),observed_ms:Date.now(),status:'STOPPED',requested:10,blockers:[],cycles:Array.from({length:3},(_,i)=>({number:i+1,cycle_id:(i+1).toString(16).padStart(8,'0'),outcome:i===2?'COMPLETE_BROKER_CLOSED':'COMPLETE_TARGET_HISTORY',broker_flat:true,layers:2,peak_lots:.03,net_usd:i===2?3.49:3.5}))};f.setBatch(stoppedBatch);
  const modal=page.getByRole('dialog');await expect(modal).toBeVisible({timeout:15000});await expect(modal).toContainText('3 / 10');await expect(modal).toContainText('terminal cleanup');await expect(modal).toContainText('3.49 USD');
  await page.screenshot({path:'/tmp/tradevice-stop-popup.png'});
  await modal.getByRole('button',{name:'Close',exact:true}).click();await expect(modal).not.toBeVisible();await page.waitForTimeout(5500);await expect(modal).not.toBeVisible();
+ await page.getByRole('button',{name:'Expand Trading Cycle',exact:true}).click();
  await page.getByRole('button',{name:'Reset',exact:true}).click();await expect(page.getByLabel('Demo cycle count')).toHaveValue('10');f.setBatch({...stoppedBatch,batch_id:'v51_dashboard_'+'b'.repeat(32)});await expect(modal).toBeVisible({timeout:15000});await modal.getByRole('button',{name:'Reset',exact:true}).click();await expect(modal).not.toBeVisible();await expect(page.getByLabel('Demo cycle count')).toHaveValue('10');expect(f.posts).toHaveLength(0);
  });
  test('selected skill stays ON when engine heartbeat expires',async({page})=>{
@@ -258,5 +260,52 @@ test('growth chart filters actual timestamped fixtures and remains usable on mob
  f.setExtraBlockers([]);f.restorePreflight();f.ready();
  await expect(page.getByRole('button',{name:'Preflight 10 / 10',exact:true})).toBeVisible();
  await expect(checks.getByRole('img',{name:'Verified',exact:true})).toHaveCount(10);
+ expect(f.posts).toHaveLength(0);
+ });
+
+ test('all dashboard and detail sections collapse, orange arrows, news above basket, no command side effects',async({page})=>{
+ test.setTimeout(60000);
+ const f=await setup(page);await page.setViewportSize({width:390,height:844});
+ const sections=page.locator('.mt-dense-dashboard > section');
+ await expect(sections).toHaveCount(8);
+ const titles=await sections.locator('.mt-section-heading-row h2').allTextContents();
+ expect(titles.indexOf(' Basket & Adaptive')).toBe(titles.indexOf(' News Guard')+1);
+ for(let i=0;i<await sections.count();i++){
+  const section=sections.nth(i),toggle=section.locator(':scope > .mt-section-heading-row > .mt-section-toggle');
+  const color=await toggle.locator('.mt-expand-circle').evaluate(el=>{const c=getComputedStyle(el);return {color:c.backgroundColor,radius:c.borderRadius,width:el.getBoundingClientRect().width,height:el.getBoundingClientRect().height};});
+  expect(color.color).toBe('rgb(255, 146, 61)');expect(color.radius).toBe('50%');expect(color.width).toBe(color.height);
+  await toggle.click();await expect(toggle).toHaveAttribute('aria-expanded','false');
+  await expect(section.locator(':scope > .mt-section-body')).toBeHidden();
+ }
+ await page.waitForTimeout(1500);
+ await expect(page.locator('.mt-dense-dashboard > section[data-open=false]')).toHaveCount(8);
+ await page.screenshot({path:'/tmp/tradevice-all-sections-collapsed.png',fullPage:true});
+ for(let i=0;i<await sections.count();i++)await sections.nth(i).locator(':scope > .mt-section-heading-row > .mt-section-toggle').click();
+ await page.getByRole('button',{name:'Collapse Growth',exact:true}).focus();await page.keyboard.press('Enter');
+ await expect(page.getByRole('button',{name:'Expand Growth',exact:true})).toBeFocused();await page.keyboard.press('Space');
+ await expect(page.getByRole('group',{name:'Growth period'})).toBeVisible();
+ const now=Date.now(),at=now+10800000;
+ f.setNews({provider:'Forex Factory',source:'OFFICIAL_HTTPS_WEEKLY_EXPORT',status:'CLEAR',policy:'AVOID',beforeMinutes:60,afterMinutes:60,orderDispatchAuthorized:false,superviseExistingBasket:true,observedAt:now,validUntil:now+300000,coverageStart:now-86400000,coverageEnd:now+86400000,highImpactEvents:[{title:'Test event',currency:'USD',at,blackoutStart:at-3600000,blackoutEnd:at+3600000}]});
+ const news=page.locator('[aria-labelledby=news-title]');
+ const clear=news.getByRole('button',{name:'News clear',exact:true});await expect(clear).toBeVisible({timeout:15000});
+ await expect(clear.locator('.mt-expand-circle')).toHaveCSS('background-color','rgb(255, 146, 61)');
+ await expect(page.locator('.mt-report .mt-drawer-trigger:not(:has(.mt-expand-circle))')).toHaveCount(0);
+ await clear.click();await expect(news.getByLabel('News countdowns')).toBeHidden();
+ await page.waitForTimeout(1500);await expect(clear).toHaveAttribute('aria-expanded','false');
+ await clear.click();await expect(news.getByLabel('News countdowns')).toBeVisible();
+ for(const width of [320,390,1440]){await page.setViewportSize({width,height:900});expect(await page.evaluate(()=>document.documentElement.scrollWidth-innerWidth)).toBeLessThanOrEqual(1);}
+ await page.setViewportSize({width:390,height:844});
+ await news.scrollIntoViewIfNeeded();await page.screenshot({path:'/tmp/tradevice-news-basket-drawers.png'});
+ for(const tab of ['Overview','Cycle Monitor','Anomaly Center','System']){
+  await page.getByRole('navigation',{name:'Master mobile navigation'}).getByRole('button',{name:tab,exact:true}).click();
+  const visibleSections=page.locator('.mt-report section');
+  expect(await visibleSections.count()).toBeGreaterThan(0);
+  await expect(page.locator('.mt-report section:not(.mt-collapsible-section)')).toHaveCount(0);
+  for(let i=0;i<await visibleSections.count();i++){
+   const section=visibleSections.nth(i),toggle=section.locator(':scope > .mt-section-heading-row > .mt-section-toggle');
+   await toggle.click();await expect(section.locator(':scope > .mt-section-body')).toBeHidden();
+   await toggle.click();await expect(toggle).toHaveAttribute('aria-expanded','true');
+  }
+ }
  expect(f.posts).toHaveLength(0);
  });

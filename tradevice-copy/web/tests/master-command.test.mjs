@@ -20,7 +20,7 @@ test('Dashboard has five destinations with Risk and Paper in System',()=>{
   assert.match(consolePage,/CompactDashboard/);
   assert.match(masterCSS,/MASTER_UNIFIED_COMMAND_DASHBOARD_V1/);
   assert.doesNotMatch(consolePage,/key:'(?:risk|journal)'/);
-  assert.match(consolePage,/tab==='system'&&<section className="mt-panel"><SectionHead eyebrow="PAPER EXECUTION AUDIT"/);
+  assert.match(consolePage,/tab==='system'&&<ReportSection className="mt-panel" title="Paper order journal" header=\{<SectionHead eyebrow="PAPER EXECUTION AUDIT"/);
 });
 test('Dashboard presents demo controls first and concise summaries with supporting drawers',()=>{
  for(const t of ['Overview','Cycle Monitor','Telemetry','Basket &amp; Adaptive','News Guard','System &amp; Activity','Worker events'])assert.ok(dashboard.includes(t),t);

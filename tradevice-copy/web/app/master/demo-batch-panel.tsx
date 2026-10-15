@@ -1,4 +1,5 @@
 'use client';
+import {ReportSection} from './report-ui';
 import {useEffect,useState} from 'react';
 import {validateBatch} from '../../lib/demo-batch.mjs';
 const money=(n:number|null|undefined)=>typeof n==='number'?n.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})+' USD':'—';
@@ -9,9 +10,9 @@ export default function DemoBatchPanel({raw,now,cycleOnly=false}:{raw:unknown;no
  const final=b&&['COMPLETED','STOPPED','SAFETY_STOP','BLOCKED'].includes(b.status)&&b.unfinished===0;
  const stamp=b?new Intl.DateTimeFormat('en-GB',{timeZone:'Asia/Jakarta',dateStyle:'medium',timeStyle:'medium'}).format(new Date(b.observed_ms))+' WIB':'—';
  const reasons=b?.blockers.map(x=>x==='CALENDAR_STALE_OR_FUTURE'?'Calendar freshness expired — entry suspended':x.replaceAll('_',' '));
- return <section className="mt-u-panel mt-u-market" aria-label="Bounded demo batch evidence">
-  <div className="mt-u-panel-head"><div><span className="mt-u-overline">EXNESS DEMO · BROKER HISTORY</span><h2>Trading History</h2></div>
-   <span className="mt-u-chip">{b?(final?'FINAL RESULT · ':b.fresh?'':'STALE RUNNER · ')+b.status:'NO VERIFIED BATCH'}</span></div>
+ return <ReportSection title="Trading History" className="mt-u-panel mt-u-market" aria-label="Bounded demo batch evidence" header={<div className="mt-u-panel-head"><div><span className="mt-u-overline">EXNESS DEMO · BROKER HISTORY</span><h2>Trading History</h2></div>
+   <span className="mt-u-chip">{b?(final?'FINAL RESULT · ':b.fresh?'':'STALE RUNNER · ')+b.status:'NO VERIFIED BATCH'}</span></div>}>
+
   <div className="mt-u-market-grid">
    <div className="mt-u-market-cell"><small>Completed / requested</small><strong>{b?`${b.completed} / ${b.requested}`:'—'}</strong><span>{b?`${b.started} cycles started`:'Awaiting broker evidence'}</span></div>
    {cycleOnly?<>
@@ -27,5 +28,5 @@ export default function DemoBatchPanel({raw,now,cycleOnly=false}:{raw:unknown;no
   {!!b?.cycles.length&&<div className="mt-table-scroll"><table className="mt-table"><thead><tr><th>Cycle</th><th>Side</th><th>Status</th><th>Net</th><th>Layer</th><th>Peak lots</th><th>Broker-flat</th></tr></thead><tbody>
    {b.cycles.map(c=><tr key={c.cycle_id}><td>{c.number} · {c.cycle_id}</td><td>{c.side||"—"}</td><td>{c.outcome}</td><td>{money(c.net_usd)}</td><td>{c.layers}</td><td>{c.peak_lots}</td><td>{c.broker_flat?'CONFIRMED':'NOT CONFIRMED'}</td></tr>)}
   </tbody></table></div>}
- </section>;
+ </ReportSection>;
 }
