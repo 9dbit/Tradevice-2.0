@@ -35,3 +35,10 @@ The patch package contains diffs only; the private original engine is not copied
 - Installer dry-run recreates all 10 tested candidate files byte-for-byte from audited baseline hashes.
 
 Tests exercise delayed candle qualification, both directions, actual-fill anchoring, reserve rejection despite a passing distance, hard-loss preemption, no ambiguous resend, authorization expiry, frozen ATR, command idempotency, deadline ladder continuity, and truthful diagnostics. No broker execution test is performed. The old 49 legacy failures/errors and the separate $3.49 TP classification issue are not claimed fixed by this change.
+
+## Installed verification (15 October, about 17:54 WIB)
+
+- copy-api deployment `e2e8497a-9e65-4881-aff8-043d1abee340` and copy-web `618c6100-c16d-4932-b9ad-7ebfd9830e8c`: SUCCESS on `f55b68472436282042dcba50153cd41c881fd070`. Public API health and `/master` HTTP 200; eight served web scripts match the tested local build. Platform remains paper, live/copy execution false.
+- Clone installation fingerprint: `722c23673123128a2afe098aba2d29e905af595478246bba804684beea240ae6`. All ten installed file hashes match the tested candidate. All 123 existing journal files remain byte-identical.
+- Windows refused atomic source replacement before any source mutation. The installer now preserves existing file ACLs with flushed writes under both execution locks, refuses hardlinked source files, verifies bytes, then commits the fingerprint. No ACL or security configuration was changed. The failed attempt and successful attempt have separate preserved backups.
+- Read-only preflight: identity, broker-flat, quote, spread, margin, commission, news, reconciliation and engine fingerprint all passed. Four TP modes validated on the installed source; observed ATR target $1.16/$2.32 at that instant. Broker remained 0 positions / 0 orders; no cycle started by installation.

@@ -1,5 +1,5 @@
 """Install reviewed clone-only patches while broker-flat; never starts a run."""
-import argparse,hashlib,json,re,shutil,sqlite3,sys,time
+import argparse,hashlib,json,os,re,shutil,sqlite3,sys,time
 from pathlib import Path
 ROOT=Path(r'D:\GoldTrapCore\GoldTrapCore_v0.2_v51_research_20261013')
 
@@ -60,7 +60,7 @@ def main():
     positions,orders=mt5.positions_get(),mt5.orders_get()
     if positions is None or orders is None or positions or orders:raise ValueError('BROKER_NOT_FLAT')
     time.sleep(.1)
-   backup=args.package/'before_install';backup.mkdir(exist_ok=False)
+   backup=args.package/('before_install_'+str(time.time_ns()));backup.mkdir(exist_ok=False)
    shutil.copyfile(fp,backup/fp.name)
    for name in prepared:
     src=ROOT/name
@@ -69,7 +69,13 @@ def main():
    # Bridge and runner locks exclude execution until all reviewed files and the
    # fingerprint are in place. Partial failures remain fingerprint-blocked.
    for name,content in prepared.items():
-    dest=ROOT/name;tmp=dest.with_suffix('.installing');tmp.write_bytes(content);tmp.replace(dest)
+    dest=ROOT/name
+    # Preserve Windows ACLs on existing files. Source writes occur only while
+    # bridge/runner locks are held; fingerprint is committed after all files.
+    if dest.exists() and dest.stat().st_nlink!=1:raise ValueError('LINKED_SOURCE_REFUSED')
+    with dest.open('wb') as out:
+     out.write(content);out.flush();os.fsync(out.fileno())
+    if sha(dest.read_bytes())!=sha(content):raise ValueError('INSTALLED_HASH_MISMATCH')
     current['files'][name]=sha(content)
    atomic_json(fp,current)
    receipt=dict(installed_files={k:sha(v) for k,v in prepared.items()},fingerprint_sha256=sha(fp.read_bytes()),broker_flat=True,new_cycle_started=False,old_journals_modified=False,observed_ms=int(time.time()*1000))
