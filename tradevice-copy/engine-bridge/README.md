@@ -22,3 +22,5 @@ TRADEVICEPC task `TRADEVICE-V51-DemoBridge` uses the virtual environment's `pyth
 2026-10-15 closed-M1/settings revision: see `EXECUTION_SETTINGS_20261015.md` and the baseline-bound patch package. New dashboard Starts require explicit settings protocol; use `apply_execution_settings.py` only after the documented idle/flat checks. Original source and legacy journals retain their baseline configuration digest.
 
 ATR TP correction: `ATR_PRICE_DISTANCE_20261015.md` replaces numeric-USD ATR targets with a frozen price distance from the basket weighted entry. Requires settings protocol `V51_ATR_PRICE_DISTANCE_20261015`.
+
+Latest execution policy: [Current ATR basket profit USD](DYNAMIC_ATR_USD_20261015.md). Supersedes the frozen ATR distance policy.

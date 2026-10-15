@@ -3,7 +3,7 @@ import math,re
 
 def missing(reason='ENGINE_NOT_CONNECTED'):
     return dict(policy=None,status=reason,observedMs=None,cycleId=None,state=None,hardLossUsd=None,
-        targetUsd=None,tpBasis=None,tpDistancePrice=None,tpDistancePoints=None,targetPrice=None,riskExitCommitted=None,brokerFlatReconciled=None,entrySuspended=None,
+        targetUsd=None,tpAtrValue=None,tpMultiplier=None,tpAtrCandleMs=None,tpAtrFresh=None,tpBasis=None,tpDistancePrice=None,tpDistancePoints=None,targetPrice=None,riskExitCommitted=None,brokerFlatReconciled=None,entrySuspended=None,
         pnl=None,decision=None,authorization='UNKNOWN',authorizationExpiresMs=None,
         orderDispatchAuthorized=False)
 
@@ -31,10 +31,20 @@ def project_engine(raw,now):
         if not isinstance(state,str) or not re.fullmatch(r'[A-Z_]{1,48}',state):raise ValueError()
         policy=raw.get('policy','REVERSAL_RISK_V5')
         if policy not in ('REVERSAL_RISK_V5','CLOSE_DISTANCE_RISK_V51'):raise ValueError()
-        loss=number(raw.get('hard_loss_usd'),-250,-120)
-        if loss!=(-250 if policy=='CLOSE_DISTANCE_RISK_V51' else -120):raise ValueError()
+        loss=number(raw.get('hard_loss_usd'),-350,-120)
+        if loss not in ((-250,-350) if policy=='CLOSE_DISTANCE_RISK_V51' else (-120,)):raise ValueError()
         basis=raw.get('tp_basis','PROFIT_USD');distance=raw.get('tp_distance_price');points=raw.get('tp_distance_points')
-        if basis=='ATR_PRICE_DISTANCE':
+        atr_value=multiplier=atr_candle=atr_fresh=None
+        if basis=='ATR_CURRENT_USD':
+            if policy!='CLOSE_DISTANCE_RISK_V51' or distance is not None or points is not None:raise ValueError()
+            atr_value=number(raw.get('tp_atr_value'),1e-12,1e6);multiplier=raw.get('tp_multiplier')
+            if type(multiplier) is not int or multiplier not in (1,2) or loss!=(-250 if multiplier==1 else -350):raise ValueError()
+            target=number(raw.get('target_usd'),1e-12,2e6)
+            if not math.isclose(target,atr_value*multiplier,rel_tol=1e-12):raise ValueError()
+            atr_candle=stamp(raw.get('tp_atr_candle_ms'));atr_fresh=raw.get('tp_atr_fresh')
+            if type(atr_fresh) is not bool:raise ValueError()
+            atr_fresh=atr_fresh and 0<=now-atr_candle<=120000
+        elif basis=='ATR_PRICE_DISTANCE':
             if policy!='CLOSE_DISTANCE_RISK_V51':raise ValueError()
             distance=number(distance,1e-9,1e6);points=number(points,1e-6,1e9)
             if not math.isclose(distance,points*.001,rel_tol=1e-10,abs_tol=1e-10):raise ValueError()
@@ -43,6 +53,7 @@ def project_engine(raw,now):
             if distance is not None or points is not None:raise ValueError()
             target=number(raw.get('target_usd'),.01,250)
         else:raise ValueError()
+        if basis!='ATR_CURRENT_USD' and loss!=(-250 if policy=='CLOSE_DISTANCE_RISK_V51' else -120):raise ValueError()
         price=number(raw['target_price'],1e-9,1e9) if raw.get('target_price') is not None else None
         for k in ('risk_exit_committed','broker_flat_reconciled','entry_suspended'):
             if type(raw.get(k)) is not bool:raise ValueError()
@@ -70,7 +81,7 @@ def project_engine(raw,now):
             if 0<=now-close<=120000:
                 decision=dict(layer=d['layer'],candleCloseMs=close,accepted=d['accepted'],structuralReversal=d.get('structural_reversal'),reasons=reasons,**values)
         return dict(policy=policy,status='ENGINE_REPORTED',observedMs=at,cycleId=cycle,state=state,
-            hardLossUsd=loss,targetUsd=target,tpBasis=basis,tpDistancePrice=distance,tpDistancePoints=points,targetPrice=price,riskExitCommitted=raw['risk_exit_committed'],
+            hardLossUsd=loss,targetUsd=target,tpAtrValue=atr_value,tpMultiplier=multiplier,tpAtrCandleMs=atr_candle,tpAtrFresh=atr_fresh,tpBasis=basis,tpDistancePrice=distance,tpDistancePoints=points,targetPrice=price,riskExitCommitted=raw['risk_exit_committed'],
             brokerFlatReconciled=raw['broker_flat_reconciled'],entrySuspended=raw['entry_suspended'],
             pnl=pnl,decision=decision,authorization=auth,authorizationExpiresMs=expiry,
             orderDispatchAuthorized=False)

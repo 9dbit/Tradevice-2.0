@@ -1,0 +1,11 @@
+--- a/v51_execution_settings.py
++++ b/v51_execution_settings.py
+@@ -14,7 +14,7 @@
+   atr=atr_at(bars,len(bars)-1,adapter.cfg.atr_period)
+   if not atr or atr<=0:raise ArcSafetyError('SETTINGS_ATR_UNAVAILABLE')
+   candle=bars[-1].time
+-  distance=float(Decimal(str(atr))*(1 if mode=='ATR_1' else 2));target=None
++  target=float(Decimal(str(atr))*(1 if mode=='ATR_1' else 2))
+  else:target=3.5 if mode=='FIXED_3_5' else settings['customTpUsd']
+  adapter.cfg=execution_config(settings['baseLot'],target,settings=settings,atr=atr,candle_time=candle,atr_distance=distance)
+  return adapter.cfg

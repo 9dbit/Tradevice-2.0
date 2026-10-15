@@ -1,0 +1,50 @@
+{
+  "baseline_fingerprint_sha256": "00b438dfc08c2a525a03b1469178e376fdcbd0fadeffff313b6aa97da46d34e2",
+  "files": {
+    "goldtrap_arc/config.py": {
+      "before_sha256": "9f38196d95c4c6956bda057ddc56849ff0495945631fab89ff0f0a6b52eaaf6e",
+      "after_sha256": "5039ad40fcbacc35265136c3f99e4803d483b351412997d70b6e71f78565e50b",
+      "patch": "goldtrap_arc__config.py.patch"
+    },
+    "goldtrap_arc/rules.py": {
+      "before_sha256": "74cc2216cc29826d105b7c598c8ec69099b0035ba983f60d22628b76e221c9ca",
+      "after_sha256": "59a057e0e6bc607cfa7733e1b31ad8b44758fcaf2a6c279266e5d283ac90891b",
+      "patch": "goldtrap_arc__rules.py.patch"
+    },
+    "goldtrap_arc/adaptive_policy.py": {
+      "before_sha256": "e2753bba7d875a97b92668a19b7017c6a56112baa760ff421a93b99fd8c637f7",
+      "after_sha256": "40a899588e2e661e844276933e4a7a54ffe724b709c9e0d51577ad281f8402b5",
+      "patch": "goldtrap_arc__adaptive_policy.py.patch"
+    },
+    "goldtrap_arc/execution.py": {
+      "before_sha256": "2d7f2fd3249962e4100603d4f053d1a2042d3796ea99b78a42c21ed69926fae7",
+      "after_sha256": "3a5dac35388b7b8f7bb7152720ce79b266d797cc66a072d011b0dfd4aaf2ba2d",
+      "patch": "goldtrap_arc__execution.py.patch"
+    },
+    "v51_batch_research.py": {
+      "before_sha256": "461aae05b1dfa73eedd677e1a408a5b5e926349ffa5f5e9395b821cee6c581cf",
+      "after_sha256": "a33bb4b5302e2e36dd82f2d587be5e95866dd6a9f568b05f13a1ef909731fafd",
+      "patch": "v51_batch_research.py.patch"
+    },
+    "v51_guarded_engine.py": {
+      "before_sha256": "0c8a2d114eb3b5ba8da8f58fdc340669b51dee92f95a9a4bc75dc5c9dc4b057d",
+      "after_sha256": "3f8731f4c4072a6181db82e063e639050c59e0cc0bd33eb381ca5575ddcaf24d",
+      "patch": "v51_guarded_engine.py.patch"
+    },
+    "v51_engine_diagnostics.py": {
+      "before_sha256": "3319e76ed46cd744cd0c355018eaa1ded2cf74bc41737c8d03840af5e125d871",
+      "after_sha256": "12284eeb8bc435c5eb269cd205ed135314dd577d852f8e1576cd99b2c9f6df51",
+      "patch": "v51_engine_diagnostics.py.patch"
+    },
+    "demo_settings.py": {
+      "before_sha256": "1df209bda7376d5dc35bd880b1e82f194e552f6feaffa23fc4c44c8d337c3185",
+      "after_sha256": "616a3a282c26edecbfeaced1558166be37cde5272560942b3571cf99caa79ca5",
+      "patch": "demo_settings.py.patch"
+    },
+    "v51_execution_settings.py": {
+      "before_sha256": "3bf861e035da45eb3a66ab1f6b78843f9fa707c09871b00b27414d23621ded5e",
+      "after_sha256": "784a7e6044aace15ea92233f744bfae24ed027da875b90a460ab0dead5e09368",
+      "patch": "v51_execution_settings.py.patch"
+    }
+  }
+}

@@ -1,5 +1,6 @@
 export interface EngineDiagnostics {
  policy:string|null;status:string;observedMs:number|null;cycleId:string|null;state:string|null;
+ tpAtrValue:number|null;tpMultiplier:number|null;tpAtrCandleMs:number|null;tpAtrFresh:boolean|null;
  tpBasis:string|null;tpDistancePrice:number|null;tpDistancePoints:number|null;targetPrice:number|null;
  hardLossUsd:number|null;targetUsd:number|null;riskExitCommitted:boolean|null;
  brokerFlatReconciled:boolean|null;entrySuspended:boolean|null;

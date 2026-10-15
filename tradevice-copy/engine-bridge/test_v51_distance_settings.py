@@ -39,7 +39,7 @@ class DistanceExecution(unittest.TestCase):
   self.assertEqual(self.store.load()['adaptive_intent']['policy'],'CLOSE_DISTANCE_RISK_V51')
   self.engine.step();self.assertEqual(len(self.entries()),1)
   self.assertTrue(all(p.tp>0 for p in self.api.positions))
- def test_next_anchor_rechecked_and_risk_can_block_even_after_distance_passes(self):
+ def test_next_anchor_rechecked_and_projection_does_not_block_entry(self):
   self.prepare()
   for layer in (6,7):
    self.anchor=self.api.positions[-1].price_open
@@ -48,10 +48,18 @@ class DistanceExecution(unittest.TestCase):
    self.assertEqual(self.store.load()['adaptive_intent']['layer'],layer)
   self.anchor=self.api.positions[-1].price_open
   self.candle(1.701,False);self.engine.next_entry(self.a.snapshot())
-  self.assertEqual(len(self.api.positions),7)
+  self.assertEqual(len(self.api.positions),8)
   risk=[r for r in self.ledger.rows if r['event']=='ADAPTIVE_RISK_EVALUATED'][-1]
-  self.assertEqual(risk['selected_lot'],0)
+  self.assertEqual(risk['selected_lot'],risk['requested_lot'])
   self.assertLess(risk['requested_stress_pl'],risk['threshold'])
+ def test_l6_through_l10_have_no_projected_stress_veto(self):
+  self.prepare()
+  with patch.object(self.a,'executable_pl',return_value=-1):
+   for layer in range(6,11):
+    self.anchor=self.api.positions[-1].price_open;self.candle(1.701,False);self.engine.next_entry(self.a.snapshot())
+    self.assertEqual(len(self.api.positions),layer)
+   sent=len(self.api.sent);self.engine.next_entry(self.a.snapshot());self.assertEqual(len(self.api.sent),sent)
+  self.assertEqual(len(self.entries()),5)
  def test_diagnostics_do_not_claim_reversal_is_required(self):
   from v51_engine_diagnostics import make_report
   self.prepare();self.candle(1.2,False);self.engine.next_entry(self.a.snapshot())
@@ -121,7 +129,7 @@ class SettingsTests(unittest.TestCase):
    with self.assertRaises(ValueError):validate_settings(default_settings()|{'baseLot':bad})
   for custom in [0,True,251,1.001,float('inf')]:
    with self.assertRaises(ValueError):validate_settings(default_settings()|{'tpMode':'CUSTOM','customTpUsd':custom})
- def test_atr_price_distance_and_fixed_usd_modes_are_separate(self):
+ def test_current_atr_usd_and_fixed_modes_are_separate(self):
   bars=[Bar(time=i*60,open=100,high=101.05,low=98.95,close=100,spread_points=240) for i in range(15)]
   a=NS(cfg=CONFIG,recent_closed_bars=lambda count:bars)
   with patch('v51_execution_settings.time',return_value=900):
@@ -129,8 +137,8 @@ class SettingsTests(unittest.TestCase):
     c=configure_adapter(a,default_settings()|{'tpMode':mode,'customTpUsd':8.75 if mode=='CUSTOM' else None})
     proof=execution_config_proof(c)
     if mode.startswith('ATR_'):
-     self.assertAlmostEqual(proof['tp_distance_price'],target)
-     self.assertIsNone(proof['target_usd'])
+     self.assertIsNone(proof['tp_distance_price'])
+     self.assertAlmostEqual(proof['target_usd'],target)
     else:
      self.assertEqual(c.basket_profit_target_usd,target)
      self.assertEqual(proof['target_usd'],target)

@@ -1,0 +1,10 @@
+--- a/v51_guarded_engine.py
++++ b/v51_guarded_engine.py
+@@ -107,6 +107,7 @@
+         self.owned(snap)
+         if self.exact_total_pl(snap)<=self.cfg.hard_basket_loss_usd:
+             self.risk_exit();return self.state['state']
++        self.refresh_atr_tp()
+         if self.target_coordinator('news supervision target'):return self.state['state']
+         self.protect(self.adapter.snapshot())
+         return self.state['state'] if self.state['state'].startswith('COMPLETE') else 'NEWS_SUPERVISION_ONLY'

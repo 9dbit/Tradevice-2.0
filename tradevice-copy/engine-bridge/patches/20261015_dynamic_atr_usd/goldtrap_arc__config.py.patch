@@ -1,0 +1,73 @@
+--- a/goldtrap_arc/config.py
++++ b/goldtrap_arc/config.py
+@@ -181,29 +181,59 @@
+     if settings['baseLot']!=base_lot:raise ArcSafetyError('SETTINGS_LOT_MISMATCH')
+     if type(base_lot) not in (int,float) or Decimal(str(base_lot)) not in [Decimal(i)/100 for i in range(1,11)]:
+         raise ArcSafetyError('BASE_LOT_INVALID')
+-    distance_mode=settings['tpMode'] in ('ATR_1','ATR_2')
+-    if distance_mode:
++    dynamic_mode=settings['tpMode'] in ('ATR_1','ATR_2')
++    distance_mode=False
++    if dynamic_mode:
+         multiplier=1 if settings['tpMode']=='ATR_1' else 2
+-        if (target_usd is not None or type(atr) not in (int,float) or not math.isfinite(atr) or atr<=0
+-                or type(atr_distance) not in (int,float) or not math.isfinite(atr_distance) or atr_distance<=0
+-                or not math.isclose(atr_distance,atr*multiplier,rel_tol=1e-12,abs_tol=1e-12)):
+-            raise ArcSafetyError('ATR_PRICE_DISTANCE_INVALID')
++        if (atr_distance is not None or type(atr) not in (int,float) or not math.isfinite(atr) or atr<=0
++                or type(candle_time) not in (int,float) or not math.isfinite(candle_time)
++                or target_usd is None or not math.isclose(target_usd,atr*multiplier,rel_tol=1e-12)):
++            raise ArcSafetyError('DYNAMIC_ATR_USD_INVALID')
+     elif atr_distance is not None or type(target_usd) not in (int,float) or not math.isfinite(target_usd) or not .01<=target_usd<=250:
+         raise ArcSafetyError('BASKET_TP_INVALID')
+-    # Baseline field remains for legacy journal compatibility. ATR execution
+-    # always uses the explicit registered distance, never this USD fallback.
+-    cfg=replace(CONFIG,base_lot=float(base_lot),basket_profit_target_usd=3.5 if distance_mode else float(target_usd),hard_basket_loss_usd=-250.,adaptive_reversal_risk_enabled=True)
++    loss=-350. if settings['tpMode']=='ATR_2' else -250.
++    cfg=replace(CONFIG,base_lot=float(base_lot),basket_profit_target_usd=float(target_usd),hard_basket_loss_usd=loss,adaptive_reversal_risk_enabled=True)
+     _validate(cfg)
+     proof=dict(policy='CLOSE_DISTANCE_RISK_V51',settings=dict(settings),base_lot=cfg.base_lot,
+-        target_usd=None if distance_mode else cfg.basket_profit_target_usd,hard_loss_usd=-250.,atr=atr,atr_candle_time=candle_time,
+-        tp_basis='ATR_PRICE_DISTANCE' if distance_mode else 'PROFIT_USD',tp_distance_price=atr_distance,
++        target_usd=cfg.basket_profit_target_usd,hard_loss_usd=loss,atr=atr,atr_candle_time=candle_time,
++        tp_basis='ATR_CURRENT_USD' if dynamic_mode else 'PROFIT_USD',tp_distance_price=atr_distance,
+         tp_distance_points=atr_distance/cfg.point if distance_mode else None,
+         effective_sha256=_digest(cfg))
+     key=id(cfg)
+     _EXECUTION_CONFIGS[key]=(weakref.ref(cfg,lambda ref:_EXECUTION_CONFIGS.pop(key,None)),_digest(cfg),proof)
++    if dynamic_mode:update_atr_target(cfg,atr,candle_time)
+     return cfg
+ 
+ 
+ def atr_tp_distance(cfg):
+     proof=execution_config_proof(cfg)
+     return proof.get('tp_distance_price') if proof else None
++
++
++# Per-cycle immutable configuration stays hash-bound; the current closed-M1
++# observation is a separate runtime value and is durably recorded by the engine.
++_ATR_TARGETS={}
++def dynamic_atr_tp(cfg):
++    proof=execution_config_proof(cfg)
++    return bool(proof and proof.get('tp_basis')=='ATR_CURRENT_USD')
++def adaptive_projection_gates_disabled(cfg):
++    proof=execution_config_proof(cfg)
++    return bool(proof and proof['settings']['protocol']=='V51_DYNAMIC_ATR_USD_20261015')
++def current_atr_target(cfg):
++    row=_ATR_TARGETS.get(id(cfg))
++    return copy.deepcopy(row[1]) if row and row[0]() is cfg else None
++def update_atr_target(cfg,atr,candle_time):
++    if not dynamic_atr_tp(cfg):raise ArcSafetyError('NOT_DYNAMIC_ATR_CONFIG')
++    if (type(atr) not in (int,float) or not math.isfinite(atr) or atr<=0 or atr>1e6
++            or type(candle_time) not in (int,float) or not math.isfinite(candle_time) or candle_time<0):
++        raise ArcSafetyError('DYNAMIC_ATR_OBSERVATION_INVALID')
++    old=current_atr_target(cfg)
++    if old and (candle_time<old['candle_time'] or (candle_time==old['candle_time'] and atr!=old['atr'])):
++        raise ArcSafetyError('DYNAMIC_ATR_CANDLE_CHANGED')
++    multiplier=1 if execution_config_proof(cfg)['settings']['tpMode']=='ATR_1' else 2
++    row=dict(atr=atr,candle_time=candle_time,target_usd=atr*multiplier,multiplier=multiplier)
++    key=id(cfg);_ATR_TARGETS[key]=(weakref.ref(cfg,lambda ref:_ATR_TARGETS.pop(key,None)),row)
++    return copy.deepcopy(row)
++def basket_tp_usd(cfg):
++    row=current_atr_target(cfg)
++    return row['target_usd'] if row else cfg.basket_profit_target_usd

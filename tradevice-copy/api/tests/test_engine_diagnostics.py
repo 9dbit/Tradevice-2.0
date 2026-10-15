@@ -72,3 +72,14 @@ def test_atr_points_projection_is_distinct_from_profit_usd():
  assert x['tpBasis']=='ATR_PRICE_DISTANCE' and x['tpDistancePoints']==4200 and x['targetUsd']==42
  assert project_engine(raw|{'target_usd':None},N)['targetUsd'] is None
  assert project_engine(raw|{'tp_distance_points':42},N)['status']=='ENGINE_REPORT_INVALID'
+
+
+def test_dynamic_atr_profit_usd_and_mode_specific_hard_loss():
+ for mult,loss in [(1,-250),(2,-350)]:
+  r=report()|dict(policy='CLOSE_DISTANCE_RISK_V51',hard_loss_usd=loss,tp_basis='ATR_CURRENT_USD',tp_distance_price=None,tp_distance_points=None,tp_atr_value=3.1,tp_multiplier=mult,tp_atr_candle_ms=N-1000,tp_atr_fresh=True,target_usd=3.1*mult)
+  x=project_engine(r,N);assert x['status']=='ENGINE_REPORTED';assert x['targetUsd']==3.1*mult;assert x['tpAtrFresh'] is True
+  r['target_usd']=30;assert project_engine(r,N)['status']=='ENGINE_REPORT_INVALID'
+
+def test_heartbeat_does_not_renew_atr_candle():
+ r=report()|dict(policy='CLOSE_DISTANCE_RISK_V51',hard_loss_usd=-250,tp_basis='ATR_CURRENT_USD',tp_atr_value=4,tp_multiplier=1,tp_atr_candle_ms=N-120001,tp_atr_fresh=True,target_usd=4)
+ assert project_engine(r,N)['tpAtrFresh'] is False

@@ -1,3 +1,7 @@
+# Historical policy — superseded
+
+The current policy is [DYNAMIC_ATR_USD_20261015.md](DYNAMIC_ATR_USD_20261015.md). The record below describes the earlier frozen-distance deployment.
+
 # ATR TP correction: price distance, not fixed basket profit
 
 This supersedes the numeric-USD ATR behavior in `EXECUTION_SETTINGS_20261015.md`. Scope: the isolated V5.1 clone and staging web/API. No cycle, skill selection, or broker order is authorized by this installation.

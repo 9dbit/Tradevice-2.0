@@ -1,0 +1,22 @@
+--- a/v51_batch_research.py
++++ b/v51_batch_research.py
+@@ -1,7 +1,7 @@
+ """Research-only guards layered on the isolated demo batch adapter."""
+ import math,time
+ from dataclasses import asdict,replace
+-from goldtrap_arc.config import CONFIG,ArcSafetyError,ArcAdaptiveDeferred
++from goldtrap_arc.config import CONFIG,ArcSafetyError,ArcAdaptiveDeferred,adaptive_projection_gates_disabled
+ from goldtrap_arc.adaptive_policy import risk_assessment
+ from goldtrap_arc.rules import fixed_next_lot,atr_at
+ from v51_batch_core import BatchAdapter
+@@ -45,6 +45,10 @@
+   if [asdict(b) for b in bars]!=intent['bars']:raise ArcAdaptiveDeferred('V51_CLOSED_M1_PROOF_CHANGED')
+   atr=atr_at(bars,len(bars)-1,self.cfg.atr_period)
+   if not atr or not math.isclose(atr,intent['atr'],rel_tol=0,abs_tol=1e-10):raise ArcAdaptiveDeferred('V51_ATR_RECOMPUTE_MISMATCH')
++  if adaptive_projection_gates_disabled(self.cfg):
++   self.ledger.append('ADAPTIVE_PROJECTION_GATES_DISABLED',cycle_id=cycle,layer=layer,
++    hard_loss_usd=self.cfg.hard_basket_loss_usd,broker_order_check_required=True)
++   return snap
+   current=finite(self.executable_pl(snap)+self.realized_pl(cycle))
+   scenarios=stress_scenarios(current,sum(p.volume for p in snap.positions),snap.tick.bid,snap.tick.ask,atr,lot,self.cfg)
+   accepted=all(r['selected_lot']+1e-9>=lot for r in scenarios)

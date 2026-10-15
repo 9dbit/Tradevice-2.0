@@ -1,0 +1,24 @@
+--- a/goldtrap_arc/rules.py
++++ b/goldtrap_arc/rules.py
+@@ -1,5 +1,5 @@
+ from decimal import Decimal, ROUND_HALF_UP
+-from .config import ArcConfig, CONFIG, atr_tp_distance
++from .config import basket_tp_usd, ArcConfig, CONFIG, atr_tp_distance
+ from .models import Side, Bar, Position
+ 
+ def normalize_lot(value: float, cfg: ArcConfig = CONFIG) -> float:
+@@ -75,7 +75,7 @@
+     avg = basket_average(positions)
+     vol = basket_volume(positions)
+     distance = atr_tp_distance(cfg)
+-    if distance is None:distance = cfg.basket_profit_target_usd * cfg.tick_size / (cfg.tick_value_per_lot * vol)
++    if distance is None:distance = basket_tp_usd(cfg) * cfg.tick_size / (cfg.tick_value_per_lot * vol)
+     return avg + distance if positions[0].side == Side.BUY else avg - distance
+ 
+ def basket_hard_loss_price(positions: list[Position], cfg: ArcConfig = CONFIG) -> float:
+@@ -88,4 +88,4 @@
+ def basket_target_profit(positions, cfg=CONFIG):
+     """Gross P/L equivalent of a price-distance TP; USD modes stay fixed."""
+     distance=atr_tp_distance(cfg)
+-    return cfg.basket_profit_target_usd if distance is None else distance/cfg.tick_size*cfg.tick_value_per_lot*basket_volume(positions)
++    return basket_tp_usd(cfg) if distance is None else distance/cfg.tick_size*cfg.tick_value_per_lot*basket_volume(positions)

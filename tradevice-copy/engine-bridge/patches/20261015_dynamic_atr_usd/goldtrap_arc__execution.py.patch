@@ -1,0 +1,142 @@
+--- a/goldtrap_arc/execution.py
++++ b/goldtrap_arc/execution.py
+@@ -3,7 +3,7 @@
+ from .adaptive_policy import reversal_decision, risk_assessment
+ from .config import ArcAdaptiveDeferred
+ from time import time
+-from .config import CONFIG,ArcSafetyError,ArcAdaptiveSpreadWait,ArcAdaptiveRiskBlocked,verify_spec,execution_policy,execution_config_proof,atr_tp_distance
++from .config import CONFIG,ArcSafetyError,ArcAdaptiveSpreadWait,ArcAdaptiveRiskBlocked,verify_spec,execution_policy,execution_config_proof,atr_tp_distance,dynamic_atr_tp,basket_tp_usd,current_atr_target,update_atr_target
+ from .models import Side,Position
+ from .mt5_adapter import ArcConnectionWait
+ from .pending_ladder import CONTRACT, ARMING_MODES, initial_plan, fixed_plan, quantized_target, validate_closed_m1, ArcM1BoundaryWait
+@@ -34,6 +34,9 @@
+             self.state['execution_config']=proof
+             self.save()
+             self.ledger.append('EXECUTION_CONFIG_BOUND',**proof)
++        if dynamic_atr_tp(cfg) and self.state.get('atr_tp_current'):
++            prior=self.state['atr_tp_current']
++            update_atr_target(cfg,prior['atr'],prior['candle_time'])
+         existing_mode=self.state.get('fixed_arming')
+         if fixed_arming and existing_mode and fixed_arming!=existing_mode:
+             raise ArcSafetyError('Persisted fixed arming mode cannot change on resume')
+@@ -417,7 +420,7 @@
+                 if (executable<target_price if models[0].side==Side.BUY else executable>target_price):return False
+                 target=basket_target_profit(models,self.cfg)
+             else:
+-                target=self.cfg.basket_profit_target_usd
++                target=basket_tp_usd(self.cfg)
+                 if pl+1e-9<target:return False
+             self.state.update(state='TARGET_EXIT',target_exit_committed=True,target_exit_commit_pl=pl,
+                               target_exit_reason=reason,block_next_cycle=True)
+@@ -436,7 +439,7 @@
+         A manual exit or positive dollar result alone never proves ATR TP.
+         The fallback handles a prearmed basket filled/closed between polls.
+         """
+-        if atr_tp_distance(self.cfg) is None:return False
++        if atr_tp_distance(self.cfg) is None and not dynamic_atr_tp(self.cfg):return False
+         entries=[d for d in life.get('entry_deals',()) if members is None or int(d.position_id) in members]
+         exits=[d for d in life.get('exit_deals',()) if members is None or int(d.position_id) in members]
+         ids={int(d.position_id) for d in entries}
+@@ -485,9 +488,9 @@
+         if any(int(d.time_msc)<=last_exit for d in entries if int(d.position_id) not in members):return None
+         net=sum(float(getattr(d,k,0.0)) for d in selected_entries+selected_exits
+                 for k in ('profit','commission','swap','fee'))
+-        if atr_tp_distance(self.cfg) is not None:
++        if atr_tp_distance(self.cfg) is not None or dynamic_atr_tp(self.cfg):
+             if not self._atr_history_target_reached(life,members):return None
+-        elif net+1e-9<self.cfg.basket_profit_target_usd:return None
++        elif net+1e-9<basket_tp_usd(self.cfg):return None
+         return dict(net_pl=net,position_ids=sorted(members),last_exit_msc=last_exit)
+ 
+     def _finish_terminal_exit(self):
+@@ -530,7 +533,7 @@
+         proven_ids=set(prefix['position_ids'] if prefix else life.get('position_ids',()))
+         if any(p.ticket in proven_ids for p in positions):return False
+         net=float(prefix['net_pl'] if prefix else life.get('net_pl',0.0))
+-        target_reached=(bool(prefix) or self._atr_history_target_reached(life)) if atr_tp_distance(self.cfg) is not None else net+1e-9>=self.cfg.basket_profit_target_usd
++        target_reached=(bool(prefix) or self._atr_history_target_reached(life)) if (atr_tp_distance(self.cfg) is not None or dynamic_atr_tp(self.cfg)) else net+1e-9>=basket_tp_usd(self.cfg)
+         if target_reached:
+             kind='TARGET_HISTORY'
+         elif net<=self.cfg.hard_basket_loss_usd+1e-9:
+@@ -546,6 +549,46 @@
+             surviving_position_tickets=[p.ticket for p in positions],
+             pending_tickets=[o.ticket for o in orders])
+         return self._finish_terminal_exit()
++
++    def refresh_atr_tp(self):
++        if not dynamic_atr_tp(self.cfg):return True
++        try:
++            bars=self.adapter.recent_closed_bars(self.cfg.atr_period+1)
++            validate_closed_m1(bars,time(),allow_boundary_wait=True)
++            atr=atr_at(bars,len(bars)-1,self.cfg.atr_period)
++            row=update_atr_target(self.cfg,atr,bars[-1].time)
++        except (ArcSafetyError,ValueError,TypeError):
++            if not self.state.get('atr_tp_unavailable'):
++                self.state['atr_tp_unavailable']=True;self.save()
++                self.ledger.append('ATR_TP_UNAVAILABLE',cycle_id=self.state.get('cycle_id'))
++            return False
++        if row!=self.state.get('atr_tp_current') or self.state.get('atr_tp_unavailable'):
++            self.state.update(atr_tp_current=row,atr_tp_unavailable=False);self.save()
++            self.ledger.append('ATR_TP_UPDATED',cycle_id=self.state.get('cycle_id'),**row)
++        return True
++
++    def sync_atr_pending_tp(self,snap):
++        if not dynamic_atr_tp(self.cfg):return
++        positions,orders=self.owned(snap)
++        key='initial_fixed_plan' if self.fixed_arming=='PREARM_BOTH' else 'active_fixed_plan'
++        plan=self.state.get(key,[])
++        for side in (Side.BUY,Side.SELL):
++            models=self.adapter.models([p for p in positions if p.side==side])
++            for row in sorted((r for r in plan if r['side']==side.value),key=lambda r:r['layer']):
++                order=next((o for o in orders if o.side==side and o.layer==row['layer']),None)
++                if not order:continue
++                models.append(Position(row['layer'],side,row['lot'],row['price'],0,'ATR_PENDING'))
++                target=quantized_target(models,self.cfg)
++                if abs(order.tp-target)>self.cfg.tick_size/2:
++                    self.ledger.append('ATR_PENDING_TP_INTENT',cycle_id=self.state['cycle_id'],ticket=order.ticket,
++                        original_entry=row['price'],target=target,target_usd=basket_tp_usd(self.cfg))
++                    self.adapter.modify_pending(order,row['price'],target)
++                    # Never resend an ambiguous modify or recreate a missing pending.
++                    fresh=self.adapter.snapshot();self.owned(fresh)
++                    actual=next((o for o in fresh.orders if o.ticket==order.ticket),None)
++                    if actual is None or abs(actual.tp-target)>self.cfg.tick_size/2:
++                        raise ArcSafetyError('ATR pending TP verification changed broker topology')
++                row['tp']=target;self.save()
+ 
+     def protect(self,snap):
+         positions,_=self.owned(snap)
+@@ -960,6 +1003,9 @@
+             if self.state.get('state')=='ACTIVE':raise ArcSafetyError('ARC lost active exposure before verified completion')
+         if positions and self.total_pl(snap)<=self.cfg.hard_basket_loss_usd:
+             self.risk_exit();return self.state['state']
++        atr_ready=self.refresh_atr_tp()
++        if positions and dynamic_atr_tp(self.cfg) and self.target_coordinator('current ATR USD target'):
++            return self.state['state']
+         if positions:
+             side=positions[0].side
+             if self.state.get('execution_contract')!=CONTRACT and any(o.layer!=1 for o in orders):
+@@ -968,6 +1014,7 @@
+                 if order.side!=side:self.adapter.cancel(order)
+             snap=self.adapter.snapshot();self.owned(snap)
+             self.state.update(state='ACTIVE',active_side=side.value);self.save()
++            if atr_ready:self.sync_atr_pending_tp(snap)
+             self.protect(snap)
+             if self.state['state'].startswith('COMPLETE'):return self.state['state']
+             if self.state.get('execution_contract')==CONTRACT:
+@@ -975,11 +1022,14 @@
+                 self.maintain_fixed(self.adapter.snapshot())
+             snap=self.adapter.snapshot();self.protect(snap)
+             if self.state['state'].startswith('COMPLETE'):return self.state['state']
+-            self.next_entry(self.adapter.snapshot())
++            if atr_ready:self.next_entry(self.adapter.snapshot())
+             if not self.state['state'].startswith('COMPLETE'):self.protect(self.adapter.snapshot())
+             return self.state['state']
+-        if self.state['state']=='WAITING':return self.start(snap)
++        if self.state['state']=='WAITING':
++            if not atr_ready:return 'WAITING_ATR'
++            return self.start(snap)
+         if self.state['state']=='TRAP_ARMED':
++            if atr_ready:self.sync_atr_pending_tp(snap)
+             if int(time())>=self.state['expiry']:
+                 for order in orders:self.adapter.cancel(order)
+                 final=self.adapter.snapshot();self.owned(final)

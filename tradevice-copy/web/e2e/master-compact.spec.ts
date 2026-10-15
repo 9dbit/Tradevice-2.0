@@ -59,7 +59,7 @@ async function setup(page:Page){
    if(delay)await new Promise(resolve=>setTimeout(resolve,delay));
    if(fail)return await r.fulfill({status:503,json:{}});
    if(!freeze)stamp=Date.now();
-   await r.fulfill({json:{settingsProtocol:'V51_ATR_PRICE_DISTANCE_20261015',online:!offline,observedMs:stamp,state:offline?'OFFLINE':state,activeSkillId:'fixture',activeHash:'fixture',revision:1,checks:Object.fromEntries(['identity','brokerFlat','quote','spread','margin','commission','news','reconciled','engineHash'].map(k=>[k,!expiredPreflight&&!(blocked&&k==='news')])),blockers:[...(state==='RECOVERY_REQUIRED'?['ENGINE_RECOVERY_REQUIRED']:blocked?['PREFLIGHT_NEWS','NEWS_NOT_CLEAR']:[]),...(expiredPreflight?['ENGINE_NOT_READY',...['identity','brokerFlat','quote','spread','margin','commission','news','reconciled','engineHash'].map(k=>'PREFLIGHT_'+k.toUpperCase())]:[]),...extraBlockers],canStart,commands:[]}});
+   await r.fulfill({json:{settingsProtocol:'V51_DYNAMIC_ATR_USD_20261015',online:!offline,observedMs:stamp,state:offline?'OFFLINE':state,activeSkillId:'fixture',activeHash:'fixture',revision:1,checks:Object.fromEntries(['identity','brokerFlat','quote','spread','margin','commission','news','reconciled','engineHash'].map(k=>[k,!expiredPreflight&&!(blocked&&k==='news')])),blockers:[...(state==='RECOVERY_REQUIRED'?['ENGINE_RECOVERY_REQUIRED']:blocked?['PREFLIGHT_NEWS','NEWS_NOT_CLEAR']:[]),...(expiredPreflight?['ENGINE_NOT_READY',...['identity','brokerFlat','quote','spread','margin','commission','news','reconciled','engineHash'].map(k=>'PREFLIGHT_'+k.toUpperCase())]:[]),...extraBlockers],canStart,commands:[]}});
   }finally{concurrent--;}
  });
  await page.goto('/master');
@@ -375,7 +375,7 @@ test('batch settings bind lot and ATR/custom TP to a single synthetic START',asy
  await page.getByLabel('Basket TP',{exact:true}).selectOption('ATR_2');
  await page.getByRole('button',{name:'Start Cycle',exact:true}).click();
  expect(f.posts).toHaveLength(1);
- expect(f.posts[0].settings).toEqual({protocol:'V51_ATR_PRICE_DISTANCE_20261015',baseLot:.1,tpMode:'ATR_2',customTpUsd:null});
+ expect(f.posts[0].settings).toEqual({protocol:'V51_DYNAMIC_ATR_USD_20261015',baseLot:.1,tpMode:'ATR_2',customTpUsd:null});
  f.running();
  await expect(page.getByLabel('Base lot')).toBeDisabled();
  expect(f.posts).toHaveLength(1);
@@ -429,5 +429,18 @@ test('telemetry swaps values without blank frames through slow, failed and missi
  await expect(section.locator('.mt-u-chip')).toHaveText('Fresh');
  const frames=await page.evaluate(()=>{const w=window as any;w.sampleTelemetry=false;return {blank:w.telemetryBlankFrames,replaced:w.telemetryReplacedFrames};});
  expect(frames).toEqual({blank:0,replaced:0});
+ expect(f.posts).toHaveLength(0);
+});
+
+
+test('current ATR basket profit changes from four to three dollars ten and 2x uses loss 350',async({page})=>{
+ const f=await setup(page);
+ const emit=(atr:number,mult=1)=>f.setEngine({status:'ENGINE_REPORTED',policy:'CLOSE_DISTANCE_RISK_V51',observedMs:Date.now(),cycleId:'dynamic-cycle',state:'ACTIVE',hardLossUsd:mult===1?-250:-350,targetUsd:atr*mult,tpBasis:'ATR_CURRENT_USD',tpAtrValue:atr,tpMultiplier:mult,tpAtrCandleMs:Date.now()-1000,tpAtrFresh:true,tpDistancePrice:null,tpDistancePoints:null,targetPrice:4100.4,riskExitCommitted:false,brokerFlatReconciled:false,entrySuspended:false,pnl:null,decision:null,authorization:'NONE',authorizationExpiresMs:null,orderDispatchAuthorized:false});
+ const basket=page.locator('[aria-labelledby=risk-title]');
+ const value=basket.locator('.mt-telemetry-datum').filter({hasText:'Basket TP'}).locator('strong');
+ emit(4);await expect(value).toHaveText('$4.00');
+ emit(3.1);await expect(value).toHaveText('$3.10');
+ emit(3.1,2);await expect(value).toHaveText('$6.20');
+ await expect(basket.getByText('-$350.00',{exact:true})).toBeVisible();
  expect(f.posts).toHaveLength(0);
 });

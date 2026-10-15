@@ -119,7 +119,7 @@ def submit(dsn,p,news_clear):
 
 def validate_snapshot(p,now):
     if not isinstance(p,dict) or set(p)-{'news','settingsProtocol'}!={'observedMs','bootId','activeSkillId','activeHash','revision','state','checks','blockers','receipts'}:raise SkillError('SKILL_ENGINE_REPORT_INVALID')
-    if 'settingsProtocol' in p and p['settingsProtocol'] not in (SETTINGS_PROTOCOL,'V51_CLOSE_DISTANCE_20261015'):raise SkillError('SKILL_SETTINGS_PROTOCOL_INVALID')
+    if 'settingsProtocol' in p and p['settingsProtocol'] not in (SETTINGS_PROTOCOL,'V51_CLOSE_DISTANCE_20261015','V51_ATR_PRICE_DISTANCE_20261015'):raise SkillError('SKILL_SETTINGS_PROTOCOL_INVALID')
     from .bridge_calendar import validate_evidence
     try:validate_evidence(p.get('news'),now)
     except ValueError as exc:raise SkillError(str(exc)) from None

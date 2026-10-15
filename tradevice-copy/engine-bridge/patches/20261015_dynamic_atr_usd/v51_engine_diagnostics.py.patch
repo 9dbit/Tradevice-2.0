@@ -1,0 +1,30 @@
+--- a/v51_engine_diagnostics.py
++++ b/v51_engine_diagnostics.py
+@@ -1,7 +1,7 @@
+ """Read-only diagnostic channel; no order APIs, no historical journal adoption."""
+ import json, math, os, tempfile, time
+ from pathlib import Path
+-from goldtrap_arc.config import execution_policy,atr_tp_distance
++from goldtrap_arc.config import execution_policy,atr_tp_distance,dynamic_atr_tp,current_atr_target,basket_tp_usd
+ PATH=Path(r'D:\GoldTrapCore\GoldTrapCore_v0.2_v51_research_20261013\read_only\engine_diagnostics.json')
+ SCHEMA='tradevice.v51.engine.diagnostics.v1'
+ 
+@@ -70,12 +70,16 @@
+     # Never renew a cached P/L observation or describe a telemetry heartbeat as protection.
+     if completed:usable=False
+     distance=atr_tp_distance(engine.cfg)
+-    target_usd=state.get('tp_generation_profit_target') if distance is not None else engine.cfg.basket_profit_target_usd
++    dynamic=dynamic_atr_tp(engine.cfg);current=current_atr_target(engine.cfg) if dynamic else None
++    target_usd=state.get('tp_generation_profit_target') if distance is not None else basket_tp_usd(engine.cfg)
+     return dict(schema=SCHEMA,status='ENGINE_REPORTED',source='V51_RUNNER_DIAGNOSTICS',
+         read_only=True,order_dispatch_authorized=False,observed_ms=now,
+         cycle_id=cycle,state=str(state.get('state','UNKNOWN'))[:48],
+         policy=execution_policy(engine.cfg),hard_loss_usd=engine.cfg.hard_basket_loss_usd,target_usd=target_usd,
+-        tp_basis='ATR_PRICE_DISTANCE' if distance is not None else 'PROFIT_USD',
++        tp_basis='ATR_CURRENT_USD' if dynamic else 'ATR_PRICE_DISTANCE' if distance is not None else 'PROFIT_USD',
++        tp_atr_value=current['atr'] if current else None,tp_multiplier=current['multiplier'] if current else None,
++        tp_atr_candle_ms=int((current['candle_time']+60)*1000) if current else None,
++        tp_atr_fresh=bool(current and not state.get('atr_tp_unavailable') and 0<=now-(current['candle_time']+60)*1000<=120000),
+         tp_distance_price=distance,tp_distance_points=distance/engine.cfg.point if distance is not None else None,
+         target_price=state.get('tp_generation_target') if state.get('tp_generation_status')=='SYNCED' else None,
+         risk_exit_committed=state.get('risk_exit_committed') is True,

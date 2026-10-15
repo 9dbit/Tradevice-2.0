@@ -66,7 +66,7 @@ export default function CompactDashboard({data,token,onNavigate}:{
    <div className="mt-telemetry-grid">
     <Datum icon="activity" label="Basket estimate" value={usd(estimate?.value)} hint={estimate?`${estimate.fresh?'Reported':'Last known'} · ${Math.max(0,Math.floor((now-Math.min(estimate.atMs,estimate.tickMs))/1000))}s ago · costs unverified`:'Awaiting estimate'}/>
     <Datum icon="shield" label="Hard loss" value={usd(engine.hardLossUsd)} hint={engine.riskExitCommitted===true?'Exit committed':'engine report'}/>
-    <Datum icon="check" label="Basket TP" value={engine.tpBasis==='ATR_PRICE_DISTANCE'?fmt(engine.tpDistancePoints,' pts'):usd(engine.targetUsd)} hint={engine.tpBasis==='ATR_PRICE_DISTANCE'?`${usd(engine.tpDistancePrice)} price move · weighted entry`:'engine report'}/>
+    <Datum icon="check" label="Basket TP" value={engine.tpBasis==='ATR_PRICE_DISTANCE'?fmt(engine.tpDistancePoints,' pts'):usd(engine.targetUsd)} hint={engine.tpBasis==='ATR_CURRENT_USD'?`${engine.tpMultiplier}× current ATR · ${engine.tpAtrFresh?'profit USD':'last known USD'}`:engine.tpBasis==='ATR_PRICE_DISTANCE'?`${usd(engine.tpDistancePrice)} price move · weighted entry`:'engine report'}/>
    </div>
    {estimate&&!estimate.fresh&&<p className="mt-compact-note mt-basket-stale">Last known estimate · cycle {estimate.cycleId}. Current basket P&amp;L is unverified.</p>}
    {engine.entrySuspended===true&&<p className="mt-inline-blocker"><I name="alert" size={14}/><span>Entries suspended · resolve blockers and reconcile before a new cycle.</span></p>}
@@ -87,7 +87,7 @@ export default function CompactDashboard({data,token,onNavigate}:{
      <div><dt>Cycle</dt><dd>{engine.cycleId||'—'}</dd></div>
      <div><dt>Engine report</dt><dd>{newsTime(engine.observedMs)}</dd></div>
     </dl>
-    <p className="mt-compact-note">ATR TP measures price distance from the volume-weighted entry; fees and swap can affect realized profit. Basket estimate uses cached realized results. Open P&amp;L excludes realized results and some costs. A fresh report does not verify protection.</p>
+    <p className="mt-compact-note">Current ATR TP is a basket profit target in USD, refreshed from each completed M1 candle. Fees, swap and broker execution affect realized results. Basket estimate uses cached realized results. Open P&amp;L excludes realized results and some costs. A fresh report does not verify protection.</p>
    </ReportDrawer>
   </ReportSection>
 

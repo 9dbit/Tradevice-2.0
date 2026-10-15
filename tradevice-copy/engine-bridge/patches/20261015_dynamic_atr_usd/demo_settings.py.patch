@@ -1,0 +1,11 @@
+--- a/demo_settings.py
++++ b/demo_settings.py
+@@ -1,7 +1,7 @@
+ """Strict, shared command settings; no broker or network operations."""
+ import math
+ from decimal import Decimal
+-SETTINGS_PROTOCOL='V51_ATR_PRICE_DISTANCE_20261015'
++SETTINGS_PROTOCOL='V51_DYNAMIC_ATR_USD_20261015'
+ TP_MODES={'FIXED_3_5','ATR_1','ATR_2','CUSTOM'}
+ def default_settings():return dict(protocol=SETTINGS_PROTOCOL,baseLot=.01,tpMode='FIXED_3_5',customTpUsd=None)
+ def validate_settings(raw):

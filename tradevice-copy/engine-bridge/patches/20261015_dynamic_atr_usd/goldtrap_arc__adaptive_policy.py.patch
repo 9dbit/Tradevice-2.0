@@ -1,0 +1,21 @@
+--- a/goldtrap_arc/adaptive_policy.py
++++ b/goldtrap_arc/adaptive_policy.py
+@@ -1,7 +1,7 @@
+ """Pure candidate adaptive rules; no broker or persistent IO."""
+ import math
+ from decimal import Decimal, ROUND_FLOOR, ROUND_CEILING
+-from .config import CONFIG, ArcSafetyError, execution_policy
++from .config import CONFIG, ArcSafetyError, execution_policy,adaptive_projection_gates_disabled
+ from .models import Side
+ from .rules import candle_quality
+ 
+@@ -82,6 +82,9 @@
+     if lot and stress(lot) < threshold-1e-9:
+         lot = max(0., float((units-1)*step))
+         if lot < cfg.volume_min: lot = 0.
++    if adaptive_projection_gates_disabled(cfg):
++        # Operator-selected V5.1 policy: projected loss is diagnostic only.
++        lot=float((Decimal(str(min(requested_lot,cfg.volume_max)))/step).to_integral_value(rounding=ROUND_FLOOR)*step)
+     return dict(current_pl=current_pl, volume=volume, bid=bid, ask=ask, atr=atr,
+                 requested_lot=requested_lot, selected_lot=lot, stress_move=move,
+                 entry_slippage_allowance=slip, threshold=threshold,

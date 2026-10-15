@@ -31,3 +31,13 @@ test('ATR points, price distance and profit estimate retain separate units',()=>
  assert.equal(validateEngine({...f,tpDistancePoints:42},now).status,'ENGINE_REPORT_INVALID');
  assert.equal(validateEngine(f,now+8001).tpDistancePoints,null);
 });
+
+
+test('dynamic ATR is profit USD with independent 1x/2x loss limits',()=>{
+ for(const mult of [1,2]){
+  const f={...fixture(),policy:'CLOSE_DISTANCE_RISK_V51',hardLossUsd:mult===1?-250:-350,tpBasis:'ATR_CURRENT_USD',tpAtrValue:3.1,tpMultiplier:mult,tpAtrCandleMs:now-1000,tpAtrFresh:true,targetUsd:3.1*mult};
+  const x=validateEngine(f,now);assert.equal(x.status,'ENGINE_REPORTED');assert.equal(x.targetUsd,3.1*mult);assert.equal(x.tpAtrFresh,true);
+  assert.equal(validateEngine({...f,targetUsd:30},now).status,'ENGINE_REPORT_INVALID');
+  assert.equal(validateEngine({...f,tpAtrCandleMs:now-120001},now).tpAtrFresh,false);
+ }
+});
