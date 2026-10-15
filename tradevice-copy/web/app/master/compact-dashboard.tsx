@@ -3,6 +3,7 @@ import {useEffect,useMemo,useState} from 'react';
 import type {Snapshot} from './master-console';
 import {validateEngine,validateOwned} from '../../lib/engine-diagnostics.mjs';
 import {validateBatch} from '../../lib/demo-batch.mjs';
+import {NewsStatus} from './news-status';
 import GrowthChart from './growth-chart';
 import TerminalMirror from './terminal-mirror';
 import SkillManager from './skill-manager';
@@ -37,9 +38,6 @@ export default function CompactDashboard({data,token,onNavigate}:{
  const executedCycles=batch?batch.cycles.filter(c=>c.layers>0).length:null;
  const usd=(value:number|null|undefined)=>typeof value==='number'&&Number.isFinite(value)?value.toLocaleString('en-US',{style:'currency',currency:'USD',minimumFractionDigits:2,maximumFractionDigits:2}):'—';
  const newsTime=(value:number|null)=>value===null?'—':time(new Date(value).toISOString());
- const countdownTarget=calendar.status==='BLACKOUT'?calendar.blackoutUntil:calendar.nextEvent?.blackoutStart;
- const seconds=countdownTarget==null?null:Math.max(0,Math.ceil((countdownTarget-now)/1000));
- const countdown=seconds===null?'—':`${Math.floor(seconds/3600)}h ${Math.floor(seconds%3600/60)}m ${seconds%60}s`;
  const [terminalFilter,setTerminalFilter]=useState<'all'|'warning'|'critical'>('all');
  const terminal=useMemo(()=>(data?.terminal||[]).filter(e=>terminalFilter==='all'||
    e.severity===terminalFilter).slice().sort((a,b)=>(Date.parse(b.at)||0)-(Date.parse(a.at)||0)),
@@ -49,7 +47,7 @@ export default function CompactDashboard({data,token,onNavigate}:{
  return <div className="mt-unified mt-dense-dashboard">
   {diagnostic&&<div className="mt-u-diagnostic" role="alert"><I name="alert"/>
    <div><strong>Telemetry unavailable</strong><p>{diagnostic}</p></div></div>}
-  <DemoControl token={token} runtime={demoRuntime} refresh={refreshDemo} now={now} batchRaw={data?.demoBatch??data?.market?.demoBatch}/>
+  <DemoControl token={token} runtime={demoRuntime} refresh={refreshDemo} now={now} batchRaw={data?.demoBatch??data?.market?.demoBatch} newsRaw={data?.news}/>
 
   <GrowthChart raw={data?.growthHistory} now={now}/>
   <section className="mt-u-panel mt-summary" aria-labelledby="summary-title">
@@ -131,10 +129,7 @@ export default function CompactDashboard({data,token,onNavigate}:{
   <section className="mt-u-panel" aria-labelledby="news-title">
    <div className="mt-u-panel-head"><h2 id="news-title"><I name="news"/> News Guard</h2>
     <span className="mt-u-chip">{calendar.status==='CLEAR'?'Clear':calendar.status==='BLACKOUT'?'Blackout':'Unavailable'}</span></div>
-   <div className="mt-news-summary"><div><strong>{calendar.nextEvent?.title||(calendar.status==='CLEAR'?'No events within coverage':'Schedule unverified')}</strong>
-    <span>{calendar.nextEvent?.currency||'—'} · {newsTime(calendar.nextEvent?.at??null)}</span></div>
-    <div><small>{calendar.status==='BLACKOUT'?'Blackout ends in':'Blackout starts in'}</small><strong>{countdown}</strong></div></div>
-   {calendar.status!=='CLEAR'&&<p className="mt-inline-blocker"><I name="alert" size={14}/><span>No trade · {calendar.reason}</span></p>}
+   <NewsStatus raw={data?.news} now={now}/>
    <ReportDrawer title="Calendar details" meta="±60 min · all currencies">
     <dl className="mt-detail-list">
      <div><dt>Source</dt><dd>Forex Factory · high impact</dd></div>

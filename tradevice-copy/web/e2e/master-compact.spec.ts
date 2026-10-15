@@ -2,13 +2,13 @@ import {test,expect,type Page} from '@playwright/test';
 // Synthetic UI fixtures only. All API traffic intercepted; no broker commands.
 async function setup(page:Page){
  let canStart=true,state='READY',blocked=false;
- let demoBatch:any=null,terminalMirror:any=null,growthHistory:any=null;
+ let demoBatch:any=null,terminalMirror:any=null,growthHistory:any=null,news:any=null;
  const marketStamp=Date.now();
  const session={access_token:'fixture.admin.token',refresh_token:'fixture',token_type:'bearer',expires_in:7200,expires_at:Math.floor(Date.now()/1000)+7200,user:{id:'11111111-1111-4111-8111-111111111111',email:'admin@example.invalid',aud:'authenticated',role:'authenticated',app_metadata:{tradevice_master_admin:true}}};
  await page.addInitScript(s=>localStorage.setItem('tradevice-master-console-staging',JSON.stringify(s)),session);
  await page.route('https://scqzlcivherovlwqypeu.supabase.co/**',r=>r.fulfill({json:{user:session.user}}));
  await page.route('**/api/runtime',r=>r.fulfill({json:{configured:true,supabaseUrl:'https://scqzlcivherovlwqypeu.supabase.co',publishableKey:'sb_publishable_fixture'}}));
- await page.route('**/api/master/overview',r=>r.fulfill({json:{source:'STAGING_WORKER_TELEMETRY',environment:'staging',executionMode:'PAPER_ONLY',demoBatch,terminalMirror,growthHistory,market:{status:'OBSERVED_READ_ONLY',observedAt:new Date(marketStamp).toISOString(),brokerName:'Fixture broker',accountMode:'DEMO',symbol:'XAUUSDm',spreadPoints:23,atr14:7.89,positionsCount:2,pendingOrdersCount:3,equity:12345.67,margin:123.45,freeMargin:12222.22,accountCurrency:'USD'},master:{state:'DEGRADED',anomalies:0},risk:{killSwitch:'DISENGAGED'},infrastructure:{memberApi:'ONLINE',masterWorker:'ONLINE',journal:'CONNECTED',adminAuth:'VERIFIED'},activity:[],paperOrders:[],equityCurve:[],terminal:[],commands:[],queue:{queued:0,accepted:0},control:{runStatus:'STOPPED'}}}));
+ await page.route('**/api/master/overview',r=>r.fulfill({json:{source:'STAGING_WORKER_TELEMETRY',environment:'staging',executionMode:'PAPER_ONLY',news,demoBatch,terminalMirror,growthHistory,market:{status:'OBSERVED_READ_ONLY',observedAt:new Date(marketStamp).toISOString(),brokerName:'Fixture broker',accountMode:'DEMO',symbol:'XAUUSDm',spreadPoints:23,atr14:7.89,positionsCount:2,pendingOrdersCount:3,equity:12345.67,margin:123.45,freeMargin:12222.22,accountCurrency:'USD'},master:{state:'DEGRADED',anomalies:0},risk:{killSwitch:'DISENGAGED'},infrastructure:{memberApi:'ONLINE',masterWorker:'ONLINE',journal:'CONNECTED',adminAuth:'VERIFIED'},activity:[],paperOrders:[],equityCurve:[],terminal:[],commands:[],queue:{queued:0,accepted:0},control:{runStatus:'STOPPED'}}}));
  await page.route('**/api/master/skills',r=>r.fulfill({json:{revision:1,selectedSkillId:'fixture',skills:[{id:'fixture',name:'GoldTrap ARC V5.1',version:'5.1',description:'Synthetic UI fixture only — no trading evidence.',strategy:'PREARM_BOTH',kind:'BUILTIN',sha256:'fixture',documentation:'Fixture documentation',active:true,executionStatus:'ADAPTER_AVAILABLE'}],executionAuthorized:false,selectionScope:'STAGING_DEMO_ENGINE'}}));
  let fail=false,stamp=Date.now(),freeze=false,delay=0,concurrent=0,maxConcurrent=0;
  const posts:any[]=[];
@@ -19,12 +19,12 @@ async function setup(page:Page){
    if(delay)await new Promise(resolve=>setTimeout(resolve,delay));
    if(fail)return await r.fulfill({status:503,json:{}});
    if(!freeze)stamp=Date.now();
-   await r.fulfill({json:{online:true,observedMs:stamp,state,activeSkillId:'fixture',activeHash:'fixture',revision:1,checks:Object.fromEntries(['identity','brokerFlat','quote','spread','margin','commission','news','reconciled','engineHash'].map(k=>[k,!(blocked&&k==='news')])),blockers:state==='RECOVERY_REQUIRED'?['ENGINE_RECOVERY_REQUIRED']:blocked?['CALENDAR_REFRESH_PENDING']:[],canStart,commands:[]}});
+   await r.fulfill({json:{online:true,observedMs:stamp,state,activeSkillId:'fixture',activeHash:'fixture',revision:1,checks:Object.fromEntries(['identity','brokerFlat','quote','spread','margin','commission','news','reconciled','engineHash'].map(k=>[k,!(blocked&&k==='news')])),blockers:state==='RECOVERY_REQUIRED'?['ENGINE_RECOVERY_REQUIRED']:blocked?['PREFLIGHT_NEWS','NEWS_NOT_CLEAR']:[],canStart,commands:[]}});
   }finally{concurrent--;}
  });
  await page.goto('/master');
  await expect(page.getByLabel('Engine connection')).toHaveText('Ready');
- return {posts,recovery:()=>{state='RECOVERY_REQUIRED';canStart=false;},ready:()=>{state='READY';canStart=true;},setGrowth:(v:any)=>growthHistory=v,setBatch:(v:any)=>demoBatch=v,setTerminal:(v:any)=>terminalMirror=v,block:()=>{canStart=false;blocked=true;},running:()=>{canStart=false;state='RUNNING';},setFail:(v:boolean)=>fail=v,freeze:()=>freeze=true,setDelay:(v:number)=>delay=v,max:()=>maxConcurrent};
+ return {posts,setNews:(v:any)=>news=v,recovery:()=>{state='RECOVERY_REQUIRED';canStart=false;},ready:()=>{state='READY';canStart=true;},setGrowth:(v:any)=>growthHistory=v,setBatch:(v:any)=>demoBatch=v,setTerminal:(v:any)=>terminalMirror=v,block:()=>{canStart=false;blocked=true;},running:()=>{canStart=false;state='RUNNING';},setFail:(v:boolean)=>fail=v,freeze:()=>freeze=true,setDelay:(v:number)=>delay=v,max:()=>maxConcurrent};
 }
 
 test('compact layout: five destinations, aligned status, numeric composer, System contains risk and paper',async({page})=>{
@@ -46,10 +46,11 @@ test('compact layout: five destinations, aligned status, numeric composer, Syste
  expect(Math.abs(boxes[0]!.y-boxes[2]!.y)).toBeLessThan(2);
  expect(boxes[1]!.x).toBeGreaterThan(boxes[0]!.x);
  expect(boxes[3]!.y).toBeGreaterThan(boxes[0]!.y+boxes[0]!.height);
- const preflight=page.getByRole('button',{name:'Preflight 9 / 9',exact:true});
+ // Engine readiness is the tenth preflight check, added alongside reconciliation.
+ const preflight=page.getByRole('button',{name:'Preflight 10 / 10',exact:true});
  await preflight.focus();await page.keyboard.press('Enter');
  await expect(preflight).toHaveAttribute('aria-expanded','true');
- await expect(page.getByRole('img',{name:'Verified',exact:true})).toHaveCount(9);
+ await expect(page.getByRole('img',{name:'Verified',exact:true})).toHaveCount(10);
  await page.waitForTimeout(1300);await expect(preflight).toHaveAttribute('aria-expanded','true');
  await page.keyboard.press('Space');await expect(preflight).toHaveAttribute('aria-expanded','false');
  await expect(page.getByRole('img',{name:'Verified',exact:true})).toHaveCount(0);
@@ -185,4 +186,14 @@ test('growth chart filters actual timestamped fixtures and remains usable on mob
  const f=await setup(page);const toggle=page.getByRole('switch').first();await expect(toggle).toHaveAttribute('aria-checked','true');
  f.freeze();f.setFail(true);await expect(page.getByLabel('Engine connection')).toHaveText('Stale',{timeout:15000});
  await expect(toggle).toHaveAttribute('aria-checked','true');await expect(toggle).toContainText('ON');expect(f.posts).toHaveLength(0);
+ });
+
+ test('news blackout explains release times and notifications across mobile',async({page})=>{
+ const f=await setup(page),now=Date.now(),at=now+1800000;
+ f.setNews({provider:'Forex Factory',source:'OFFICIAL_HTTPS_WEEKLY_EXPORT',status:'BLACKOUT',policy:'AVOID',beforeMinutes:60,afterMinutes:60,orderDispatchAuthorized:false,superviseExistingBasket:true,observedAt:now,validUntil:now+300000,coverageStart:now-86400000,coverageEnd:now+86400000,highImpactEvents:[{title:'GDP m/m',currency:'GBP',at,blackoutStart:at-3600000,blackoutEnd:at+3600000}]});
+ f.block();await expect(page.locator('.mt-demo-control')).toContainText('GBP · GDP m/m',{timeout:15000});
+ await expect(page.locator('.mt-demo-control')).toContainText('Next release in');await expect(page.locator('.mt-demo-control')).toContainText('Blackout ends in');await expect(page.getByRole('button',{name:'Start Cycle',exact:true})).toBeDisabled();
+ await page.getByRole('button',{name:'Notifications',exact:true}).click();const dialog=page.getByRole('dialog',{name:'Notifications'});await expect(dialog).toBeVisible();await expect(dialog).toContainText('Next 24 hours');await expect(dialog).toContainText('WIB');
+ for(const width of [320,390,1440]){await page.setViewportSize({width,height:844});expect(await page.evaluate(()=>document.documentElement.scrollWidth-innerWidth)).toBeLessThanOrEqual(1);}
+ await page.setViewportSize({width:390,height:844});await page.screenshot({path:'/tmp/tradevice-news-notifications.png'});await page.getByRole('button',{name:'Close notifications'}).click();await expect(dialog).not.toBeVisible();expect(f.posts).toHaveLength(0);
  });

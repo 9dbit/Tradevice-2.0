@@ -4,6 +4,7 @@ import { useEffect, useState, type FormEvent } from 'react';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import './master.css';
 import './master-report.css';
+import NewsNotifications from './news-status';
 import FinancialOverview from './financial-overview';
 import CompactDashboard from './compact-dashboard';
 import DemoBatchPanel from './demo-batch-panel';
@@ -253,7 +254,7 @@ export default function MasterConsole() {
       <header className="mt-topbar">
         <div className="mt-mobile-brand"><Brand/></div>
         <div className="mt-top-crumb"><span>MASTER TRADER</span><Glyph name="chevron" size={14}/><strong>{roleTitle}</strong></div>
-        <div className="mt-top-actions"><span className="mt-env-tag">STAGING</span>
+        <div className="mt-top-actions"><NewsNotifications raw={data?.news}/><span className="mt-env-tag">STAGING</span>
           <button type="button" className="mt-refresh" aria-label="Refresh master status" onClick={()=>setRefreshIndex(i=>i+1)}><Glyph name="refresh" size={18}/></button>
           <button type="button" className="mt-logout" onClick={()=>void signOut()} aria-label="Sign out"><Glyph name="logout" size={18}/></button></div>
       </header>
