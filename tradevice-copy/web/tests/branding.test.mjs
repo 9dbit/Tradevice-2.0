@@ -23,10 +23,27 @@ test('member desktop/mobile/hero and demo share logo component',()=>{
   assert.match(page, /<Brand\/>/);
   assert.match(demo, /<Mark\/>/);
 });
-test('favicon uses orange arrow and iOS safe theme',()=>{
-  assert.match(icon, /#FF6B00/);
-  assert.match(layout, /icon\.svg\?v=orange-20261012/);
+test('remade app icon uses solid orange and versioned iOS metadata',()=>{
+  // The 15 October remake intentionally replaces the old gradient favicon.
+  assert.match(icon, /fill="#F58220"/);
+  assert.match(icon, /fill="#080808"/);
+  assert.doesNotMatch(icon, /linearGradient|filter=/);
+  assert.match(layout, /icon\.svg\?v=sharp-20261015/);
+  assert.match(layout, /apple:.*tradevice-180-v2\.png.*180x180/);
+  assert.match(layout, /manifest: '\/manifest\.webmanifest'/);
   assert.match(layout, /themeColor: '#0D0F14'/);
+});
+test('home-screen PNG exports are opaque, correctly sized and match vector source',async()=>{
+  const {default:sharp}=await import('sharp');
+  for(const size of [180,192,512,1024]){
+    const png=readFileSync(new URL(`../public/icons/tradevice-${size}-v2.png`,import.meta.url));
+    const meta=await sharp(png).metadata();
+    assert.equal(meta.format,'png');assert.equal(meta.width,size);assert.equal(meta.height,size);
+    assert.equal(meta.hasAlpha,false);
+    const pixels=await sharp(png).raw().toBuffer();
+    const expected=await sharp(Buffer.from(icon),{density:288}).resize(size,size).removeAlpha().raw().toBuffer();
+    assert.deepEqual(pixels,expected);
+  }
 });
 test('final black-white style replaces orange gradients',()=>{
   const m=css.indexOf('TRADEVICE_MINIMAL_ORANGE_V2');
