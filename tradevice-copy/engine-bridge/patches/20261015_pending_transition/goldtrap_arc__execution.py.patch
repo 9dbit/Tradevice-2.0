@@ -1,0 +1,42 @@
+--- a/goldtrap_arc/execution.py
++++ b/goldtrap_arc/execution.py
+@@ -5,7 +5,7 @@
+ from time import time
+ from .config import CONFIG,ArcSafetyError,ArcAdaptiveSpreadWait,ArcAdaptiveRiskBlocked,verify_spec,execution_policy,execution_config_proof,atr_tp_distance,dynamic_atr_tp,basket_tp_usd,current_atr_target,update_atr_target
+ from .models import Side,Position
+-from .mt5_adapter import ArcConnectionWait
++from .mt5_adapter import ArcConnectionWait,ArcPendingTransitionWait
+ from .pending_ladder import CONTRACT, ARMING_MODES, initial_plan, fixed_plan, quantized_target, validate_closed_m1, ArcM1BoundaryWait
+ from .rules import (basket_pl,basket_target_price,fixed_next_lot,adaptive_next_lot,
+                     atr_at,reversal_confirmed,basket_target_profit)
+@@ -582,11 +582,19 @@
+                 if abs(order.tp-target)>self.cfg.tick_size/2:
+                     self.ledger.append('ATR_PENDING_TP_INTENT',cycle_id=self.state['cycle_id'],ticket=order.ticket,
+                         original_entry=row['price'],target=target,target_usd=basket_tp_usd(self.cfg))
+-                    self.adapter.modify_pending(order,row['price'],target)
++                    try:self.adapter.modify_pending(order,row['price'],target)
++                    except ArcPendingTransitionWait:
++                        # Rebuild projected basket from fresh fills next step.
++                        # Existing broker protection and supervision stay active.
++                        return
+                     # Never resend an ambiguous modify or recreate a missing pending.
+                     fresh=self.adapter.snapshot();self.owned(fresh)
+                     actual=next((o for o in fresh.orders if o.ticket==order.ticket),None)
+-                    if actual is None or abs(actual.tp-target)>self.cfg.tick_size/2:
++                    if actual is None:
++                        try:self.adapter._pending_for_tp(order,row['price'])
++                        except ArcPendingTransitionWait:return
++                        raise ArcSafetyError('ATR pending disappeared after TP update')
++                    if abs(actual.tp-target)>self.cfg.tick_size/2:
+                         raise ArcSafetyError('ATR pending TP verification changed broker topology')
+                 row['tp']=target;self.save()
+ 
+@@ -1015,7 +1023,7 @@
+             snap=self.adapter.snapshot();self.owned(snap)
+             self.state.update(state='ACTIVE',active_side=side.value);self.save()
+             if atr_ready:self.sync_atr_pending_tp(snap)
+-            self.protect(snap)
++            self.protect(self.adapter.snapshot())
+             if self.state['state'].startswith('COMPLETE'):return self.state['state']
+             if self.state.get('execution_contract')==CONTRACT:
+                 if self.fixed_arming=='AFTER_L1':self.publish_after_l1(self.adapter.snapshot())

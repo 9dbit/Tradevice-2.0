@@ -9,5 +9,5 @@ export function cycleProgress(raw,runtime,now=Date.now(),requestId=null){
  const executed=b.cycles.some(c=>c.layers>0);
  const fresh=b.fresh&&runtime?.online===true&&Number.isSafeInteger(runtime.observedMs)&&now>=runtime.observedMs&&now-runtime.observedMs<=8000;
  return {batchId:b.batch_id,side:b.cycles.at(-1)?.side??null,current:b.started,total:b.requested,completed:b.completed,executed,executedCount:b.cycles.filter(c=>c.layers>0).length,
-  percent:100*b.completed/b.requested,fresh,active:fresh&&running&&b.status==='RUNNING',status:b.status,unfinished:b.unfinished,lastOutcome:b.cycles.at(-1)?.outcome??null,lastNet:b.cycles.at(-1)?.net_usd??null,blockers:b.blockers};
+  percent:100*b.completed/b.requested,fresh,active:fresh&&running&&b.status==='RUNNING',status:b.status,unfinished:b.unfinished,lastOutcome:b.cycles.at(-1)?.outcome??null,lastNet:b.cycles.at(-1)?.broker_flat?b.cycles.at(-1)?.net_usd??null:null,blockers:b.blockers};
 }

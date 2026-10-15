@@ -231,6 +231,16 @@ test('growth chart filters actual timestamped fixtures and remains usable on mob
  await page.getByRole('button',{name:'Expand Trading Cycle',exact:true}).click();
  await page.getByRole('button',{name:'Reset',exact:true}).click();await expect(page.getByLabel('Demo cycle count')).toHaveValue('10');f.setBatch({...stoppedBatch,batch_id:'v51_dashboard_'+'b'.repeat(32)});await expect(modal).toBeVisible({timeout:15000});await modal.getByRole('button',{name:'Reset',exact:true}).click();await expect(modal).not.toBeVisible();await expect(page.getByLabel('Demo cycle count')).toHaveValue('10');expect(f.posts).toHaveLength(0);
  });
+ test('rejected TP update shows a real stop reason and never presents an unverified zero result',async({page})=>{
+  await page.setViewportSize({width:390,height:844});const f=await setup(page);f.recovery();
+  const batch={schema:'tradevice.v51.demo.batch.v1',read_only:true,batch_id:'v51_dashboard_'+'c'.repeat(32),observed_ms:Date.now(),status:'SAFETY_STOP',requested:10,blockers:['BROKER_REJECT_10013'],cycles:[{number:1,cycle_id:'53fbfb71',outcome:'SAFETY_STOP',broker_flat:false,layers:1,peak_lots:.01,net_usd:0}]};
+  f.setBatch(batch);const modal=page.getByRole('dialog');await expect(modal).toContainText('10013: Invalid request');
+  await expect(modal).toContainText('awaiting reconciliation');await expect(modal).not.toContainText('0.00 USD');
+  await expect(modal.getByRole('button',{name:'Reset',exact:true})).toBeDisabled();
+  f.ready();f.setBatch({...batch,status:'STOPPED',observed_ms:Date.now(),blockers:['BROKER_TP_AFTER_SAFETY_STOP'],cycles:[{...batch.cycles[0],outcome:'COMPLETE_BROKER_TP_RECONCILED',broker_flat:true,net_usd:2.1}]});
+  await expect(modal).toContainText('1 / 10');await expect(modal).toContainText('2.10 USD');await expect(modal).toContainText('will not resume');
+  expect(f.posts).toHaveLength(0);
+ });
  test('selected skill stays ON when engine heartbeat expires',async({page})=>{
  const f=await setup(page);const toggle=page.getByRole('switch').first();await expect(toggle).toHaveAttribute('aria-checked','true');
  f.freeze();f.setFail(true);await expect(page.getByLabel('Engine connection')).toHaveText('Stale',{timeout:15000});

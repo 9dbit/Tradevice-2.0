@@ -85,7 +85,7 @@ class Runtime:
   from v51_demo_batch_runtime import Session
   from v51_batch_core import run,ArcSafetyError
   from v51_batch_research import ResearchBatchAdapter
-  from v51_batch_telemetry import report,publish
+  from v51_batch_telemetry import report,publish,stop_blockers
   outer=self;batch_id='v51_dashboard_'+request_id.replace('-','')
   root=self.root/'logs'/'arc_v1'/batch_id
   class DashboardSession(Session):
@@ -119,7 +119,7 @@ class Runtime:
     completed=sum(s.get('result',{}).get('broker_flat_confirmed') is True and s.get('result',{}).get('layers',0)>0 for s in slots)
     mapped=('COMPLETED' if completed==target else 'STOPPED') if status=='AUTO_STOP_10_CYCLES' else ('STOPPED' if status.startswith('STOPPED_') else status)
     if mapped=='WAITING_CALENDAR_REFRESH':mapped='SUSPENDED'
-    blockers=[outer.reason] if outer.reason else []
+    blockers=([outer.reason] if outer.reason else [])+stop_blockers(m,engine)
     if engine and engine.state.get('news_entry_suspended'):
      blockers.append(engine.state.get('news_reason','ENTRY_SUSPENDED'))
     payload=report(batch_id,mapped,slots,blockers,int(now*1000));payload['requested']=target

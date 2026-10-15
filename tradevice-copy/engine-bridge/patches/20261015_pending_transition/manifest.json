@@ -1,0 +1,30 @@
+{
+  "baseline_fingerprint_sha256": "24fb1e12c9c8c4f453c03973ab43c8d0c7e6e23f63bd613a916dcf34998afb9f",
+  "files": {
+    "goldtrap_arc/mt5_adapter.py": {
+      "before_sha256": "d1f3bd2a4c669cc11505debd53304f83d667e8428e9f11cde41fc3769904c6f5",
+      "after_sha256": "1f3ac835d628d53771227352c727711c22cad6fb1ce68b74b4275b36916d1385",
+      "patch": "goldtrap_arc__mt5_adapter.py.patch"
+    },
+    "goldtrap_arc/execution.py": {
+      "before_sha256": "3a5dac35388b7b8f7bb7152720ce79b266d797cc66a072d011b0dfd4aaf2ba2d",
+      "after_sha256": "22e67057fabacef43aaece36ba318868acd4c3594955bc0f9bfccea5ad23bf47",
+      "patch": "goldtrap_arc__execution.py.patch"
+    },
+    "v51_dashboard_runtime.py": {
+      "before_sha256": "0f05c525d5f14d2ca7ac4530177254089dcef3b20832b2d9e1c23a9db43289fa",
+      "after_sha256": "1f717d2608bdd4e7d44a6d6e0f576392c122f4b4d960e88f865f10c2b675d138",
+      "patch": "v51_dashboard_runtime.py.patch"
+    },
+    "v51_demo_batch_runtime.py": {
+      "before_sha256": "05732e9f8574e7896c8746c3389f43c94a3002ab254909ae362edec64588f55f",
+      "after_sha256": "f75dbe2853fdcc453458e9636f339019f41066224bed55618104a53c498dedab",
+      "patch": "v51_demo_batch_runtime.py.patch"
+    },
+    "v51_batch_telemetry.py": {
+      "before_sha256": "e74fa4b18449b51304465ac9713631febd53ff89accbca9cc3e2a988cb59bf73",
+      "after_sha256": "073a265d7d72a85ae479dffecf8fa77cf0718b7e3b45d0a9e115d2e464f32c42",
+      "patch": "v51_batch_telemetry.py.patch"
+    }
+  }
+}

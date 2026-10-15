@@ -2,7 +2,12 @@
 export function batchStopNotice(progress,runtimeRunning){
  if(!progress||runtimeRunning||!['STOPPED','SAFETY_STOP','BLOCKED'].includes(progress.status))return null;
  if(progress.status==='STOPPED'&&progress.completed>=progress.total)return null;
- let reason=progress.blockers?.join(' · ');
+ const reasons={
+  BROKER_REJECT_10013:'The broker rejected an order update (10013: Invalid request). The batch stopped; reconciliation is required.',
+  BATCH_SAFETY_STOP:'The engine stopped after a safety check failed. Broker reconciliation is required.',
+  BROKER_TP_AFTER_SAFETY_STOP:'The remaining position closed at broker TP after the safety stop. Broker-flat reconciliation is verified; this batch will not resume.',
+ };
+ let reason=progress.blockers?.map(code=>reasons[code]||code).join(' · ');
  if(!reason){
   if(progress.lastOutcome?.includes('RISK'))reason='Basket risk limit reached. Remaining cycles were stopped for safety.';
   else if(progress.lastOutcome==='COMPLETE_BROKER_CLOSED'||progress.lastOutcome==='COMPLETE_TERMINAL_CLEANUP')reason='Broker-side closure required terminal cleanup. Automatic continuation was blocked.';

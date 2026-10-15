@@ -1,0 +1,95 @@
+--- a/goldtrap_arc/mt5_adapter.py
++++ b/goldtrap_arc/mt5_adapter.py
+@@ -24,6 +24,10 @@
+ 
+ class ArcDefinitiveReject(ArcSafetyError):
+     """Broker definitively did not accept the request."""
++
++
++class ArcPendingTransitionWait(ArcSafetyError):
++    """An exact pending activated or filled; recompute on the next engine step."""
+ 
+ 
+ class ArcUncertainRequest(ArcSafetyError):
+@@ -497,7 +501,7 @@
+ 
+     def _write(self, request, *, operation='UNKNOWN', cycle_id=None, layer=None,
+                side=None, expected_ticket=None, expected_comment=None,
+-               expected_volume=None, expected_tp=None):
++               expected_volume=None, expected_tp=None, pending_before=None):
+         if not self.allow_execution:
+             raise ArcSafetyError("ARC adapter is read-only; broker write blocked")
+         guard=getattr(self,"entry_admission_guard",None)
+@@ -558,6 +562,7 @@
+                                            comment='idempotent precheck')
+                 raise ArcSafetyError("Ticket ownership changed before write")
+ 
++        if pending_before is not None:self._assert_pending_unchanged(pending_before)
+         check = self.mt5.order_check(request)
+         if check is None:
+             self.guard_identity()
+@@ -577,6 +582,7 @@
+         self.guard_identity()
+         self.guard_book(cycle_id, fresh=operation in ('TRAP_PENDING','FIXED_PENDING','ADAPTIVE_MARKET','PENDING_MODIFY','CLOSE'))
+         self.require_global_lock()
++        if pending_before is not None:self._assert_pending_unchanged(pending_before)
+         if operation=='ADAPTIVE_MARKET':
+             self.validate_adaptive(cycle_id,side,layer,expected_volume)
+         rid=uuid.uuid4().hex
+@@ -787,14 +793,51 @@
+         return int(getattr(result,'order',0) or getattr(result,'deal',0))
+ 
+     def modify_pending(self,order,price,tp):
++        # A stop-limit can activate independently between every MT5 read.
++        # Refresh the broker shape, retaining the immutable recovery entry.
++        order=self._pending_for_tp(order,price)
+         request=dict(action=getattr(self.mt5,'TRADE_ACTION_MODIFY',7),order=order.ticket,
+-                     symbol=self._symbol,price=round(order.price if order.order_type in (6,7) else price,3),
+-                     stoplimit=round(price,3) if order.order_type in (6,7) else 0.0,
++                     symbol=self._symbol,price=order.price,
++                     stoplimit=order.stoplimit if order.order_type in (6,7) else 0.0,
+                      sl=order.sl,tp=round(tp,3),type_time=order.type_time,expiration=order.expiration,
+                      magic=self.cfg.magic,comment=order.comment)
+-        return self._write(request,operation='PENDING_MODIFY',cycle_id=self.cycle(order),layer=order.layer,
+-                           side=order.side,expected_ticket=order.ticket,expected_comment=order.comment,
+-                           expected_volume=order.volume)
++        try:
++            return self._write(request,operation='PENDING_MODIFY',cycle_id=self.cycle(order),layer=order.layer,
++                               side=order.side,expected_ticket=order.ticket,expected_comment=order.comment,
++                               expected_volume=order.volume,pending_before=order)
++        except ArcDefinitiveReject as exc:
++            # Only a resolved, proven-no-effect INVALID_REQUEST plus an exact
++            # activation can be deferred. No retry within this call, no catch
++            # of uncertain receipts or unrelated broker rejections.
++            if str(exc)=='MT5 order_send rejected retcode=10013':
++                self._assert_pending_unchanged(order)
++            raise
++
++    def _pending_for_tp(self,before,entry):
++        self.guard_identity()
++        snap=self.snapshot()
++        live=next((o for o in snap.orders if o.ticket==before.ticket),None)
++        if live is None:
++            proof=self._prove_intent(dict(operation='PENDING_MODIFY',cycle_id=self.cycle(before),
++                layer=before.layer,side=before.side.value,target_ticket=before.ticket,
++                expected_comment=before.comment,expected_volume=before.volume,request={}))
++            if proof['status']=='EFFECT':raise ArcPendingTransitionWait('Owned pending filled during TP update')
++            raise ArcSafetyError('Pending absent without exact fill proof')
++        equal=lambda a,b:math.isclose(a,b,rel_tol=0,abs_tol=1e-9)
++        activation=(before.order_type,live.order_type) in ((6,2),(7,3))
++        if (not self.is_owned(live) or (live.comment,live.side,live.layer,live.magic)!=(before.comment,before.side,before.layer,before.magic)
++                or not equal(live.volume,before.volume) or not equal(live.entry_price,entry)
++                or (live.type_time,live.expiration,live.sl)!=(before.type_time,before.expiration,before.sl)
++                or (live.order_type!=before.order_type and not activation)
++                or (not activation and (live.price,live.stoplimit)!=(before.price,before.stoplimit))):
++            raise ArcSafetyError('Pending topology changed outside exact activation')
++        return live
++
++    def _assert_pending_unchanged(self,before):
++        live=self._pending_for_tp(before,before.entry_price)
++        if (live.order_type,live.price,live.stoplimit)!=(before.order_type,before.price,before.stoplimit):
++            raise ArcPendingTransitionWait('Owned stop-limit activated during TP update')
++        if live.tp!=before.tp:raise ArcSafetyError('Pending protection changed concurrently')
+ 
+     def adaptive_pending(self,*args,**kwargs):
+         raise ArcSafetyError('Adaptive pending STOP is prohibited in V4')

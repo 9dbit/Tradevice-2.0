@@ -1,0 +1,20 @@
+--- a/v51_demo_batch_runtime.py
++++ b/v51_demo_batch_runtime.py
+@@ -5,7 +5,7 @@
+ from v51_batch_research import ResearchBatchAdapter,margin_envelope
+ from v51_guarded_engine import NewsGuardedArcExecutionEngine
+ from v51_runtime_calendar import RuntimeCalendar
+-from v51_batch_telemetry import report,publish
++from v51_batch_telemetry import report,publish,stop_blockers
+ from goldtrap_arc.persistence import ArcLedger,atomic_json
+ ROOT=Path(__file__).resolve().parent
+ STATUS=ROOT/'read_only'/'observer_connection_status.json'
+@@ -58,7 +58,7 @@
+   mapped=('COMPLETED' if completed==10 else 'STOPPED') if status=='AUTO_STOP_10_CYCLES' else ('STOPPED' if status.startswith('STOPPED_') else status)
+   blockers=[]
+   if engine and engine.state.get('news_entry_suspended'):blockers=[engine.state.get('news_reason','ENTRY_SUSPENDED')]
+-  if mapped=='SAFETY_STOP' and not blockers:blockers=['BATCH_SAFETY_STOP']
++  blockers+=stop_blockers(m,engine)
+   try:publish(report(self.batch_id,mapped,slots,blockers,int(now*1000)));self.write_failed=False
+   except Exception:self.write_failed=True # supervision must survive telemetry IO failure
+  def admission(self,adapter):

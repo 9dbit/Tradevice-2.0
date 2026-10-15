@@ -84,7 +84,7 @@ export default function DemoControl({token,runtime,refresh,now,batchRaw,newsRaw}
    <h2 id="batch-stop-title">{stopNotice?.title}</h2>
    <strong>{progress?.completed??0} / {progress?.total??0} cycles completed</strong>
    <p id="batch-stop-reason">{stopNotice?.reason}</p>
-   {progress?.lastNet!=null&&<p>Last cycle: {progress.lastNet.toFixed(2)} USD</p>}
+   {progress?.lastNet!=null?<p>Last cycle: {progress.lastNet.toFixed(2)} USD</p>:<p>Last cycle result: awaiting reconciliation</p>}
    <p className="mt-compact-note">{stopNotice?.resetSafe?'Reset prepares a new cycle count. Start still requires verified preflight.':'Broker reconciliation is still required. Reset is unavailable.'}</p>
    <div className="mt-stop-actions"><button type="button" autoFocus onClick={dismissStop}>Close</button><button type="button" disabled={!ended||busy||!stopNotice?.resetSafe} onClick={()=>{resetComposer();dismissStop();}}>Reset</button></div>
   </dialog>}>

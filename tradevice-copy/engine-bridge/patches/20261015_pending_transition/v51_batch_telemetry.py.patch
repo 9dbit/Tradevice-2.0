@@ -1,0 +1,33 @@
+--- a/v51_batch_telemetry.py
++++ b/v51_batch_telemetry.py
+@@ -1,10 +1,16 @@
+ """Bounded read-only batch projection. Private journals never leave the PC."""
+-import json,time
++import json,time,re
+ from pathlib import Path
+ from goldtrap_arc.persistence import atomic_json
+ ROOT=Path(__file__).resolve().parent
+ PATH=ROOT/'read_only'/'demo_batch.json'
+ SCHEMA='tradevice.v51.demo.batch.v1'
++def stop_blockers(manifest,engine=None):
++ if manifest.get('status')!='SAFETY_STOP':return []
++ error=str(manifest.get('error',''))
++ if engine:error+=' '+str(engine.state.get('safety_error',''))
++ match=re.search(r'MT5 order_send rejected retcode=(\d{5})',error)
++ return ['BROKER_REJECT_'+match[1]] if match else ['BATCH_SAFETY_STOP']
+ def report(batch_id,status,slots=(),blockers=(),now=None):
+  rows=[]
+  for s in slots:
+@@ -13,9 +19,10 @@
+   r=s.get('result') or {}
+   outcome=r.get('outcome',s.get('state') or 'RESERVED')
+   if outcome.startswith('COMPLETE') and r.get('broker_flat_confirmed') is not True:outcome='AWAITING_BROKER_FLAT'
+-  rows.append(dict(number=s['number'],cycle_id=cid,outcome=outcome,
++  rows.append(dict(number=s['number'],cycle_id=cid,outcome=outcome,side=r.get('side',s.get('side')),
+    broker_flat=r.get('broker_flat_confirmed') is True,layers=int(r.get('layers',s.get('layers',0))),
+-   peak_lots=float(r.get('peak_exposure_lots',s.get('peak_exposure_lots',0))),net_usd=r.get('realized_pl_usd')))
++   peak_lots=float(r.get('peak_exposure_lots',s.get('peak_exposure_lots',0))),
++   net_usd=r.get('realized_pl_usd') if r.get('broker_flat_confirmed') is True else None))
+  return dict(schema=SCHEMA,read_only=True,batch_id=batch_id,observed_ms=int(time.time()*1000) if now is None else now,
+   status=status,requested=10,blockers=list(blockers),cycles=rows)
+ def publish(value):
