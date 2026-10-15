@@ -462,6 +462,8 @@ test('master themes keep a solid canvas, preserve controls and persist after rel
  for(const v of Object.values(await canvas()))expect(v).toEqual({color:'rgb(255, 255, 255)',image:'none'});
  await expect(page.getByRole('button',{name:'Expand Telemetry',exact:true})).toHaveAttribute('aria-expanded','false');
  await expect(page.locator('meta[name="theme-color"]')).toHaveAttribute('content','#ffffff');
+ await expect(page.getByLabel('Demo cycle count')).toHaveCSS('color','rgb(185, 77, 0)');
+ await expect(page.locator('.mt-skill-slider-label')).toHaveCSS('color','rgb(23, 23, 23)');
  for(const width of [320,390,1440]){
   await page.setViewportSize({width,height:900});
   expect(await page.evaluate(()=>document.documentElement.scrollWidth-innerWidth)).toBeLessThanOrEqual(1);
@@ -485,6 +487,8 @@ test('master themes keep a solid canvas, preserve controls and persist after rel
  await page.reload();await expect(page.getByRole('button',{name:'Switch to light mode',exact:true})).toBeVisible();
  for(const v of Object.values(await canvas()))expect(v).toEqual({color:'rgb(0, 0, 0)',image:'none'});
  await expect(page.locator('meta[name="theme-color"]')).toHaveAttribute('content','#000000');
+ await expect(page.getByLabel('Demo cycle count')).toHaveCSS('color','rgb(255, 146, 61)');
+ await expect(page.locator('.mt-skill-slider-label')).toHaveCSS('color','rgb(23, 23, 23)');
  await page.evaluate(()=>scrollTo({top:0,behavior:'instant'}));
  await page.screenshot({path:'/tmp/tradevice-black-mobile.png',fullPage:true});
  expect(f.posts).toHaveLength(0);

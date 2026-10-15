@@ -15,7 +15,8 @@ html[data-master-theme] .mt :is(.mt-inline-blocker,.mt-news-explanation p,.mt-ne
 html[data-master-theme] .mt :is(.mt-login-error,.mt-skill-error){color:var(--master-danger)}
 html[data-master-theme] .mt :is(.mt-side-nav button.current,.mt-u-detail:hover,.mt-growth-filters button[aria-pressed=true],.mt-growth-value strong,.mt-growth-detail strong,.mt-news-explanation .mt-drawer-trigger){color:var(--master-orange)}
 html[data-master-theme] .mt :is(.mt-growth-filters button[aria-pressed=true],.mt-sidebar-guard,.mt-demo-inputs input,.mt-growth-range input,.mt-batch-settings select,.mt-batch-settings input,.mt-login-form input,.mt-report .mt-skills button:not(.mt-skill-slider,.mt-section-toggle,.mt-drawer-trigger,.mt-u-detail)){background:var(--master-surface);color:var(--master-text);border-color:var(--master-line);color-scheme:inherit}
-html[data-master-theme] .mt .mt-demo-inputs input{color:var(--master-orange)}
+html[data-master-theme] .mt .mt-demo-inputs input{color:var(--master-orange)!important}
+html[data-master-theme] .mt .mt-skill-slider-label{color:inherit!important}
 html[data-master-theme] .mt :is(.mt-news-dialog,.mt-stop-dialog){background:var(--master-canvas);color:var(--master-text);border-color:var(--master-line)}
 html[data-master-theme] .mt :is(.mt-news-dialog,.mt-stop-dialog) :is(p,small,span){color:var(--master-muted)}
 html[data-master-theme] .mt :is(.mt-news-dialog,.mt-stop-dialog) button{background:var(--master-surface);color:var(--master-text)}
