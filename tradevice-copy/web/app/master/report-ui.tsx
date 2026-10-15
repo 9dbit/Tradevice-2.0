@@ -48,8 +48,8 @@ export function TelemetryDatum({icon,label,value,hint}:{icon:ReportIconName;labe
 
 /** Collapse only presentation: children stay mounted and polling keeps running.
  * Dialogs live outside the inert body so stop notifications remain available. */
-export function ReportSection({title,header,children,overlay,defaultOpen=true,className='',...props}:{
- title:string;header:ReactNode;children:ReactNode;overlay?:ReactNode;defaultOpen?:boolean;
+export function ReportSection({title,header,children,overlay,notice,defaultOpen=true,className='',...props}:{
+ title:string;header:ReactNode;children:ReactNode;overlay?:ReactNode;notice?:ReactNode;defaultOpen?:boolean;
 }&Omit<ComponentPropsWithoutRef<'section'>,'title'>){
  const [open,setOpen]=useState(defaultOpen),id=useId();
  return <section {...props} className={className+' mt-collapsible-section'} data-open={open}>
@@ -57,6 +57,7 @@ export function ReportSection({title,header,children,overlay,defaultOpen=true,cl
   <div className="mt-section-heading-row">{header}<button className="mt-section-toggle" type="button"
    aria-label={(open?'Collapse ':'Expand ')+title} aria-expanded={open} aria-controls={id+'-content'}
    onClick={()=>setOpen(v=>!v)}><span className="mt-expand-circle" aria-hidden="true"><ReportIcon name="chevron" size={18}/></span></button></div>
+  {notice}
   <div id={id+'-content'} className="mt-section-body" aria-hidden={!open} inert={!open}>
    <div className="mt-section-clip"><div className="mt-section-content">{children}</div></div>
   </div>

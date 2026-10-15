@@ -42,12 +42,13 @@ async function setup(page:Page){
  let canStart=true,state='READY',blocked=false,expiredPreflight=false;
  let extraBlockers:string[]=[];
  let demoBatch:any=null,terminalMirror:any=null,growthHistory:any=null,news:any=null;
- const marketStamp=Date.now();
+ let marketStamp=Date.now(),engineDiagnostics:any=null,overviewFail=false,offline=false;
+ const overviewPolls:number[]=[];
  const session={access_token:'fixture.admin.token',refresh_token:'fixture',token_type:'bearer',expires_in:7200,expires_at:Math.floor(Date.now()/1000)+7200,user:{id:'11111111-1111-4111-8111-111111111111',email:'admin@example.invalid',aud:'authenticated',role:'authenticated',app_metadata:{tradevice_master_admin:true}}};
  await page.addInitScript(s=>localStorage.setItem('tradevice-master-console-staging',JSON.stringify(s)),session);
  await page.route('https://scqzlcivherovlwqypeu.supabase.co/**',r=>r.fulfill({json:{user:session.user}}));
  await page.route('**/api/runtime',r=>r.fulfill({json:{configured:true,supabaseUrl:'https://scqzlcivherovlwqypeu.supabase.co',publishableKey:'sb_publishable_fixture'}}));
- await page.route('**/api/master/overview',r=>r.fulfill({json:{source:'STAGING_WORKER_TELEMETRY',environment:'staging',executionMode:'PAPER_ONLY',news,demoBatch,terminalMirror,growthHistory,market:{status:'OBSERVED_READ_ONLY',observedAt:new Date(marketStamp).toISOString(),brokerName:'Fixture broker',accountMode:'DEMO',symbol:'XAUUSDm',spreadPoints:23,atr14:7.89,positionsCount:2,pendingOrdersCount:3,equity:12345.67,margin:123.45,freeMargin:12222.22,accountCurrency:'USD'},master:{state:'DEGRADED',anomalies:0},risk:{killSwitch:'DISENGAGED'},infrastructure:{memberApi:'ONLINE',masterWorker:'ONLINE',journal:'CONNECTED',adminAuth:'VERIFIED'},activity:[],paperOrders:[],equityCurve:[],terminal:[],commands:[],queue:{queued:0,accepted:0},control:{runStatus:'STOPPED'}}}));
+ await page.route('**/api/master/overview',r=>{overviewPolls.push(Date.now());if(overviewFail)return r.fulfill({status:503,json:{}});return r.fulfill({json:{source:'STAGING_WORKER_TELEMETRY',environment:'staging',executionMode:'PAPER_ONLY',news,demoBatch,terminalMirror,growthHistory,market:{engineDiagnostics,status:'OBSERVED_READ_ONLY',observedAt:new Date(marketStamp).toISOString(),brokerName:'Fixture broker',accountMode:'DEMO',symbol:'XAUUSDm',spreadPoints:23,atr14:7.89,positionsCount:2,pendingOrdersCount:3,equity:12345.67,margin:123.45,freeMargin:12222.22,accountCurrency:'USD'},master:{state:'DEGRADED',anomalies:0},risk:{killSwitch:'DISENGAGED'},infrastructure:{memberApi:'ONLINE',masterWorker:'ONLINE',journal:'CONNECTED',adminAuth:'VERIFIED'},activity:[],paperOrders:[],equityCurve:[],terminal:[],commands:[],queue:{queued:0,accepted:0},control:{runStatus:'STOPPED'}}});});
  await page.route('**/api/master/skills',r=>r.fulfill({json:{revision:1,selectedSkillId:'fixture',skills:[{id:'fixture',name:'GoldTrap ARC V5.1',version:'5.1',description:'Synthetic UI fixture only — no trading evidence.',strategy:'PREARM_BOTH',kind:'BUILTIN',sha256:'fixture',documentation:'Fixture documentation',active:true,executionStatus:'ADAPTER_AVAILABLE'}],executionAuthorized:false,selectionScope:'STAGING_DEMO_ENGINE'}}));
  let fail=false,stamp=Date.now(),freeze=false,delay=0,concurrent=0,maxConcurrent=0;
  const posts:any[]=[];
@@ -58,12 +59,12 @@ async function setup(page:Page){
    if(delay)await new Promise(resolve=>setTimeout(resolve,delay));
    if(fail)return await r.fulfill({status:503,json:{}});
    if(!freeze)stamp=Date.now();
-   await r.fulfill({json:{online:true,observedMs:stamp,state,activeSkillId:'fixture',activeHash:'fixture',revision:1,checks:Object.fromEntries(['identity','brokerFlat','quote','spread','margin','commission','news','reconciled','engineHash'].map(k=>[k,!expiredPreflight&&!(blocked&&k==='news')])),blockers:[...(state==='RECOVERY_REQUIRED'?['ENGINE_RECOVERY_REQUIRED']:blocked?['PREFLIGHT_NEWS','NEWS_NOT_CLEAR']:[]),...(expiredPreflight?['ENGINE_NOT_READY',...['identity','brokerFlat','quote','spread','margin','commission','news','reconciled','engineHash'].map(k=>'PREFLIGHT_'+k.toUpperCase())]:[]),...extraBlockers],canStart,commands:[]}});
+   await r.fulfill({json:{online:!offline,observedMs:stamp,state:offline?'OFFLINE':state,activeSkillId:'fixture',activeHash:'fixture',revision:1,checks:Object.fromEntries(['identity','brokerFlat','quote','spread','margin','commission','news','reconciled','engineHash'].map(k=>[k,!expiredPreflight&&!(blocked&&k==='news')])),blockers:[...(state==='RECOVERY_REQUIRED'?['ENGINE_RECOVERY_REQUIRED']:blocked?['PREFLIGHT_NEWS','NEWS_NOT_CLEAR']:[]),...(expiredPreflight?['ENGINE_NOT_READY',...['identity','brokerFlat','quote','spread','margin','commission','news','reconciled','engineHash'].map(k=>'PREFLIGHT_'+k.toUpperCase())]:[]),...extraBlockers],canStart,commands:[]}});
   }finally{concurrent--;}
  });
  await page.goto('/master');
  await expect(page.getByLabel('Engine connection')).toHaveText('Ready');
- return {posts,expirePreflight:()=>{expiredPreflight=true;},setExtraBlockers:(v:string[])=>extraBlockers=v,restorePreflight:()=>{expiredPreflight=false;},setNews:(v:any)=>news=v,recovery:()=>{state='RECOVERY_REQUIRED';canStart=false;},ready:()=>{state='READY';canStart=true;},setGrowth:(v:any)=>growthHistory=v,setBatch:(v:any)=>demoBatch=v,setTerminal:(v:any)=>terminalMirror=v,block:()=>{canStart=false;blocked=true;},running:()=>{canStart=false;state='RUNNING';},setFail:(v:boolean)=>fail=v,freeze:()=>freeze=true,setDelay:(v:number)=>delay=v,max:()=>maxConcurrent};
+ return {posts,overviewPolls,setOverviewFail:(v:boolean)=>overviewFail=v,setOffline:(v:boolean)=>offline=v,setEngine:(v:any)=>{engineDiagnostics=v;marketStamp=Date.now();},expirePreflight:()=>{expiredPreflight=true;},setExtraBlockers:(v:string[])=>extraBlockers=v,restorePreflight:()=>{expiredPreflight=false;},setNews:(v:any)=>news=v,recovery:()=>{state='RECOVERY_REQUIRED';canStart=false;},ready:()=>{state='READY';canStart=true;},setGrowth:(v:any)=>growthHistory=v,setBatch:(v:any)=>demoBatch=v,setTerminal:(v:any)=>terminalMirror=v,block:()=>{canStart=false;blocked=true;},running:()=>{canStart=false;state='RUNNING';},setFail:(v:boolean)=>fail=v,freeze:()=>freeze=true,setDelay:(v:number)=>delay=v,max:()=>maxConcurrent};
 }
 
 test('compact layout: five destinations, aligned status, numeric composer, System contains risk and paper',async({page})=>{
@@ -263,13 +264,13 @@ test('growth chart filters actual timestamped fixtures and remains usable on mob
  expect(f.posts).toHaveLength(0);
  });
 
- test('all dashboard and detail sections collapse, orange arrows, news above basket, no command side effects',async({page})=>{
+ test('all dashboard and detail sections collapse, orange arrows, basket above growth, no command side effects',async({page})=>{
  test.setTimeout(60000);
  const f=await setup(page);await page.setViewportSize({width:390,height:844});
  const sections=page.locator('.mt-dense-dashboard > section');
  await expect(sections).toHaveCount(8);
  const titles=await sections.locator('.mt-section-heading-row h2').allTextContents();
- expect(titles.indexOf(' Basket & Adaptive')).toBe(titles.indexOf(' News Guard')+1);
+ expect(titles.indexOf(' Basket & Adaptive')).toBe(titles.indexOf(' Growth')-1);
  for(let i=0;i<await sections.count();i++){
   const section=sections.nth(i),toggle=section.locator(':scope > .mt-section-heading-row > .mt-section-toggle');
   const color=await toggle.locator('.mt-expand-circle').evaluate(el=>{const c=getComputedStyle(el);return {color:c.backgroundColor,radius:c.borderRadius,width:el.getBoundingClientRect().width,height:el.getBoundingClientRect().height};});
@@ -307,5 +308,55 @@ test('growth chart filters actual timestamped fixtures and remains usable on mob
    await toggle.click();await expect(toggle).toHaveAttribute('aria-expanded','true');
   }
  }
+ expect(f.posts).toHaveLength(0);
+ });
+
+ test('stable running notice, one-second basket refresh and aligned arrow column',async({page})=>{
+ test.setTimeout(60000);
+ const f=await setup(page);f.running();await page.setViewportSize({width:390,height:844});
+ const report=(value:number,cycleId='cycle-one',state='ACTIVE')=>({status:'ENGINE_REPORTED',observedMs:Date.now(),cycleId,state,hardLossUsd:-120,targetUsd:3.5,
+  riskExitCommitted:false,brokerFlatReconciled:false,entrySuspended:false,
+  pnl:{value,atMs:Date.now(),tickMs:Date.now(),basis:'ENGINE_EXECUTABLE_PLUS_CACHED_REALIZED'},authorization:'NONE',authorizationExpiresMs:null,orderDispatchAuthorized:false});
+ f.setEngine(report(-12.34));
+ const basket=page.locator('[aria-labelledby=risk-title]'),value=basket.locator('.mt-telemetry-datum').filter({hasText:'Basket estimate'}).locator('strong');
+ const note=page.locator('.mt-batch-notice');
+ await expect(value).toHaveText('-$12.34');await expect(note).toContainText('Batch running.');
+ // Observe every frame across TTL expiry and temporary offline projections.
+ await page.evaluate(()=>{const w=window as any;w.blankFrames=0;w.noteMissingFrames=0;w.observeStable=true;
+  const sample=()=>{if(!w.observeStable)return;
+   const value=document.querySelector('[aria-labelledby=risk-title] .mt-telemetry-datum strong');
+   const note=document.querySelector('.mt-batch-notice');
+   if(!value||value.textContent==='—')w.blankFrames++;
+   if(!note||getComputedStyle(note).visibility==='hidden')w.noteMissingFrames++;
+   requestAnimationFrame(sample);
+  };requestAnimationFrame(sample);
+ });
+ const pollStart=f.overviewPolls.length;
+ await page.waitForTimeout(6200);
+ expect(f.overviewPolls.length-pollStart).toBeGreaterThanOrEqual(5);
+ await expect(value).toHaveText('-$12.34');await expect(basket).toContainText('Last known');
+ f.setOffline(true);f.setOverviewFail(true);
+ await expect(note).toContainText('Batch running (last reported).');
+ await expect(note).toContainText('current execution is unverified');
+ await expect(value).toHaveText('-$12.34');
+ await expect(page.getByRole('button',{name:'Start Cycle',exact:true})).toBeDisabled();
+ await page.getByRole('button',{name:'Collapse Trading Cycle',exact:true}).click();await expect(note).toBeVisible();
+ await page.evaluate(()=>{(window as any).observeStable=false;});
+ expect(await page.evaluate(()=>[(window as any).blankFrames,(window as any).noteMissingFrames])).toEqual([0,0]);
+ f.setOverviewFail(false);f.setOffline(false);f.setEngine(report(-9.87));
+ await expect(value).toHaveText('-$9.87');await expect(note).toContainText('Batch running.');
+ await page.getByRole('button',{name:'Expand Trading Cycle',exact:true}).click();
+ for(const width of [320,390,430]){
+  await page.setViewportSize({width,height:844});
+  const xs=await page.locator('.mt-dense-dashboard .mt-expand-circle').evaluateAll(els=>els.filter(el=>getComputedStyle(el).visibility==='visible'&&el.getBoundingClientRect().width>0).map(el=>{const r=el.getBoundingClientRect();return r.x+r.width/2;}));
+  expect(Math.max(...xs)-Math.min(...xs)).toBeLessThanOrEqual(1);
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth-innerWidth)).toBeLessThanOrEqual(1);
+ }
+ await page.setViewportSize({width:390,height:844});
+ await basket.scrollIntoViewIfNeeded();await page.screenshot({path:'/tmp/tradevice-stable-basket.png'});
+ f.setEngine({...report(0,'cycle-two'),pnl:null});await expect(value).toHaveText('—');
+ f.setEngine(report(-1,'cycle-two'));await expect(value).toHaveText('-$1.00');
+ f.setEngine(report(3.5,'cycle-two','COMPLETE_TP'));await expect(value).toHaveText('—');
+ f.ready();await expect(note).toHaveCount(0);
  expect(f.posts).toHaveLength(0);
  });

@@ -172,13 +172,14 @@ export default function MasterConsole() {
       loading=true;
       try{
         const response=await fetch('/api/master/overview',{
-          headers:{Authorization:'Bearer '+token},cache:'no-store',
+          headers:{Authorization:'Bearer '+token},cache:'no-store',signal:AbortSignal.timeout(12000),
         });
         if(!active)return;
         if(response.status===401){setAuth('login');setSnapshot(null);setMessage('Session expired. Please sign in again.');return;}
         if(response.status===403){setAuth('forbidden');setSnapshot(null);setMessage('Master Trader access is restricted to approved administrators.');return;}
         if(!response.ok)throw new Error('Service unavailable');
         const data=await response.json() as Snapshot;
+        if(!active)return;
         if(!['STAGING_INFRASTRUCTURE','STAGING_WORKER_TELEMETRY'].includes(data.source) || data.executionMode!=='PAPER_ONLY')throw new Error('Invalid mode');
         setSnapshot(data);setAuth('authorized');setMessage('');
       }catch{
@@ -196,7 +197,7 @@ export default function MasterConsole() {
     // Explicit 401/403 responses above still immediately revoke dashboard access.
     setAuth(current=>current==='authorized'?current:'checking');
     void load();
-    const id=window.setInterval(()=>{void load();},5000);
+    const id=window.setInterval(()=>{void load();},1000);
     return()=>{active=false;window.clearInterval(id);};
   },[token,refreshIndex]);
   async function signIn(event:FormEvent<HTMLFormElement>){

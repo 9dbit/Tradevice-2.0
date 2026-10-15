@@ -358,3 +358,8 @@
 @media(prefers-reduced-motion:reduce){.mt-section-body,.mt-collapsible-section[data-open=false]>.mt-section-body,.mt-expand-circle svg{transition:none}}
 
 .mt-report .mt-skills .mt-section-toggle{background:transparent}
+
+/* Match each drawer circle to the 44px section button's center (7px inset). */
+.mt-report .mt-report-drawer>.mt-drawer-trigger,.mt-news-explanation .mt-drawer-trigger{box-sizing:border-box;padding-right:7px}
+.mt-batch-notice{min-height:4.5em;animation:none;transition:none}
+.mt-report .mt-basket-stale{font-variant-numeric:tabular-nums}

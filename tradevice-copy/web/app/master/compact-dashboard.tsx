@@ -2,6 +2,8 @@
 import {useEffect,useMemo,useState} from 'react';
 import type {Snapshot} from './master-console';
 import {validateEngine,validateOwned} from '../../lib/engine-diagnostics.mjs';
+import {basketEstimate} from '../../lib/basket-estimate.mjs';
+import type {BasketEstimate} from '../../lib/basket-estimate.mjs';
 import {validateBatch} from '../../lib/demo-batch.mjs';
 import {NewsStatus} from './news-status';
 import GrowthChart from './growth-chart';
@@ -34,6 +36,9 @@ export default function CompactDashboard({data,token,onNavigate}:{
  const engine=validateEngine(market?.engineDiagnostics,now);
  const owned=validateOwned(market?.ownedPositionPnl);
  const decision=engine.decision;
+ const [lastEstimate,setLastEstimate]=useState<BasketEstimate|null>(null);
+ const estimate=basketEstimate(lastEstimate,data?.market?.engineDiagnostics,now,marketFresh);
+ useEffect(()=>{setLastEstimate(estimate);},[data?.market?.engineDiagnostics,now,marketFresh]);
  const batch=validateBatch(data?.demoBatch??data?.market?.demoBatch,now);
  const executedCycles=batch?batch.cycles.filter(c=>c.layers>0).length:null;
  const usd=(value:number|null|undefined)=>typeof value==='number'&&Number.isFinite(value)?value.toLocaleString('en-US',{style:'currency',currency:'USD',minimumFractionDigits:2,maximumFractionDigits:2}):'—';
@@ -48,6 +53,36 @@ export default function CompactDashboard({data,token,onNavigate}:{
   {diagnostic&&<div className="mt-u-diagnostic" role="alert"><I name="alert"/>
    <div><strong>Telemetry unavailable</strong><p>{diagnostic}</p></div></div>}
   <DemoControl token={token} runtime={demoRuntime} refresh={refreshDemo} now={now} batchRaw={data?.demoBatch??data?.market?.demoBatch} newsRaw={data?.news}/>
+
+  <ReportSection title="Basket &amp; Adaptive" className="mt-u-panel" aria-labelledby="risk-title" header={<div className="mt-u-panel-head"><h2 id="risk-title"><I name="shield"/> Basket &amp; Adaptive</h2>
+    <span className="mt-u-chip">{engine.entrySuspended===true?'Entry suspended':engine.status==='ENGINE_REPORTED'?engine.state||'Reported':'Unverified'}</span></div>}>
+
+   <div className="mt-telemetry-grid">
+    <Datum icon="activity" label="Basket estimate" value={usd(estimate?.value)} hint={estimate?`${estimate.fresh?'Reported':'Last known'} · ${Math.max(0,Math.floor((now-Math.min(estimate.atMs,estimate.tickMs))/1000))}s ago · costs unverified`:'Awaiting estimate'}/>
+    <Datum icon="shield" label="Hard loss" value={usd(engine.hardLossUsd)} hint={engine.riskExitCommitted===true?'Exit committed':'engine report'}/>
+    <Datum icon="check" label="Basket TP" value={usd(engine.targetUsd)} hint="engine report"/>
+   </div>
+   {estimate&&!estimate.fresh&&<p className="mt-compact-note mt-basket-stale">Last known estimate · cycle {estimate.cycleId}. Current basket P&amp;L is unverified.</p>}
+   {engine.entrySuspended===true&&<p className="mt-inline-blocker"><I name="alert" size={14}/><span>Entries suspended · resolve blockers and reconcile before a new cycle.</span></p>}
+   <ReportDrawer title="L6–L10 & risk details" meta={decision?'L'+decision.layer:'No decision'}>
+    <div className="mt-telemetry-grid">
+     <Datum icon="wallet" label="Open P&L + swap" value={usd(owned?.value)} hint="owned positions"/>
+     <Datum icon="spread" label="Adverse distance" value={fmt(decision?.distance_points)} hint="min 1,700 pts"/>
+     <Datum icon="activity" label="Body / ATR" value={fmt(decision?.body_atr)} hint="min 0.50"/>
+     <Datum icon="activity" label="Body / range" value={fmt(decision?.body_range)} hint="min 0.55"/>
+     <Datum icon="repeat" label="Reversal" value={decision?.structuralReversal===true?'Confirmed':decision?.structuralReversal===false?'Not confirmed':'—'}/>
+     <Datum icon="shield" label="Broker flat" value={engine.brokerFlatReconciled===true?'Reported':'Unverified'}/>
+    </div>
+    <dl className="mt-detail-list">
+     <div><dt>Decision</dt><dd>{decision?.reasons.join(' · ')||'No fresh decision'}</dd></div>
+     <div><dt>Authorization</dt><dd>{engine.authorization} · {newsTime(engine.authorizationExpiresMs)}</dd></div>
+     <div><dt>Closed candle</dt><dd>{newsTime(decision?.candleCloseMs??null)}</dd></div>
+     <div><dt>Cycle</dt><dd>{engine.cycleId||'—'}</dd></div>
+     <div><dt>Engine report</dt><dd>{newsTime(engine.observedMs)}</dd></div>
+    </dl>
+    <p className="mt-compact-note">Basket estimate uses cached realized results. Open P&amp;L excludes realized results and some costs. A fresh report does not verify protection.</p>
+   </ReportDrawer>
+  </ReportSection>
 
   <GrowthChart raw={data?.growthHistory} now={now}/>
   <ReportSection title="Overview" className="mt-u-panel mt-summary" aria-labelledby="summary-title" header={<div className="mt-u-panel-head"><h2 id="summary-title"><I name="dashboard"/> Overview</h2>
@@ -115,34 +150,6 @@ export default function CompactDashboard({data,token,onNavigate}:{
    </ReportDrawer>
   </ReportSection>
 
-  <ReportSection title="Basket &amp; Adaptive" className="mt-u-panel" aria-labelledby="risk-title" header={<div className="mt-u-panel-head"><h2 id="risk-title"><I name="shield"/> Basket &amp; Adaptive</h2>
-    <span className="mt-u-chip">{engine.entrySuspended===true?'Entry suspended':engine.status==='ENGINE_REPORTED'?engine.state||'Reported':'Unverified'}</span></div>}>
-
-   <div className="mt-telemetry-grid">
-    <Datum icon="activity" label="Basket estimate" value={usd(engine.pnl?.value)} hint="costs unverified"/>
-    <Datum icon="shield" label="Hard loss" value={usd(engine.hardLossUsd)} hint={engine.riskExitCommitted===true?'Exit committed':'engine report'}/>
-    <Datum icon="check" label="Basket TP" value={usd(engine.targetUsd)} hint="engine report"/>
-   </div>
-   {engine.entrySuspended===true&&<p className="mt-inline-blocker"><I name="alert" size={14}/><span>Entries suspended · resolve blockers and reconcile before a new cycle.</span></p>}
-   <ReportDrawer title="L6–L10 & risk details" meta={decision?'L'+decision.layer:'No decision'}>
-    <div className="mt-telemetry-grid">
-     <Datum icon="wallet" label="Open P&L + swap" value={usd(owned?.value)} hint="owned positions"/>
-     <Datum icon="spread" label="Adverse distance" value={fmt(decision?.distance_points)} hint="min 1,700 pts"/>
-     <Datum icon="activity" label="Body / ATR" value={fmt(decision?.body_atr)} hint="min 0.50"/>
-     <Datum icon="activity" label="Body / range" value={fmt(decision?.body_range)} hint="min 0.55"/>
-     <Datum icon="repeat" label="Reversal" value={decision?.structuralReversal===true?'Confirmed':decision?.structuralReversal===false?'Not confirmed':'—'}/>
-     <Datum icon="shield" label="Broker flat" value={engine.brokerFlatReconciled===true?'Reported':'Unverified'}/>
-    </div>
-    <dl className="mt-detail-list">
-     <div><dt>Decision</dt><dd>{decision?.reasons.join(' · ')||'No fresh decision'}</dd></div>
-     <div><dt>Authorization</dt><dd>{engine.authorization} · {newsTime(engine.authorizationExpiresMs)}</dd></div>
-     <div><dt>Closed candle</dt><dd>{newsTime(decision?.candleCloseMs??null)}</dd></div>
-     <div><dt>Cycle</dt><dd>{engine.cycleId||'—'}</dd></div>
-     <div><dt>Engine report</dt><dd>{newsTime(engine.observedMs)}</dd></div>
-    </dl>
-    <p className="mt-compact-note">Basket estimate uses cached realized results. Open P&amp;L excludes realized results and some costs. A fresh report does not verify protection.</p>
-   </ReportDrawer>
-  </ReportSection>
 
   <ReportSection title="System &amp; Activity" className="mt-u-panel" aria-labelledby="system-summary-title" header={<div className="mt-u-panel-head"><h2 id="system-summary-title"><I name="terminal"/> System &amp; Activity</h2>
     <button className="mt-u-detail" type="button" onClick={()=>onNavigate('system')}>Detail <I name="arrow" size={14}/></button></div>}>

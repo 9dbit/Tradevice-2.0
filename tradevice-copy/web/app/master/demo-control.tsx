@@ -53,6 +53,10 @@ export default function DemoControl({token,runtime,refresh,now,batchRaw,newsRaw}
  const progress=cycleProgress(batchRaw,runtime,evidenceNow,request?.action==='START'&&!['REJECTED','EXPIRED'].includes(request.phase)?request.id:null);
  const showCycle=progress?.executed&&(resetBatch!==progress.batchId||['STARTING','RUNNING','PAUSING','PAUSED','STOPPING'].includes(runtime?.state||''));
  const runtimeRunning=['STARTING','RUNNING','PAUSING','PAUSED','STOPPING'].includes(runtime?.state||'');
+ // Keep the last active message through heartbeat gaps; never reuse it for controls.
+ const [lastActive,setLastActive]=useState<DemoRuntime|null>(null);
+ useEffect(()=>{if(fresh)setLastActive(runtimeRunning?runtime:null);},[runtime,fresh,runtimeRunning]);
+ const activeNotice=fresh?(runtimeRunning?runtime:null):lastActive;
  const ended=!!progress&&['COMPLETED','STOPPED','SAFETY_STOP','BLOCKED'].includes(progress.status)&&!runtimeRunning;
  const showReset=!!showCycle&&ended;
  const stopNotice=batchStopNotice(progress,runtimeRunning);
@@ -72,7 +76,7 @@ export default function DemoControl({token,runtime,refresh,now,batchRaw,newsRaw}
  const verifiedCount=preflightChecks.filter(([key])=>checkedKey(key)).length;
  const status=!fresh?'Stale':runtime?.canStart?'Ready':({STARTING:'Starting',RUNNING:'Running',PAUSING:'Pausing',PAUSED:'Paused',STOPPING:'Stopping'} as Record<string,string>)[runtime?.state||'']||'Blocked';
  const blocker=!fresh?'Engine heartbeat unavailable':runtime?.canStart?'':visibleBlockers.filter(b=>!['PREFLIGHT_NEWS','NEWS_NOT_CLEAR'].includes(b)).join(' · ')||(['STARTING','RUNNING','PAUSING','PAUSED','STOPPING'].includes(runtime?.state||'')?'':'Preflight incomplete');
- return <ReportSection title="Trading Cycle" className="mt-u-panel mt-demo-control" aria-labelledby="demo-control-title" header={<div className="mt-u-panel-head mt-demo-heading"><h2 id="demo-control-title"><I name="repeat"/> Trading Cycle</h2><strong aria-label="Engine connection" data-state={status}>{status}</strong></div>} overlay={<dialog ref={stopDialog} className="mt-stop-dialog" aria-labelledby="batch-stop-title" aria-describedby="batch-stop-reason" onCancel={e=>{e.preventDefault();dismissStop();}}>
+ return <ReportSection notice={activeNotice&&<p className="mt-compact-note mt-batch-notice" role="status">Batch {activeNotice.state.toLowerCase()}{!fresh&&' (last reported)'}. {!fresh?'Engine heartbeat stale; current execution is unverified.':deferred?'New-batch preflight is deferred while the batch is active.':'New entries remain blocked; review engine status and blockers.'} Before each next cycle, the engine checks admission again after broker-flat reconciliation. Continuation is not guaranteed.</p>} title="Trading Cycle" className="mt-u-panel mt-demo-control" aria-labelledby="demo-control-title" header={<div className="mt-u-panel-head mt-demo-heading"><h2 id="demo-control-title"><I name="repeat"/> Trading Cycle</h2><strong aria-label="Engine connection" data-state={status}>{status}</strong></div>} overlay={<dialog ref={stopDialog} className="mt-stop-dialog" aria-labelledby="batch-stop-title" aria-describedby="batch-stop-reason" onCancel={e=>{e.preventDefault();dismissStop();}}>
    <h2 id="batch-stop-title">{stopNotice?.title}</h2>
    <strong>{progress?.completed??0} / {progress?.total??0} cycles completed</strong>
    <p id="batch-stop-reason">{stopNotice?.reason}</p>
@@ -97,7 +101,6 @@ export default function DemoControl({token,runtime,refresh,now,batchRaw,newsRaw}
   {runtime?.blockers.some(b=>/RECOVERY|RECONCILIATION/.test(b))&&<p className="mt-compact-note">Recovery required: reconcile broker positions, orders and command receipts. Reset only clears this form; it does not unlock the engine.</p>}
   {visibleBlockers.some(b=>['PREFLIGHT_NEWS','NEWS_NOT_CLEAR'].includes(b))&&<NewsStatus raw={newsRaw} now={evidenceNow} compact/>}
   {blocker&&(blocker!=='Preflight incomplete'||!visibleBlockers.some(b=>['PREFLIGHT_NEWS','NEWS_NOT_CLEAR'].includes(b)))&&<p className="mt-inline-blocker"><I name="alert" size={14}/><span>{blocker}</span></p>}
-  {deferred&&<p className="mt-compact-note" role="status">Batch {runtime?.state.toLowerCase()}. New-batch preflight is deferred while the engine owns MT5. Before each next cycle, the engine checks admission again after broker-flat reconciliation. Continuation is not guaranteed.</p>}
   <ReportDrawer title="Preflight" meta={deferred?'Deferred · batch active':!runtime?'Unavailable':!fresh?'Stale':`${verifiedCount} / ${preflightChecks.length}`}>
    {deferred&&<p className="mt-compact-note">These checks apply to a new Start command; they are not live basket health checks. See cycle progress and engine alerts for the current batch.</p>}
    <ul className="mt-preflight-grid" aria-label="Demo preflight checks">{preflightChecks.map(([key,label])=>{
