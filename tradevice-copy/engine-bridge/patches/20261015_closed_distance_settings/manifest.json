@@ -1,0 +1,55 @@
+{
+  "baseline_fingerprint_sha256": "57abe0d56c91316cb9b34327e31aadfdf3b3b648321633784bc34ae741becba2",
+  "files": {
+    "goldtrap_arc/config.py": {
+      "before_sha256": "523714224a2e7499eb8e6257e13edcfd9c68d72b0fdda518aa7901eb3b08d113",
+      "after_sha256": "c9bbb9921ad0dfa797ad8839ae7cd8ae77422a10f03564e0431b995e56bfbee3",
+      "patch": "goldtrap_arc__config.py.patch"
+    },
+    "goldtrap_arc/adaptive_policy.py": {
+      "before_sha256": "db4b9c3d466890bad16e5f3109f67ba8c7e47bd27fa9e4bb9257a9f7486bc107",
+      "after_sha256": "e2753bba7d875a97b92668a19b7017c6a56112baa760ff421a93b99fd8c637f7",
+      "patch": "goldtrap_arc__adaptive_policy.py.patch"
+    },
+    "goldtrap_arc/execution.py": {
+      "before_sha256": "2439101303d6424c658b55d86181ec7cf687d1e1b388ed199e24672ca9c14576",
+      "after_sha256": "f3916a726676b77d0e5286e541cf003c5f38c6cd23565dd91761db37e51803af",
+      "patch": "goldtrap_arc__execution.py.patch"
+    },
+    "goldtrap_arc/mt5_adapter.py": {
+      "before_sha256": "c723cb2caa100d91cd1b4ebd83043693a8346fd5eeb262e8b9a2e74b3996ebe9",
+      "after_sha256": "d1f3bd2a4c669cc11505debd53304f83d667e8428e9f11cde41fc3769904c6f5",
+      "patch": "goldtrap_arc__mt5_adapter.py.patch"
+    },
+    "v51_engine_diagnostics.py": {
+      "before_sha256": "ec9c8d105696251ca274667568c2e066a60a1608e64d25c4e2f681e26bceaf83",
+      "after_sha256": "2390ffa95c2896ef59b1a65625609c14e7f8a0cb2bbb67b2866a2f6f66761e30",
+      "patch": "v51_engine_diagnostics.py.patch"
+    },
+    "v51_demo_batch_runtime.py": {
+      "before_sha256": "ab8c0ee4c95ae31cbe38f492faf52da8538d312adef7da7334ee7f387598c791",
+      "after_sha256": "05732e9f8574e7896c8746c3389f43c94a3002ab254909ae362edec64588f55f",
+      "patch": "v51_demo_batch_runtime.py.patch"
+    },
+    "v51_dashboard_runtime.py": {
+      "before_sha256": "0879804628be46ee8d915df87e5e36b63431b971505f161fd55868e4848e1b2a",
+      "after_sha256": "0f05c525d5f14d2ca7ac4530177254089dcef3b20832b2d9e1c23a9db43289fa",
+      "patch": "v51_dashboard_runtime.py.patch"
+    },
+    "bridge.py": {
+      "before_sha256": "baef6fa64646d8ddadd6194de72f894f9ef13a589438c7ddfbc992adab9efb3a",
+      "after_sha256": "43aac5fd1c2e15c37716d4fb0e37f9e3f51824184ecba7a455d5d57b16f47192",
+      "patch": "bridge.py.patch"
+    },
+    "demo_settings.py": {
+      "before_sha256": null,
+      "after_sha256": "8f5ed425b7fcc197b571ff04f3a1765f418e938e0e9bfb1a7832d87b9569c300",
+      "patch": "demo_settings.py.patch"
+    },
+    "v51_execution_settings.py": {
+      "before_sha256": null,
+      "after_sha256": "a2191eba710f1416850b2c31283c3697bb46d5e36d445b99116e913e77eaaa46",
+      "patch": "v51_execution_settings.py.patch"
+    }
+  }
+}

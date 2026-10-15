@@ -67,10 +67,10 @@ export default function CompactDashboard({data,token,onNavigate}:{
    <ReportDrawer title="L6–L10 & risk details" meta={decision?'L'+decision.layer:'No decision'}>
     <div className="mt-telemetry-grid">
      <Datum icon="wallet" label="Open P&L + swap" value={usd(owned?.value)} hint="owned positions"/>
-     <Datum icon="spread" label="Adverse distance" value={fmt(decision?.distance_points)} hint="min 1,700 pts"/>
-     <Datum icon="activity" label="Body / ATR" value={fmt(decision?.body_atr)} hint="min 0.50"/>
-     <Datum icon="activity" label="Body / range" value={fmt(decision?.body_range)} hint="min 0.55"/>
-     <Datum icon="repeat" label="Reversal" value={decision?.structuralReversal===true?'Confirmed':decision?.structuralReversal===false?'Not confirmed':'—'}/>
+     <Datum icon="spread" label="Adverse distance" value={fmt(decision?.distance_points)} hint={engine.policy==='CLOSE_DISTANCE_RISK_V51'?'>1,700 pts at close':'min 1,700 pts'}/>
+     <Datum icon="activity" label="Body / ATR" value={fmt(decision?.body_atr)} hint={engine.policy==='CLOSE_DISTANCE_RISK_V51'?'Sizing input':'min 0.50'}/>
+     <Datum icon="activity" label="Body / range" value={fmt(decision?.body_range)} hint={engine.policy==='CLOSE_DISTANCE_RISK_V51'?'Observed only':'min 0.55'}/>
+     <Datum icon="repeat" label={engine.policy==='CLOSE_DISTANCE_RISK_V51'?"Close signal":"Reversal"} value={engine.policy==='CLOSE_DISTANCE_RISK_V51'?(decision?decision.accepted?'Passed':'Waiting':'—'):(decision?.structuralReversal===true?'Confirmed':decision?.structuralReversal===false?'Not confirmed':'—')}/>
      <Datum icon="shield" label="Broker flat" value={engine.brokerFlatReconciled===true?'Reported':'Unverified'}/>
     </div>
     <dl className="mt-detail-list">

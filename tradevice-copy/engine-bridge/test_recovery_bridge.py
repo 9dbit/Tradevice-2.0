@@ -1,12 +1,13 @@
 import json,tempfile,time,unittest,uuid
 from pathlib import Path
 import bridge
+from demo_settings import default_settings
 class Runtime:
  def __init__(self):self.started=0;self.result='RISK_STOP_FLAT'
- def preflight(self):return {k:True for k in bridge.CHECKS},[]
+ def preflight(self,settings=None):return {k:True for k in bridge.CHECKS},[]
  def checks(self):return self.preflight()[0]
  def activate(self,h):pass
- def prepare(self):pass
+ def prepare(self,settings):self.settings=settings
  def run(self,rid,n,ready,expires):
   self.started+=1;ready()
   if isinstance(self.result,Exception):raise self.result
@@ -15,7 +16,7 @@ class RecoveryBridge(unittest.TestCase):
  def setUp(self):
   self.tmp=tempfile.TemporaryDirectory();self.addCleanup(self.tmp.cleanup);self.r=Runtime();self.c=bridge.Controller(Path(self.tmp.name)/'state.db',self.r);self.addCleanup(self.c.db.close);self.skill=str(uuid.uuid4())
   self.c.received(dict(killSwitch=False,selection=dict(skillId=self.skill,sha256=bridge.APPROVED_HASH,revision=1),commands=[],confirmed=[]))
-  self.cmd=dict(requestId=str(uuid.uuid4()),action='START',targetCycles=10,skillId=self.skill,sha256=bridge.APPROVED_HASH,revision=1,expiresMs=int(time.time()*1000)+60000)
+  self.cmd=dict(requestId=str(uuid.uuid4()),action='START',targetCycles=10,settings=default_settings(),skillId=self.skill,sha256=bridge.APPROVED_HASH,revision=1,expiresMs=int(time.time()*1000)+60000)
  def run_once(self):
   with self.c.lock:self.c.command(self.cmd)
   self.c.thread.join(2);self.assertFalse(self.c.running())

@@ -1,0 +1,55 @@
+--- a/v51_engine_diagnostics.py
++++ b/v51_engine_diagnostics.py
+@@ -1,6 +1,7 @@
+ """Read-only diagnostic channel; no order APIs, no historical journal adoption."""
+ import json, math, os, tempfile, time
+ from pathlib import Path
++from goldtrap_arc.config import execution_policy
+ PATH=Path(r'D:\GoldTrapCore\GoldTrapCore_v0.2_v51_research_20261013\read_only\engine_diagnostics.json')
+ SCHEMA='tradevice.v51.engine.diagnostics.v1'
+ 
+@@ -39,14 +40,18 @@
+         decision={k:row.get(k) for k in ('layer','distance_points','atr','body_atr','body_range','accepted','structural_reversal')}
+         decision['candle_close_ms']=(row['candle_time']+60)*1000
+         reasons=[]
+-        if row.get('distance_points',0)<1700:reasons.append('ADVERSE_DISTANCE_BELOW_1700')
+-        arm=state.get('adaptive_reversal_arm') or {}
+-        arm_time=arm.get('candle',{}).get('time')
+-        if arm_time is None:reasons.append('REVERSAL_NOT_ARMED')
+-        elif not 0<row['candle_time']-arm_time<=180:reasons.append('WAIT_LATER_REVERSAL_OR_ARM_EXPIRED')
+-        if row.get('body_atr',0)<0.5:reasons.append('BODY_ATR_BELOW_050')
+-        if row.get('body_range',0)<0.55:reasons.append('BODY_RANGE_BELOW_055')
+-        if row.get('structural_reversal') is not True:reasons.append('STRUCTURAL_REVERSAL_NOT_CONFIRMED')
++        distance_policy=execution_policy(engine.cfg)=='CLOSE_DISTANCE_RISK_V51'
++        if distance_policy:
++            if row.get('distance_points',0)<=1700:reasons.append('WAIT_CLOSED_M1_BEYOND_1700')
++        else:
++            if row.get('distance_points',0)<1700:reasons.append('ADVERSE_DISTANCE_BELOW_1700')
++            arm=state.get('adaptive_reversal_arm') or {}
++            arm_time=arm.get('candle',{}).get('time')
++            if arm_time is None:reasons.append('REVERSAL_NOT_ARMED')
++            elif not 0<row['candle_time']-arm_time<=180:reasons.append('WAIT_LATER_REVERSAL_OR_ARM_EXPIRED')
++            if row.get('body_atr',0)<0.5:reasons.append('BODY_ATR_BELOW_050')
++            if row.get('body_range',0)<0.55:reasons.append('BODY_RANGE_BELOW_055')
++            if row.get('structural_reversal') is not True:reasons.append('STRUCTURAL_REVERSAL_NOT_CONFIRMED')
+         risk=next((r for r in reversed(rows) if r.get('event')=='ADAPTIVE_RISK_EVALUATED'
+                    and r.get('candle_time')==row['candle_time'] and r.get('layer')==row.get('layer')),None)
+         if risk and risk.get('selected_lot')==0:reasons.append('RISK_CAPACITY_BELOW_MIN_LOT')
+@@ -54,7 +59,7 @@
+         if intent.get('candle_time')==row['candle_time'] and intent.get('status')=='DEFERRED':
+             reasons.append('AUTHORIZATION_DEFERRED')
+         if state.get('news_entry_suspended'):reasons.append('NEWS_ENTRY_SUSPENDED')
+-        decision['reasons']=reasons or ['REVERSAL_PASSED_CHECK_RISK_AND_AUTHORIZATION']
++        decision['reasons']=reasons or ['DISTANCE_PASSED_CHECK_RISK_AND_AUTHORIZATION' if distance_policy else 'REVERSAL_PASSED_CHECK_RISK_AND_AUTHORIZATION']
+     intent=state.get('adaptive_intent') or {}
+     expiry=int(intent['expires_at']*1000) if isinstance(intent.get('expires_at'),(int,float)) else None
+     auth=intent.get('status','NONE')
+@@ -67,7 +72,7 @@
+     return dict(schema=SCHEMA,status='ENGINE_REPORTED',source='V51_RUNNER_DIAGNOSTICS',
+         read_only=True,order_dispatch_authorized=False,observed_ms=now,
+         cycle_id=cycle,state=str(state.get('state','UNKNOWN'))[:48],
+-        hard_loss_usd=engine.cfg.hard_basket_loss_usd,target_usd=engine.cfg.basket_profit_target_usd,
++        policy=execution_policy(engine.cfg),hard_loss_usd=engine.cfg.hard_basket_loss_usd,target_usd=engine.cfg.basket_profit_target_usd,
+         risk_exit_committed=state.get('risk_exit_committed') is True,
+         broker_flat_reconciled=completed and state.get('broker_flat_confirmed') is True,
+         entry_suspended=state.get('news_entry_suspended') is True or state.get('safety_paused') is True or state.get('state')!='ACTIVE',

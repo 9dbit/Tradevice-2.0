@@ -3,6 +3,8 @@ Only run(), invoked by a fresh authenticated START, constructs an execution adap
 """
 import hashlib,json,threading,time
 from pathlib import Path
+from demo_settings import default_settings,validate_settings
+from v51_execution_settings import configure_adapter
 
 APPROVED_HASH='bcdefbaf270419f2dbe5968bd10e5a88dc3fe4efc7086fef5b2869fb40f81cee'
 KEYS=('identity','brokerFlat','quote','spread','margin','commission','news','reconciled','engineHash')
@@ -25,7 +27,7 @@ class Runtime:
  def checks(self):
   # Do not promote an old preflight into fresh readiness while a run owns MT5.
   return dict(self._checks) if time.time()-self.checked_at<=5 else {k:False for k in KEYS}
- def preflight(self):
+ def preflight(self,settings=None):
   import MetaTrader5 as mt5
   from goldtrap_arc.mt5_adapter import MT5ArcAdapter
   from goldtrap_arc.persistence import ArcLedger,ArcStateStore
@@ -35,7 +37,7 @@ class Runtime:
   except Exception:blockers.append('ENGINE_FINGERPRINT_MISMATCH')
   a=MT5ArcAdapter(mt5,allow_execution=False)
   try:
-   a.initialize();a.guard_identity();account,terminal,symbol=a.identity()
+   a.initialize();configure_adapter(a,settings or default_settings());a.guard_identity();account,terminal,symbol=a.identity()
    checks['identity']=account.trade_mode==mt5.ACCOUNT_TRADE_MODE_DEMO and account.server=='Exness-MT5Trial14' and symbol.name=='XAUUSDm'
    pos,orders=mt5.positions_get(),mt5.orders_get()
    checks['brokerFlat']=pos is not None and orders is not None and not pos and not orders
@@ -76,7 +78,7 @@ class Runtime:
    atomic_json(self.root/'read_only'/'dashboard_prior_reconciliation.json',dict(observed_ms=int(time.time()*1000),read_only=True,
     broker_flat=True,evidence=evidence,original_journals_modified=False,counted_in_new_run=False))
   return proved
- def prepare(self):self.reason=None
+ def prepare(self,settings):self.settings=validate_settings(settings);self.reason=None
  def suspend(self,reason):self.reason=reason
  def run(self,request_id,target,ready,expires_ms):
   import MetaTrader5 as mt5
@@ -96,9 +98,11 @@ class Runtime:
     if not self.manifest or not self.manifest.get('slots'):
      if time.time()*1000>=expires_ms:raise ArcSafetyError('DASHBOARD_START_EXPIRED')
     outer.fingerprint()
+    configure_adapter(adapter,outer.settings)
     if outer.reason:raise ArcSafetyError('DASHBOARD_ENTRY_SUSPENDED')
     return super().admission(adapter)
    def engine(self,*args,**kwargs):
+    kwargs['cfg']=args[0].cfg
     engine=super().engine(*args,**kwargs)
     original=engine.news_provider
     def admission_guard():

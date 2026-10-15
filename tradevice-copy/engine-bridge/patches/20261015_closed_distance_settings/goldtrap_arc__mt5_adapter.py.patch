@@ -1,0 +1,29 @@
+--- a/goldtrap_arc/mt5_adapter.py
++++ b/goldtrap_arc/mt5_adapter.py
+@@ -14,7 +14,7 @@
+ from types import SimpleNamespace
+ import uuid
+ 
+-from .config import CONFIG, ArcSafetyError, ArcAdaptiveSpreadWait, ArcAdaptiveRiskBlocked, verify_spec
++from .config import CONFIG, ArcSafetyError, ArcAdaptiveSpreadWait, ArcAdaptiveRiskBlocked, verify_spec, execution_policy
+ from .models import Bar, Position as PositionModel, Side
+ from .pending_ladder import CONTRACT, quantized_target, validate_closed_m1
+ from .rules import adaptive_next_lot, atr_at, reversal_confirmed
+@@ -854,7 +854,7 @@
+             validate_arm(side,bars,arm,last,self.cfg)
+             arm_rows=[r for r in self.ledger.rows if r.get('event')=='ADAPTIVE_REVERSAL_ARM_CHANGED'
+                       and r.get('cycle_id')==cycle and r.get('layer')==layer]
+-            if not arm_rows or arm_rows[-1].get('arm')!=arm:
++            if execution_policy(self.cfg)!='CLOSE_DISTANCE_RISK_V51' and (not arm_rows or arm_rows[-1].get('arm')!=arm):
+                 raise ArcSafetyError('Reversal arm differs from durable journal')
+             decision=reversal_decision(side,bars,last.price,last.ticket,last.time_msc,arm,atr,self.cfg)
+             ok=decision['accepted'];body_atr=decision['body_atr'];body_range=decision['body_range']
+@@ -866,7 +866,7 @@
+                 raise ArcSafetyError('Invalid durable risk proof') from exc
+             if (calculated!=rp or rp['requested_lot']!=expected_lot or rp['atr']!=atr
+                     or not math.isclose(rp['volume'],sum(p.volume for p in positions),abs_tol=1e-9)
+-                    or intent.get('policy')!='REVERSAL_RISK_V5'
++                    or intent.get('policy')!=execution_policy(self.cfg)
+                     or intent.get('expires_at')!=candle.time+60+self.cfg.adaptive_signal_ttl_seconds):
+                 raise ArcSafetyError('Adaptive risk/policy proof changed')
+             expected_lot=rp['selected_lot']

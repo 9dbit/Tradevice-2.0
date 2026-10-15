@@ -2,7 +2,7 @@
 import math,re
 
 def missing(reason='ENGINE_NOT_CONNECTED'):
-    return dict(status=reason,observedMs=None,cycleId=None,state=None,hardLossUsd=None,
+    return dict(policy=None,status=reason,observedMs=None,cycleId=None,state=None,hardLossUsd=None,
         targetUsd=None,riskExitCommitted=None,brokerFlatReconciled=None,entrySuspended=None,
         pnl=None,decision=None,authorization='UNKNOWN',authorizationExpiresMs=None,
         orderDispatchAuthorized=False)
@@ -29,8 +29,11 @@ def project_engine(raw,now):
         if cycle is not None and (not isinstance(cycle,str) or not re.fullmatch(r'[a-zA-Z0-9_-]{1,80}',cycle)):raise ValueError()
         state=raw.get('state')
         if not isinstance(state,str) or not re.fullmatch(r'[A-Z_]{1,48}',state):raise ValueError()
-        loss=number(raw.get('hard_loss_usd'),-120,-120)
-        target=number(raw.get('target_usd'),3.5,3.5)
+        policy=raw.get('policy','REVERSAL_RISK_V5')
+        if policy not in ('REVERSAL_RISK_V5','CLOSE_DISTANCE_RISK_V51'):raise ValueError()
+        loss=number(raw.get('hard_loss_usd'),-250,-120)
+        if loss!=(-250 if policy=='CLOSE_DISTANCE_RISK_V51' else -120):raise ValueError()
+        target=number(raw.get('target_usd'),.01,250)
         for k in ('risk_exit_committed','broker_flat_reconciled','entry_suspended'):
             if type(raw.get(k)) is not bool:raise ValueError()
         if raw['broker_flat_reconciled'] and not state.startswith('COMPLETE'):raise ValueError()
@@ -56,7 +59,7 @@ def project_engine(raw,now):
             if not isinstance(reasons,list) or not 1<=len(reasons)<=8 or any(not isinstance(r,str) or not re.fullmatch('[A-Z0-9_]{1,80}',r) for r in reasons):raise ValueError()
             if 0<=now-close<=120000:
                 decision=dict(layer=d['layer'],candleCloseMs=close,accepted=d['accepted'],structuralReversal=d.get('structural_reversal'),reasons=reasons,**values)
-        return dict(status='ENGINE_REPORTED',observedMs=at,cycleId=cycle,state=state,
+        return dict(policy=policy,status='ENGINE_REPORTED',observedMs=at,cycleId=cycle,state=state,
             hardLossUsd=loss,targetUsd=target,riskExitCommitted=raw['risk_exit_committed'],
             brokerFlatReconciled=raw['broker_flat_reconciled'],entrySuspended=raw['entry_suspended'],
             pnl=pnl,decision=decision,authorization=auth,authorizationExpiresMs=expiry,

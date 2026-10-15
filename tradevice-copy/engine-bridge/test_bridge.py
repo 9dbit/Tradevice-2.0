@@ -1,13 +1,15 @@
 import importlib.util,json,sqlite3,threading,time,uuid
 from pathlib import Path
-import pytest
+import pytest,sys
+sys.path.insert(0,str(Path(__file__).parent))
+from demo_settings import default_settings
 spec=importlib.util.spec_from_file_location('demo_bridge',Path(__file__).with_name('bridge.py'));b=importlib.util.module_from_spec(spec);spec.loader.exec_module(b)
 class Runtime:
  def __init__(self):self.started=0;self.loaded=0;self.stop=threading.Event();self.entered=threading.Event();self.good=True;self.reason=None
- def preflight(self):return {k:self.good for k in b.CHECKS},[]
+ def preflight(self,settings=None):return {k:self.good for k in b.CHECKS},[]
  def checks(self):return self.preflight()[0]
  def activate(self,h):assert h==b.APPROVED_HASH;self.loaded+=1
- def prepare(self):self.stop.clear()
+ def prepare(self,settings):self.settings=settings;self.stop.clear()
  def suspend(self,r):self.reason=r
  def run(self,rid,n,ready,expires):self.started+=1;ready();self.entered.set();self.stop.wait(3);return True
 
@@ -16,7 +18,7 @@ def setup(tmp_path):
  c.received(dict(killSwitch=False,selection=dict(skillId=skill,revision=1,sha256=b.APPROVED_HASH),commands=[],confirmed=[]))
  return c,r,skill
 
-def cmd(skill,action='START',**patch):return dict(requestId=str(uuid.uuid4()),action=action,targetCycles=1 if action=='START' else None,skillId=skill,sha256=b.APPROVED_HASH,revision=1,expiresMs=int(time.time()*1000)+60000,**patch)
+def cmd(skill,action='START',**patch):return dict(requestId=str(uuid.uuid4()),action=action,targetCycles=1 if action=='START' else None,skillId=skill,sha256=b.APPROVED_HASH,revision=1,expiresMs=int(time.time()*1000)+60000,settings=default_settings() if action=='START' else None,**patch)
 def invoke(c,x):
  with c.lock:c.command(x)
 def finish(c,r):r.stop.set();c.thread.join(2)
@@ -135,3 +137,16 @@ def test_unexpected_exception_keeps_recovery_and_reconciliation_unverified(tmp_p
  assert c.db.execute('SELECT request_id FROM active_run').fetchone()[0]==x['requestId']
  snap=c.snapshot();assert not snap['checks']['reconciled']
  assert snap['blockers']==['ENGINE_RECOVERY_REQUIRED']
+
+
+@pytest.mark.parametrize('settings',[None,{},default_settings()|{'baseLot':.11}])
+def test_settings_validation_precedes_any_execution(tmp_path,settings):
+ c,r,s=setup(tmp_path);x=cmd(s)|{'settings':settings};invoke(c,x)
+ assert r.started==0 and receipt(c,x['requestId'])[0]=='REJECTED'
+
+def test_settings_are_bound_to_single_command(tmp_path):
+ c,r,s=setup(tmp_path);settings=default_settings()|{'baseLot':.1,'tpMode':'ATR_2'}
+ x=cmd(s)|{'settings':settings};invoke(c,x);assert r.entered.wait(1)
+ assert r.settings==settings
+ assert c.snapshot()['settingsProtocol']==b.SETTINGS_PROTOCOL
+ finish(c,r)

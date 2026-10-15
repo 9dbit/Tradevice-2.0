@@ -18,3 +18,9 @@ test('wrong limits and false reconciliation refused',()=>{for(const [k,v] of [['
 test('nonfinite and future values refused',()=>{const f=fixture();f.pnl.value=NaN;assert.equal(validateEngine(f,now).pnl,null);assert.equal(validateEngine(fixture(),now-1).pnl,null)});
 test('empty report does not fabricate zero profit or protection',()=>{const e=validateEngine(null,now);assert.equal(e.hardLossUsd,null);assert.equal(e.brokerFlatReconciled,null)});
 test('owned aggregate never means cycle net',()=>{const p={basis:'MAGIC_SYMBOL_OPEN_PROFIT_PLUS_SWAP',netCyclePnlVerified:false,currency:'USD',value:-12,positions:2,pending:0};assert.equal(validateOwned(p).value,-12);assert.equal(validateOwned({...p,netCyclePnlVerified:true}),null);assert.equal(validateOwned({...p,positions:0}),null)});
+
+test('reviewed distance policy reports selected target and hard loss',()=>{
+ const f={...fixture(),policy:'CLOSE_DISTANCE_RISK_V51',hardLossUsd:-250,targetUsd:4.2};
+ const v=validateEngine(f,now);assert.equal(v.hardLossUsd,-250);assert.equal(v.targetUsd,4.2);assert.equal(v.policy,f.policy);
+ assert.equal(validateEngine({...f,policy:'UNKNOWN'},now).status,'ENGINE_REPORT_INVALID');
+});

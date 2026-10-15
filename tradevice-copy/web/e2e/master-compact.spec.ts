@@ -59,7 +59,7 @@ async function setup(page:Page){
    if(delay)await new Promise(resolve=>setTimeout(resolve,delay));
    if(fail)return await r.fulfill({status:503,json:{}});
    if(!freeze)stamp=Date.now();
-   await r.fulfill({json:{online:!offline,observedMs:stamp,state:offline?'OFFLINE':state,activeSkillId:'fixture',activeHash:'fixture',revision:1,checks:Object.fromEntries(['identity','brokerFlat','quote','spread','margin','commission','news','reconciled','engineHash'].map(k=>[k,!expiredPreflight&&!(blocked&&k==='news')])),blockers:[...(state==='RECOVERY_REQUIRED'?['ENGINE_RECOVERY_REQUIRED']:blocked?['PREFLIGHT_NEWS','NEWS_NOT_CLEAR']:[]),...(expiredPreflight?['ENGINE_NOT_READY',...['identity','brokerFlat','quote','spread','margin','commission','news','reconciled','engineHash'].map(k=>'PREFLIGHT_'+k.toUpperCase())]:[]),...extraBlockers],canStart,commands:[]}});
+   await r.fulfill({json:{settingsProtocol:'V51_CLOSE_DISTANCE_20261015',online:!offline,observedMs:stamp,state:offline?'OFFLINE':state,activeSkillId:'fixture',activeHash:'fixture',revision:1,checks:Object.fromEntries(['identity','brokerFlat','quote','spread','margin','commission','news','reconciled','engineHash'].map(k=>[k,!expiredPreflight&&!(blocked&&k==='news')])),blockers:[...(state==='RECOVERY_REQUIRED'?['ENGINE_RECOVERY_REQUIRED']:blocked?['PREFLIGHT_NEWS','NEWS_NOT_CLEAR']:[]),...(expiredPreflight?['ENGINE_NOT_READY',...['identity','brokerFlat','quote','spread','margin','commission','news','reconciled','engineHash'].map(k=>'PREFLIGHT_'+k.toUpperCase())]:[]),...extraBlockers],canStart,commands:[]}});
   }finally{concurrent--;}
  });
  await page.goto('/master');
@@ -360,3 +360,22 @@ test('growth chart filters actual timestamped fixtures and remains usable on mob
  f.ready();await expect(note).toHaveCount(0);
  expect(f.posts).toHaveLength(0);
  });
+
+test('batch settings bind lot and ATR/custom TP to a single synthetic START',async({page})=>{
+ const f=await setup(page);
+ await page.getByRole('button',{name:/Batch settings/}).click();
+ await expect(page.getByLabel('Base lot')).toBeVisible();
+ expect(await page.getByLabel('Base lot').locator('option').count()).toBe(10);
+ await page.getByLabel('Base lot').selectOption('0.10');
+ await page.getByLabel('Basket TP',{exact:true}).selectOption('CUSTOM');
+ await page.getByLabel('Custom basket TP').fill('0');
+ await expect(page.getByRole('button',{name:'Start Cycle',exact:true})).toBeDisabled();
+ await page.getByLabel('Custom basket TP').fill('8.75');
+ await page.getByLabel('Basket TP',{exact:true}).selectOption('ATR_2');
+ await page.getByRole('button',{name:'Start Cycle',exact:true}).click();
+ expect(f.posts).toHaveLength(1);
+ expect(f.posts[0].settings).toEqual({protocol:'V51_CLOSE_DISTANCE_20261015',baseLot:.1,tpMode:'ATR_2',customTpUsd:null});
+ f.running();
+ await expect(page.getByLabel('Base lot')).toBeDisabled();
+ expect(f.posts).toHaveLength(1);
+});

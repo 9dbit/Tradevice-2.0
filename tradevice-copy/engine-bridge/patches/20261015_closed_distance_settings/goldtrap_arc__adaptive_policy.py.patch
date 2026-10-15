@@ -1,0 +1,35 @@
+--- a/goldtrap_arc/adaptive_policy.py
++++ b/goldtrap_arc/adaptive_policy.py
+@@ -1,7 +1,7 @@
+ """Pure candidate adaptive rules; no broker or persistent IO."""
+ import math
+ from decimal import Decimal, ROUND_FLOOR, ROUND_CEILING
+-from .config import CONFIG, ArcSafetyError
++from .config import CONFIG, ArcSafetyError, execution_policy
+ from .models import Side
+ from .rules import candle_quality
+ 
+@@ -11,6 +11,13 @@
+     bar, previous = bars[-1], bars[-2]
+     distance = (anchor_price-bar.close if side == Side.BUY else bar.close-anchor_price)/cfg.point
+     distance_ok = distance+1e-9 >= cfg.adaptive_min_distance_points
++    if execution_policy(cfg)=='CLOSE_DISTANCE_RISK_V51':
++        # Strictly greater than 1700; actual fill remains the anchor across bars.
++        adverse = (Decimal(str(anchor_price))-Decimal(str(bar.close)) if side==Side.BUY
++                   else Decimal(str(bar.close))-Decimal(str(anchor_price))) / Decimal(str(cfg.point))
++        _, ba, br = candle_quality(bar, atr, cfg)
++        return dict(accepted=bool(adverse>cfg.adaptive_min_distance_points and (bar.time+60)*1000>anchor_time_msc),
++                    armed=None,distance_points=distance,body_atr=ba,body_range=br,structural_reversal=None)
+     arm = dict(armed) if armed else None
+     if arm and (arm.get("anchor_ticket") != anchor_ticket or arm.get("anchor_price") != anchor_price
+                 or arm.get("anchor_time_msc") != anchor_time_msc):
+@@ -30,6 +37,9 @@
+                 body_range=br, structural_reversal=structural)
+ 
+ def validate_arm(side, bars, arm, anchor, cfg=CONFIG):
++    if execution_policy(cfg)=='CLOSE_DISTANCE_RISK_V51':
++        if arm is not None:raise ArcSafetyError('Distance policy cannot use reversal arm')
++        return
+     if not isinstance(arm, dict):
+         raise ArcSafetyError("Missing reversal arm proof")
+     if (arm.get("anchor_ticket"), arm.get("anchor_price"), arm.get("anchor_time_msc")) != (

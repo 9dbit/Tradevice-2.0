@@ -4,9 +4,10 @@ from fastapi.testclient import TestClient
 from app.main import create_app
 from app.config import Settings
 from app.demo_control import *
+from app.demo_settings import default_settings
 
-def snapshot():return dict(observedMs=int(time.time()*1000),bootId=str(uuid.uuid4()),activeSkillId=str(uuid.uuid4()),activeHash=APPROVED_HASH,revision=1,state='READY',checks={k:True for k in CHECKS},blockers=[],receipts=[])
-def command():return dict(actor_id=str(uuid.uuid4()),requestId=str(uuid.uuid4()),action='START',targetCycles=1,confirmDemo=True,expectedRevision=1)
+def snapshot():return dict(settingsProtocol=SETTINGS_PROTOCOL,observedMs=int(time.time()*1000),bootId=str(uuid.uuid4()),activeSkillId=str(uuid.uuid4()),activeHash=APPROVED_HASH,revision=1,state='READY',checks={k:True for k in CHECKS},blockers=[],receipts=[])
+def command():return dict(actor_id=str(uuid.uuid4()),requestId=str(uuid.uuid4()),action='START',targetCycles=1,confirmDemo=True,expectedRevision=1,settings=default_settings())
 
 def test_all_start_gates_and_skill_binding():
  s=snapshot();sel=dict(selected_skill_id=s['activeSkillId'],revision=1);now=s['observedMs']
@@ -23,7 +24,7 @@ def test_reject_invalid_commands(p):
  with pytest.raises(SkillError):validate_command(command()|p)
 
 def test_pause_does_not_require_news_or_flat_at_validation():
- validate_command(command()|dict(action='PAUSE',targetCycles=None,confirmDemo=False))
+ validate_command(command()|dict(action='PAUSE',targetCycles=None,confirmDemo=False,settings=None))
 
 def test_report_validates_provenance_and_values():
  s=snapshot();validate_snapshot(s,s['observedMs'])
@@ -68,3 +69,31 @@ def test_projection_uses_consistent_snapshot_and_preserves_guards(age,kill,uncon
  assert result['canStart'] is expected
  assert result['online'] is (age<=8000)
  if age>8000:assert result['activeSkillId'] is None and result['checks']=={}
+
+
+def test_settings_upgrade_required_and_invalid_parameters_rejected():
+ s=snapshot();sel=dict(selected_skill_id=s['activeSkillId'],revision=1)
+ assert 'ENGINE_SETTINGS_UPGRADE_REQUIRED' in start_blockers(s|{'settingsProtocol':None},sel,s['observedMs'],True)
+ for settings in [None,{},default_settings()|{'baseLot':.11},default_settings()|{'tpMode':'CUSTOM','customTpUsd':True}]:
+  with pytest.raises(SkillError):validate_command(command()|{'settings':settings})
+ validate_command(command()|{'settings':default_settings()|{'tpMode':'ATR_2','baseLot':.1}})
+
+
+def test_legacy_pause_stop_remain_available_during_upgrade():
+ for action in ['PAUSE','STOP']:
+  p=command()|dict(action=action,targetCycles=None,confirmDemo=False);p.pop('settings')
+  validate_command(p)
+
+def test_command_retry_cannot_change_bound_settings(monkeypatch):
+ from contextlib import contextmanager
+ import app.demo_control as control
+ p=command();old=dict(actor_id=p['actor_id'],action=p['action'],target_cycles=p['targetCycles'],selection_revision=p['expectedRevision'],settings=p['settings'],status='APPLIED')
+ class Conn:
+  def execute(self,*args):return self
+  def fetchone(self):return old
+ @contextmanager
+ def connection(dsn):yield Conn()
+ monkeypatch.setattr(control,'connection',connection)
+ monkeypatch.setattr(control,'locked',lambda conn:({}, {}, 0))
+ assert control.submit('fixture',p,True)['status']=='APPLIED'
+ with pytest.raises(SkillError):control.submit('fixture',p|{'settings':p['settings']|{'baseLot':.02}},True)

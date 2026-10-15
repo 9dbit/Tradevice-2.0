@@ -56,3 +56,11 @@ def test_engine_extension_passes_signed_observer_projection():
  x=parse_observer(fixture(engine_diagnostics=r),NOW)
  assert x['engineDiagnostics']['status']=='ENGINE_REPORTED'
  assert x['trustedForTradeAdmission'] is False
+
+
+def test_distance_policy_binds_reviewed_limit_and_variable_target():
+ raw=report();raw.update(policy='CLOSE_DISTANCE_RISK_V51',hard_loss_usd=-250,target_usd=4.2)
+ result=project_engine(raw,N)
+ assert result['hardLossUsd']==-250 and result['targetUsd']==4.2
+ assert result['policy']=='CLOSE_DISTANCE_RISK_V51'
+ assert project_engine(raw|{'policy':'UNKNN'},N)['status']=='ENGINE_REPORT_INVALID'

@@ -1,5 +1,5 @@
 export interface EngineDiagnostics {
- status:string;observedMs:number|null;cycleId:string|null;state:string|null;
+ policy:string|null;status:string;observedMs:number|null;cycleId:string|null;state:string|null;
  hardLossUsd:number|null;targetUsd:number|null;riskExitCommitted:boolean|null;
  brokerFlatReconciled:boolean|null;entrySuspended:boolean|null;
  pnl:{value:number;atMs:number;tickMs:number;basis:string}|null;

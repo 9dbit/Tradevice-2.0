@@ -1,0 +1,35 @@
+--- a/bridge.py
++++ b/bridge.py
+@@ -3,6 +3,7 @@
+ """
+ import hashlib,hmac,http.client,json,os,re,sqlite3,threading,time,uuid
+ from pathlib import Path
++from demo_settings import SETTINGS_PROTOCOL,validate_settings
+ 
+ API='https://copy-api-staging-4c33.up.railway.app/internal/master/demo/exchange'
+ APPROVED_HASH='bcdefbaf270419f2dbe5968bd10e5a88dc3fe4efc7086fef5b2869fb40f81cee'
+@@ -61,7 +62,7 @@
+    now=int(self.clock()*1000)
+    self.last_stamp=max(now,self.last_stamp+1)
+    receipts=[dict(requestId=i,status=s,errorCode=e) for i,s,e in self.db.execute("SELECT id,status,error FROM receipts WHERE status!='PROCESSING' AND confirmed=0 LIMIT 16")]
+-   payload=dict(observedMs=self.last_stamp,bootId=self.boot,activeSkillId=self.active,
++   payload=dict(settingsProtocol=SETTINGS_PROTOCOL,observedMs=self.last_stamp,bootId=self.boot,activeSkillId=self.active,
+     activeHash=APPROVED_HASH if self.active else None,revision=self.revision,state=self.state,
+     checks=checks,blockers=list(dict.fromkeys(blockers))[:20],receipts=receipts)
+    if self.calendar_protocol:payload['news']=self.runtime.news_snapshot() if hasattr(self.runtime,'news_snapshot') else None
+@@ -109,12 +110,13 @@
+    self.acknowledge(rid,'REJECTED','BOUNDED_DEMO_REQUIRED');return
+   try:
+    self.runtime.activate(APPROVED_HASH)
+-   checks,blockers=self.runtime.preflight()
++   settings=validate_settings(c.get('settings'))
++   checks,blockers=self.runtime.preflight(settings)
+    if blockers or not all(checks.get(k) is True for k in CHECKS):raise ValueError('PREFLIGHT_FAILED')
+   except Exception:self.acknowledge(rid,'REJECTED','PREFLIGHT_FAILED');return
+   self.state='STARTING';self.mode=None;self.reason=None
+   self.db.execute('UPDATE active_run SET request_id=? WHERE singleton=1',(rid,))
+-  self.runtime.prepare()
++  self.runtime.prepare(settings)
+   def execute():
+    started=False
+    def ready():

@@ -1,0 +1,55 @@
+--- a/goldtrap_arc/config.py
++++ b/goldtrap_arc/config.py
+@@ -4,6 +4,8 @@
+ import json
+ from pathlib import Path
+ import re
++import weakref
++import copy
+ 
+ 
+ class ArcSafetyError(RuntimeError):
+@@ -150,7 +152,42 @@
+     digest = _digest(candidate)
+     if digest != SPEC_SHA256:
+         raise ArcSafetyError("Runtime ARC config hash changed")
+-    if candidate != cfg:
++    if candidate != cfg and not _registered_execution_config(cfg):
+         raise ArcSafetyError("Runtime ARC config differs from active process configuration")
+     _validate(cfg)
+     return digest
++
++
++# The immutable baseline digest remains readable for old journals. Only this
++# reviewed factory can register per-cycle settings; source edits still fail closed.
++_EXECUTION_CONFIGS = {}
++
++def _registered_execution_config(cfg):
++    registered = _EXECUTION_CONFIGS.get(id(cfg))
++    return bool(registered and registered[0]() is cfg and registered[1] == _digest(cfg))
++
++def execution_policy(cfg):
++    return 'CLOSE_DISTANCE_RISK_V51' if _registered_execution_config(cfg) else 'REVERSAL_RISK_V5'
++
++def execution_config_proof(cfg):
++    if not _registered_execution_config(cfg):return None
++    return copy.deepcopy(_EXECUTION_CONFIGS[id(cfg)][2])
++
++def execution_config(base_lot, target_usd, *, settings, atr=None, candle_time=None):
++    from dataclasses import replace
++    from decimal import Decimal
++    from demo_settings import validate_settings
++    settings=validate_settings(settings)
++    if settings['baseLot']!=base_lot:raise ArcSafetyError('SETTINGS_LOT_MISMATCH')
++    if type(base_lot) not in (int,float) or Decimal(str(base_lot)) not in [Decimal(i)/100 for i in range(1,11)]:
++        raise ArcSafetyError('BASE_LOT_INVALID')
++    if type(target_usd) not in (int,float) or not math.isfinite(target_usd) or not .01<=target_usd<=250:
++        raise ArcSafetyError('BASKET_TP_INVALID')
++    cfg=replace(CONFIG,base_lot=float(base_lot),basket_profit_target_usd=float(target_usd),hard_basket_loss_usd=-250.,adaptive_reversal_risk_enabled=True)
++    _validate(cfg)
++    proof=dict(policy='CLOSE_DISTANCE_RISK_V51',settings=dict(settings),base_lot=cfg.base_lot,
++        target_usd=cfg.basket_profit_target_usd,hard_loss_usd=-250.,atr=atr,atr_candle_time=candle_time,
++        effective_sha256=_digest(cfg))
++    key=id(cfg)
++    _EXECUTION_CONFIGS[key]=(weakref.ref(cfg,lambda ref:_EXECUTION_CONFIGS.pop(key,None)),_digest(cfg),proof)
++    return cfg

@@ -363,3 +363,8 @@
 .mt-report .mt-report-drawer>.mt-drawer-trigger,.mt-news-explanation .mt-drawer-trigger{box-sizing:border-box;padding-right:7px}
 .mt-batch-notice{min-height:4.5em;animation:none;transition:none}
 .mt-report .mt-basket-stale{font-variant-numeric:tabular-nums}
+
+.mt-batch-settings{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin:8px 0}
+.mt-batch-settings label{display:flex;flex-direction:column;gap:6px;font-size:12px;color:#aaa}
+.mt-report .mt-batch-settings :is(select,input){box-sizing:border-box;width:100%;min-width:0;min-height:44px;padding:8px;border:1px solid #333;border-radius:10px;background:#151515;color:#ff923d;font:inherit;font-size:14px}
+.mt-report .mt-batch-settings :disabled{opacity:.6}

@@ -1,0 +1,34 @@
+--- a/goldtrap_arc/execution.py
++++ b/goldtrap_arc/execution.py
+@@ -3,7 +3,7 @@
+ from .adaptive_policy import reversal_decision, risk_assessment
+ from .config import ArcAdaptiveDeferred
+ from time import time
+-from .config import CONFIG,ArcSafetyError,ArcAdaptiveSpreadWait,ArcAdaptiveRiskBlocked,verify_spec
++from .config import CONFIG,ArcSafetyError,ArcAdaptiveSpreadWait,ArcAdaptiveRiskBlocked,verify_spec,execution_policy,execution_config_proof
+ from .models import Side
+ from .mt5_adapter import ArcConnectionWait
+ from .pending_ladder import CONTRACT, ARMING_MODES, initial_plan, fixed_plan, quantized_target, validate_closed_m1, ArcM1BoundaryWait
+@@ -27,6 +27,13 @@
+         verify_spec(cfg=cfg)
+         self.adapter=adapter;self.store=store;self.ledger=ledger;self.cfg=cfg
+         self.state=store.load();self.ledger.initialize()
++        proof=execution_config_proof(cfg)
++        if self.state.get('execution_config')!=proof and self.state.get('cycle_id'):
++            raise ArcSafetyError('Persisted cycle settings differ from requested execution config')
++        if proof and not self.state.get('execution_config'):
++            self.state['execution_config']=proof
++            self.save()
++            self.ledger.append('EXECUTION_CONFIG_BOUND',**proof)
+         existing_mode=self.state.get('fixed_arming')
+         if fixed_arming and existing_mode and fixed_arming!=existing_mode:
+             raise ArcSafetyError('Persisted fixed arming mode cannot change on resume')
+@@ -819,7 +826,7 @@
+             distance_points=distance,closed_m1_close=candle.close,atr=atr,
+             body_atr=body_atr,body_range=body_range,multiplier=mult,bars=[asdict(b) for b in bars])
+         if self.cfg.adaptive_reversal_risk_enabled:
+-            intent.update(policy='REVERSAL_RISK_V5',reversal_arm=arm,risk_proof=risk,
++            intent.update(policy=execution_policy(self.cfg),reversal_arm=arm,risk_proof=risk,
+                           expires_at=candle.time+60+self.cfg.adaptive_signal_ttl_seconds)
+         # Persist both proof and state before a broker request. A crash between
+         # them fails closed; the request journal prevents any redispatch.

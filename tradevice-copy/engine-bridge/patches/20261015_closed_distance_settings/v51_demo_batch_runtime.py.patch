@@ -1,0 +1,19 @@
+--- a/v51_demo_batch_runtime.py
++++ b/v51_demo_batch_runtime.py
+@@ -33,11 +33,12 @@
+   news=self.calendar.decision()
+   if news.get('status')!='CLEAR':return news
+   reason=None
+-  if self.clock()>=self.deadline:reason='BATCH_ENTRY_DEADLINE'
+-  elif not active_cycle:
++  if not active_cycle:
++   if self.clock()>=self.deadline:reason='BATCH_ENTRY_DEADLINE'
++
+    # Telemetry is an admission gate, never a reason to retire an owned ladder.
+-   # Broker identity, fresh quotes, news, deadline and risk exits remain enforced.
+-   if self.write_failed:reason='BATCH_REPORT_WRITE_FAILED'
++   # Broker identity, fresh quotes, news and risk exits remain enforced. Deadline blocks new cycles only.
++   elif self.write_failed:reason='BATCH_REPORT_WRITE_FAILED'
+    elif not self.acknowledged():reason='BATCH_TELEMETRY_STALE'
+   if reason:return dict(status='UNKNOWN',reason=reason,entries_allowed=False)
+   return news
