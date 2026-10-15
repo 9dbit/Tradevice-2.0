@@ -3,7 +3,7 @@
   "files": {
     "goldtrap_arc/mt5_adapter.py": {
       "before_sha256": "d1f3bd2a4c669cc11505debd53304f83d667e8428e9f11cde41fc3769904c6f5",
-      "after_sha256": "1f3ac835d628d53771227352c727711c22cad6fb1ce68b74b4275b36916d1385",
+      "after_sha256": "50f76dd48ea7817b09f51c96663b9a87db0ee7ee5edafb9e70c347773cb9284a",
       "patch": "goldtrap_arc__mt5_adapter.py.patch"
     },
     "goldtrap_arc/execution.py": {

@@ -19,11 +19,11 @@ The order-type transition is documented by MetaQuotes: https://www.mql5.com/en/b
 
 ## Installation and validation
 
-Five patches in `patches/20261015_pending_transition` reconstruct the tested candidate exactly. Baseline fingerprint `24fb1e12c9c8c4f453c03973ab43c8d0c7e6e23f63bd613a916dcf34998afb9f`; installed fingerprint `3c68014df4fb76ce4e7712fca7e1507c8f0ca79f936035e9a2251049574502b6`.
+Five patches in `patches/20261015_pending_transition` reconstruct the tested candidate exactly. Baseline fingerprint `24fb1e12c9c8c4f453c03973ab43c8d0c7e6e23f63bd613a916dcf34998afb9f`; final installed fingerprint `73ee018fb6191e8d8b7894d4e3845e8a97dd99ff46fa03d30f7093d970f8a9b4`. Installation first reached `3c68014df4fb76ce4e7712fca7e1507c8f0ca79f936035e9a2251049574502b6`, then a one-file follow-up added the identical exact-transition proof for order_check 10013 before dispatch. Both installs were broker-flat and idle.
 
 Applied only to the isolated V5.1 clone under bridge/runner locks and broker-flat checks. All 133 pre-existing log files remained byte-identical. Bridge restarted in standby: READY, all nine checks true, zero unsettled commands; the old batch stays STOPPED with 1/10 completed and +2.10. V4/V5 originals and production were not modified.
 
-- 59 focused engine/settings/settlement/reporting tests passed.
+- 60 focused engine/settings/settlement/reporting tests passed, including an order_check rejection after exact activation with zero dispatches.
 - 64 bridge and strict reconciliation tests passed.
 - 160 web unit tests and production build passed.
 - Three production-browser checks passed: recovery guards, stopped-batch reset isolation, and rejected-update → reconciled +2.10 presentation. No command requests were sent by these fixtures.

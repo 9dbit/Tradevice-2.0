@@ -33,6 +33,11 @@ class PendingTransition(unittest.TestCase):
   with self.assertRaises(ArcPendingTransitionWait):self.a.modify_pending(before,before.entry_price,before.tp+.1)
   self.assertEqual(len(self.api.sent),count+1);self.assertFalse(self.ledger.unresolved_requests())
   self.assertEqual(len(self.api.orders),10)
+ def test_check_reject_with_exact_activation_defers_without_dispatch(self):
+  before=self.armed();count=len(self.api.sent)
+  self.api.order_check=lambda r:(self.api.activate(Side.SELL) or NS(retcode=10013))
+  with self.assertRaises(ArcPendingTransitionWait):self.a.modify_pending(before,before.entry_price,before.tp+.1)
+  self.assertEqual(len(self.api.sent),count);self.assertFalse(self.ledger.unresolved_requests())
  def test_unrelated_invalid_request_stays_fatal(self):
   before=self.armed();self.api.order_send=lambda r:NS(retcode=10013,order=0,deal=0)
   with self.assertRaises(ArcDefinitiveReject):self.a.modify_pending(before,before.entry_price,before.tp+.1)
