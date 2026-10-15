@@ -1,5 +1,5 @@
 'use client';
-import {useEffect,useMemo,useState} from 'react';
+import {useEffect,useMemo,useRef,useState} from 'react';
 import type {Snapshot} from './master-console';
 import {validateEngine,validateOwned} from '../../lib/engine-diagnostics.mjs';
 import {basketEstimate} from '../../lib/basket-estimate.mjs';
@@ -33,6 +33,12 @@ export default function CompactDashboard({data,token,onNavigate}:{
  const marketFresh=['OBSERVED_READ_ONLY','VERIFIED'].includes(data?.market?.status||'')&&observed!=null&&now-Date.parse(observed)>=0&&now-Date.parse(observed)<=8000;
  // Stale observations retain their timestamp, never their appearance as current values.
  const market=marketFresh?data?.market:null;
+ // Display memory only: retained numbers never enter preflight or engine guards.
+ // Polling failures and freshness expiry must not erase an already painted value.
+ const lastMarket=useRef<Snapshot['market']>(undefined);
+ useEffect(()=>{if(market)lastMarket.current=market;},[market]);
+ const displayMarket=market??lastMarket.current;
+ const marketLabel=market?'Fresh':displayMarket?'Last known · stale':'Unavailable';
  const engine=validateEngine(market?.engineDiagnostics,now);
  const owned=validateOwned(market?.ownedPositionPnl);
  const decision=engine.decision;
@@ -90,7 +96,7 @@ export default function CompactDashboard({data,token,onNavigate}:{
     <button className="mt-u-detail" type="button" onClick={()=>onNavigate('overview')}>Detail <I name="arrow" size={14}/></button></div>}>
 
    <div className="mt-summary-grid">
-    <Datum icon="wallet" label="Demo Equity · Current" value={usd(market?.equity)}/>
+    <Datum icon="wallet" label="Demo Equity · Current" value={usd(displayMarket?.equity)} hint={market?undefined:marketLabel}/>
     <Datum icon="receipt" label="Net · Completed Cycles" value={usd(batch?.net_completed_usd)}/>
     <Datum icon="repeat" label="Total Executed Cycle" value={fmt(executedCycles)}/>
     <Datum icon="check" label="Completed / Requested" value={batch?`${batch.completed} / ${batch.requested}`:'—'}/>
@@ -102,32 +108,33 @@ export default function CompactDashboard({data,token,onNavigate}:{
   </ReportSection>
 
   <ReportSection title="Telemetry" className="mt-u-panel" aria-labelledby="telemetry-title" header={<div className="mt-u-panel-head"><h2 id="telemetry-title"><I name="activity"/> Telemetry</h2>
-    <span className="mt-u-chip">{market?'Fresh':'Stale'}</span></div>}>
+    <span className="mt-u-chip">{marketLabel}</span></div>}>
 
+   <p className="mt-compact-note mt-telemetry-freshness" role="status">{market?'Updates every second.':displayMarket?'Showing last known values. Waiting for a fresh snapshot.':'Waiting for the first verified snapshot.'}</p>
    <div className="mt-telemetry-grid">
-    <Datum icon="spread" label="Spread" value={fmt(market?.spreadPoints)} hint="points"/>
-    <Datum icon="activity" label="ATR 14" value={fmt(market?.atr14)} hint={market?.atrTimeframe||'M1'}/>
-    <Datum icon="layers" label="Positions" value={fmt(market?.positionsCount)} hint="account"/>
-    <Datum icon="clock" label="Pending" value={fmt(market?.pendingOrdersCount)} hint="account"/>
-    <Datum icon="wallet" label="Used margin" value={fmt(market?.margin)} hint={market?.accountCurrency||'—'}/>
-    <Datum icon="shield" label="Free margin" value={fmt(market?.freeMargin)} hint={market?.accountCurrency||'—'}/>
+    <Datum icon="spread" label="Spread" value={fmt(displayMarket?.spreadPoints)} hint="points"/>
+    <Datum icon="activity" label="ATR 14" value={fmt(displayMarket?.atr14)} hint={displayMarket?.atrTimeframe||'M1'}/>
+    <Datum icon="layers" label="Positions" value={fmt(displayMarket?.positionsCount)} hint="account"/>
+    <Datum icon="clock" label="Pending" value={fmt(displayMarket?.pendingOrdersCount)} hint="account"/>
+    <Datum icon="wallet" label="Used margin" value={fmt(displayMarket?.margin)} hint={displayMarket?.accountCurrency||'—'}/>
+    <Datum icon="shield" label="Free margin" value={fmt(displayMarket?.freeMargin)} hint={displayMarket?.accountCurrency||'—'}/>
    </div>
-   <p className="mt-compact-note">{market?.brokerName||'Broker unverified'} · {market?.symbol||'—'} · {market?.accountMode||'—'}</p>
-   <ReportDrawer title="Market details" meta={market?'Fresh':'Stale'}>
+   <p className="mt-compact-note">{displayMarket?.brokerName||'Broker unverified'} · {displayMarket?.symbol||'—'} · {displayMarket?.accountMode||'—'}</p>
+   <ReportDrawer title="Market details" meta={marketLabel}>
     <div className="mt-telemetry-grid">
-     <Datum icon="spread" label="Bid / Ask" value={`${fmt(market?.bid)} / ${fmt(market?.ask)}`}/>
-     <Datum icon="receipt" label="Commission" value={fmt(market?.commissionUsdPerLot)} hint="USD / lot"/>
-     <Datum icon="arrow" label="Slippage" value={fmt(market?.slippagePoints)} hint="points"/>
-     <Datum icon="activity" label="Volatility" value={fmt(market?.volatilityPct,'%')} hint={market?.volatilityWindow}/>
-     <Datum icon="shield" label="Margin level" value={fmt(market?.marginLevelPct,'%')}/>
-     <Datum icon="alert" label="Foreign exposure" value={market?.foreignExposure===true?'Present':market?.foreignExposure===false?'None':'—'}/>
+     <Datum icon="spread" label="Bid / Ask" value={`${fmt(displayMarket?.bid)} / ${fmt(displayMarket?.ask)}`}/>
+     <Datum icon="receipt" label="Commission" value={fmt(displayMarket?.commissionUsdPerLot)} hint="USD / lot"/>
+     <Datum icon="arrow" label="Slippage" value={fmt(displayMarket?.slippagePoints)} hint="points"/>
+     <Datum icon="activity" label="Volatility" value={fmt(displayMarket?.volatilityPct,'%')} hint={displayMarket?.volatilityWindow}/>
+     <Datum icon="shield" label="Margin level" value={fmt(displayMarket?.marginLevelPct,'%')}/>
+     <Datum icon="alert" label="Foreign exposure" value={displayMarket?.foreignExposure===true?'Present':displayMarket?.foreignExposure===false?'None':'—'}/>
     </div>
     <dl className="mt-detail-list">
-     <div><dt>MT5 observer</dt><dd>{market?'Demo · read-only':'Unverified'}</dd></div>
-     <div><dt>Paper adapter</dt><dd>{market?.executionAdapter==='INTERNAL_PAPER_ONLY'?'Internal paper only':'Unverified'}</dd></div>
-     <div><dt>Last snapshot</dt><dd>{time(observed)}</dd></div>
+     <div><dt>MT5 observer</dt><dd>{market?'Demo · read-only':displayMarket?'Last known · read-only':'Unverified'}</dd></div>
+     <div><dt>Paper adapter</dt><dd>{displayMarket?.executionAdapter==='INTERNAL_PAPER_ONLY'?'Internal paper only':'Unverified'}</dd></div>
+     <div><dt>Last snapshot</dt><dd>{time(displayMarket?.observedAt)}</dd></div>
     </dl>
-    {market?.atrRecomputed&&<p className="mt-compact-note">ATR recalculated from closed M1 bars.</p>}
+    {displayMarket?.atrRecomputed&&<p className="mt-compact-note">ATR recalculated from closed M1 bars.</p>}
    </ReportDrawer>
   </ReportSection>
 

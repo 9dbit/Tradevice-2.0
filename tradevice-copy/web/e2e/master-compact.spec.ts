@@ -42,13 +42,13 @@ async function setup(page:Page){
  let canStart=true,state='READY',blocked=false,expiredPreflight=false;
  let extraBlockers:string[]=[];
  let demoBatch:any=null,terminalMirror:any=null,growthHistory:any=null,news:any=null;
- let marketStamp=Date.now(),engineDiagnostics:any=null,overviewFail=false,offline=false;
+ let marketStamp=Date.now(),engineDiagnostics:any=null,overviewFail=false,overviewUnavailable=false,overviewDelay=0,marketValues:Record<string,unknown>={},offline=false;
  const overviewPolls:number[]=[];
  const session={access_token:'fixture.admin.token',refresh_token:'fixture',token_type:'bearer',expires_in:7200,expires_at:Math.floor(Date.now()/1000)+7200,user:{id:'11111111-1111-4111-8111-111111111111',email:'admin@example.invalid',aud:'authenticated',role:'authenticated',app_metadata:{tradevice_master_admin:true}}};
  await page.addInitScript(s=>localStorage.setItem('tradevice-master-console-staging',JSON.stringify(s)),session);
  await page.route('https://scqzlcivherovlwqypeu.supabase.co/**',r=>r.fulfill({json:{user:session.user}}));
  await page.route('**/api/runtime',r=>r.fulfill({json:{configured:true,supabaseUrl:'https://scqzlcivherovlwqypeu.supabase.co',publishableKey:'sb_publishable_fixture'}}));
- await page.route('**/api/master/overview',r=>{overviewPolls.push(Date.now());if(overviewFail)return r.fulfill({status:503,json:{}});return r.fulfill({json:{source:'STAGING_WORKER_TELEMETRY',environment:'staging',executionMode:'PAPER_ONLY',news,demoBatch,terminalMirror,growthHistory,market:{engineDiagnostics,status:'OBSERVED_READ_ONLY',observedAt:new Date(marketStamp).toISOString(),brokerName:'Fixture broker',accountMode:'DEMO',symbol:'XAUUSDm',spreadPoints:23,atr14:7.89,positionsCount:2,pendingOrdersCount:3,equity:12345.67,margin:123.45,freeMargin:12222.22,accountCurrency:'USD'},master:{state:'DEGRADED',anomalies:0},risk:{killSwitch:'DISENGAGED'},infrastructure:{memberApi:'ONLINE',masterWorker:'ONLINE',journal:'CONNECTED',adminAuth:'VERIFIED'},activity:[],paperOrders:[],equityCurve:[],terminal:[],commands:[],queue:{queued:0,accepted:0},control:{runStatus:'STOPPED'}}});});
+ await page.route('**/api/master/overview',async r=>{overviewPolls.push(Date.now());if(overviewDelay)await new Promise(resolve=>setTimeout(resolve,overviewDelay));if(overviewFail)return r.fulfill({status:503,json:{}});return r.fulfill({json:{source:'STAGING_WORKER_TELEMETRY',environment:'staging',executionMode:'PAPER_ONLY',news,demoBatch,terminalMirror,growthHistory,market:overviewUnavailable?null:{engineDiagnostics,status:'OBSERVED_READ_ONLY',observedAt:new Date(marketStamp).toISOString(),brokerName:'Fixture broker',accountMode:'DEMO',symbol:'XAUUSDm',spreadPoints:23,atr14:7.89,positionsCount:2,pendingOrdersCount:3,equity:12345.67,margin:123.45,freeMargin:12222.22,accountCurrency:'USD',...marketValues},master:{state:'DEGRADED',anomalies:0},risk:{killSwitch:'DISENGAGED'},infrastructure:{memberApi:'ONLINE',masterWorker:'ONLINE',journal:'CONNECTED',adminAuth:'VERIFIED'},activity:[],paperOrders:[],equityCurve:[],terminal:[],commands:[],queue:{queued:0,accepted:0},control:{runStatus:'STOPPED'}}});});
  await page.route('**/api/master/skills',r=>r.fulfill({json:{revision:1,selectedSkillId:'fixture',skills:[{id:'fixture',name:'GoldTrap ARC V5.1',version:'5.1',description:'Synthetic UI fixture only — no trading evidence.',strategy:'PREARM_BOTH',kind:'BUILTIN',sha256:'fixture',documentation:'Fixture documentation',active:true,executionStatus:'ADAPTER_AVAILABLE'}],executionAuthorized:false,selectionScope:'STAGING_DEMO_ENGINE'}}));
  let fail=false,stamp=Date.now(),freeze=false,delay=0,concurrent=0,maxConcurrent=0;
  const posts:any[]=[];
@@ -64,7 +64,7 @@ async function setup(page:Page){
  });
  await page.goto('/master');
  await expect(page.getByLabel('Engine connection')).toHaveText('Ready');
- return {posts,overviewPolls,setOverviewFail:(v:boolean)=>overviewFail=v,setOffline:(v:boolean)=>offline=v,setEngine:(v:any)=>{engineDiagnostics=v;marketStamp=Date.now();},expirePreflight:()=>{expiredPreflight=true;},setExtraBlockers:(v:string[])=>extraBlockers=v,restorePreflight:()=>{expiredPreflight=false;},setNews:(v:any)=>news=v,recovery:()=>{state='RECOVERY_REQUIRED';canStart=false;},ready:()=>{state='READY';canStart=true;},setGrowth:(v:any)=>growthHistory=v,setBatch:(v:any)=>demoBatch=v,setTerminal:(v:any)=>terminalMirror=v,block:()=>{canStart=false;blocked=true;},running:()=>{canStart=false;state='RUNNING';},setFail:(v:boolean)=>fail=v,freeze:()=>freeze=true,setDelay:(v:number)=>delay=v,max:()=>maxConcurrent};
+ return {posts,overviewPolls,setMarket:(v:Record<string,unknown>)=>{marketValues=v;marketStamp=Date.now();},setOverviewUnavailable:(v:boolean)=>overviewUnavailable=v,setOverviewDelay:(v:number)=>overviewDelay=v,setOverviewFail:(v:boolean)=>overviewFail=v,setOffline:(v:boolean)=>offline=v,setEngine:(v:any)=>{engineDiagnostics=v;marketStamp=Date.now();},expirePreflight:()=>{expiredPreflight=true;},setExtraBlockers:(v:string[])=>extraBlockers=v,restorePreflight:()=>{expiredPreflight=false;},setNews:(v:any)=>news=v,recovery:()=>{state='RECOVERY_REQUIRED';canStart=false;},ready:()=>{state='READY';canStart=true;},setGrowth:(v:any)=>growthHistory=v,setBatch:(v:any)=>demoBatch=v,setTerminal:(v:any)=>terminalMirror=v,block:()=>{canStart=false;blocked=true;},running:()=>{canStart=false;state='RUNNING';},setFail:(v:boolean)=>fail=v,freeze:()=>freeze=true,setDelay:(v:number)=>delay=v,max:()=>maxConcurrent};
 }
 
 test('compact layout: five destinations, aligned status, numeric composer, System contains risk and paper',async({page})=>{
@@ -126,7 +126,7 @@ test('transient polling failure preserves evidence, true stale disables Start, e
 });
 
 
-test('fresh heartbeat cannot imply Ready with blocked preflight, and stale evidence loses checkmarks and current numbers',async({page})=>{
+test('fresh heartbeat cannot imply Ready with blocked preflight, stale checks clear while display retains labeled historical numbers',async({page})=>{
  const f=await setup(page);f.block();
  await expect(page.getByLabel('Engine connection')).toHaveText('Blocked');
  await expect(page.getByRole('button',{name:'Start Cycle',exact:true})).toBeDisabled();
@@ -139,7 +139,8 @@ test('fresh heartbeat cannot imply Ready with blocked preflight, and stale evide
  await expect(page.getByLabel('Engine connection')).toHaveText('Stale',{timeout:10000});
  await expect(page.getByRole('img',{name:'Verified',exact:true})).toHaveCount(0);
  await expect(page.getByRole('img',{name:'Stale',exact:true})).toHaveCount(10);
- await expect(page.locator('[aria-labelledby=telemetry-title] > .mt-section-body > .mt-section-clip > .mt-section-content > .mt-telemetry-grid .mt-telemetry-datum > strong')).toHaveText(['—','—','—','—','—','—']);
+ await expect(page.locator('[aria-labelledby=telemetry-title] > .mt-section-body > .mt-section-clip > .mt-section-content > .mt-telemetry-grid .mt-telemetry-datum > strong')).toHaveText(['23','7.89','2','3','123.45','12,222.22']);
+ await expect(page.locator('[aria-labelledby=telemetry-title] .mt-u-chip')).toHaveText('Last known · stale');
  expect(f.posts).toHaveLength(0);
 });
 
@@ -387,5 +388,46 @@ test('ATR basket TP displays points instead of labeling price distance as profit
  await expect(page.getByText('$4.20 price move · weighted entry',{exact:true})).toBeVisible();
  await page.getByRole('button',{name:/L6–L10 & risk details/}).click();
  await expect(page.getByText('4104.200',{exact:true})).toBeVisible();
+ expect(f.posts).toHaveLength(0);
+});
+
+
+test('telemetry swaps values without blank frames through slow, failed and missing snapshots',async({page})=>{
+ test.setTimeout(45000);
+ const f=await setup(page);
+ const section=page.locator('[aria-labelledby=telemetry-title]');
+ const values=section.locator('.mt-section-content > .mt-telemetry-grid .mt-telemetry-datum > strong');
+ await expect(values).toHaveText(['23','7.89','2','3','123.45','12,222.22']);
+ await page.evaluate(()=>{
+  const w=window as any;
+  w.telemetryBlankFrames=0;w.telemetryReplacedFrames=0;w.sampleTelemetry=true;
+  const nodes=Array.from(document.querySelectorAll('[aria-labelledby=telemetry-title] .mt-section-content > .mt-telemetry-grid .mt-telemetry-datum > strong'));
+  const sample=()=>{
+   if(!w.sampleTelemetry)return;
+   for(const node of nodes){
+    if(!node.isConnected){w.telemetryReplacedFrames++;continue;}
+    const style=getComputedStyle(node);
+    if(!node.textContent?.trim()||node.textContent==='—'||style.visibility==='hidden'||style.opacity==='0')w.telemetryBlankFrames++;
+   }
+   requestAnimationFrame(sample);
+  };requestAnimationFrame(sample);
+ });
+ f.setOverviewDelay(1300);
+ for(const n of [24,25,26]){
+  f.setMarket({spreadPoints:n,atr14:8.12,positionsCount:3,pendingOrdersCount:2,margin:130.25,freeMargin:12000.5});
+  await expect(values.first()).toHaveText(String(n));
+ }
+ f.setOverviewDelay(0);f.setOverviewFail(true);
+ await expect(page.getByRole('alert').filter({hasText:'TELEMETRY TEMPORARILY UNAVAILABLE'})).toBeVisible();
+ await expect(section.locator('.mt-u-chip')).toHaveText('Last known · stale');
+ await expect(values).toHaveText(['26','8.12','3','2','130.25','12,000.5']);
+ f.setOverviewUnavailable(true);f.setOverviewFail(false);
+ await expect(page.getByRole('alert').filter({hasText:'TELEMETRY TEMPORARILY UNAVAILABLE'})).toHaveCount(0);
+ await expect(values.first()).toHaveText('26');
+ f.setOverviewUnavailable(false);f.setMarket({spreadPoints:27,atr14:8.3,positionsCount:0,pendingOrdersCount:0,margin:0,freeMargin:12345.67});
+ await expect(values).toHaveText(['27','8.3','0','0','0','12,345.67']);
+ await expect(section.locator('.mt-u-chip')).toHaveText('Fresh');
+ const frames=await page.evaluate(()=>{const w=window as any;w.sampleTelemetry=false;return {blank:w.telemetryBlankFrames,replaced:w.telemetryReplacedFrames};});
+ expect(frames).toEqual({blank:0,replaced:0});
  expect(f.posts).toHaveLength(0);
 });
