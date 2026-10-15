@@ -1,2 +1,2 @@
-export interface CycleProgress {batchId:string;side:"BUY"|"SELL"|null;current:number;total:number;completed:number;executed:boolean;executedCount:number;percent:number;fresh:boolean;active:boolean;status:string}
+export interface CycleProgress {batchId:string;side:"BUY"|"SELL"|null;current:number;total:number;completed:number;executed:boolean;executedCount:number;percent:number;fresh:boolean;active:boolean;status:string;unfinished:number;lastOutcome:string|null;lastNet:number|null;blockers:string[]}
 export function cycleProgress(raw:unknown,runtime:unknown,now?:number,requestId?:string|null):CycleProgress|null;

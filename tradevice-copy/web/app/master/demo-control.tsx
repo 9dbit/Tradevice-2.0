@@ -1,6 +1,7 @@
 'use client';
 import {useCallback,useEffect,useRef,useState} from 'react';
 import {preflightVerified} from '../../lib/preflight-status.mjs';
+import {batchStopNotice} from '../../lib/batch-stop.mjs';
 import {cycleProgress} from '../../lib/cycle-progress.mjs';
 import {ReportDrawer,ReportIcon as I} from './report-ui';
 const preflightChecks=[['identity','Demo identity'],['brokerFlat','Broker flat'],['quote','Fresh quote'],['spread','Spread'],['margin','Margin'],['commission','Commission'],['news','News'],['reconciled','Reconciliation'],['engineHash','Engine hash'],['engineReady','Engine ready']];
@@ -20,6 +21,8 @@ export function useDemoRuntime(token:string){
 }
 export default function DemoControl({token,runtime,refresh,now,batchRaw}:{token:string;runtime:DemoRuntime|null;refresh:()=>void;now:number;batchRaw?:unknown}){
  const [count,setCount]=useState('1'),[pending,setPending]=useState(false),[resetBatch,setResetBatch]=useState<string|null>(null);
+ const stopDialog=useRef<HTMLDialogElement>(null);
+ const [dismissedStop,setDismissedStop]=useState<string|null>(null);
  const [request,setRequest]=useState<{id:string;action:string;phase:string;error?:string}|null>(null);
  const evidenceNow=Math.max(now,Date.now());
  const fresh=runtime?.online===true&&runtime.observedMs!==null&&evidenceNow-runtime.observedMs>=0&&evidenceNow-runtime.observedMs<=8000;
@@ -51,13 +54,30 @@ export default function DemoControl({token,runtime,refresh,now,batchRaw}:{token:
  const runtimeRunning=['STARTING','RUNNING','PAUSING','PAUSED','STOPPING'].includes(runtime?.state||'');
  const ended=!!progress&&['COMPLETED','STOPPED','SAFETY_STOP','BLOCKED'].includes(progress.status)&&!runtimeRunning;
  const showReset=!!showCycle&&ended;
- function resetComposer(){if(!showReset||busy)return;setResetBatch(progress!.batchId);setCount(String(progress!.total));setRequest(null);}
+ const stopNotice=batchStopNotice(progress,runtimeRunning);
+ const stopKey=stopNotice?.key;
+ useEffect(()=>{
+  if(!stopKey||resetBatch===progress?.batchId||dismissedStop===stopKey){stopDialog.current?.close();return;}
+  let closed=false;try{closed=sessionStorage.getItem('tradevice-dismissed-stop:'+stopKey)==='1';}catch{}
+  if(!closed&&!stopDialog.current?.open)stopDialog.current?.showModal();
+ },[stopKey,dismissedStop,resetBatch,progress?.batchId]);
+ function dismissStop(){if(stopKey){setDismissedStop(stopKey);try{sessionStorage.setItem('tradevice-dismissed-stop:'+stopKey,'1');}catch{}}stopDialog.current?.close();}
+
+ function resetComposer(){if(!ended||busy||!progress||progress.unfinished>0)return;setResetBatch(progress!.batchId);setCount(String(progress!.total));setRequest(null);}
  const displayedProgress=resetBatch===progress?.batchId&&!runtimeRunning?null:progress;
  const checkedKey=(key:string)=>preflightVerified(runtime,fresh,key);
  const verifiedCount=preflightChecks.filter(([key])=>checkedKey(key)).length;
  const status=!fresh?'Stale':runtime?.canStart?'Ready':({STARTING:'Starting',RUNNING:'Running',PAUSING:'Pausing',PAUSED:'Paused',STOPPING:'Stopping'} as Record<string,string>)[runtime?.state||'']||'Blocked';
  const blocker=!fresh?'Engine heartbeat unavailable':runtime?.canStart?'':runtime?.blockers.join(' · ')||(['STARTING','RUNNING','PAUSING','PAUSED','STOPPING'].includes(runtime?.state||'')?'':'Preflight incomplete');
  return <section className="mt-u-panel mt-demo-control" aria-labelledby="demo-control-title">
+  <dialog ref={stopDialog} className="mt-stop-dialog" aria-labelledby="batch-stop-title" aria-describedby="batch-stop-reason" onCancel={e=>{e.preventDefault();dismissStop();}}>
+   <h2 id="batch-stop-title">{stopNotice?.title}</h2>
+   <strong>{progress?.completed??0} / {progress?.total??0} cycles completed</strong>
+   <p id="batch-stop-reason">{stopNotice?.reason}</p>
+   {progress?.lastNet!=null&&<p>Last cycle: {progress.lastNet.toFixed(2)} USD</p>}
+   <p className="mt-compact-note">{stopNotice?.resetSafe?'Reset prepares a new cycle count. Start still requires verified preflight.':'Broker reconciliation is still required. Reset is unavailable.'}</p>
+   <div className="mt-stop-actions"><button type="button" autoFocus onClick={dismissStop}>Close</button><button type="button" disabled={!ended||busy||!stopNotice?.resetSafe} onClick={()=>{resetComposer();dismissStop();}}>Reset</button></div>
+  </dialog>
   <div className="mt-u-panel-head mt-demo-heading"><h2 id="demo-control-title"><I name="repeat"/> Trading Cycle</h2><strong aria-label="Engine connection" data-state={status}>{status}</strong></div>
   <div className="mt-demo-inputs"><label htmlFor={showCycle?undefined:'demo-cycle-count'}>{showCycle?(ended?'Executed cycles':'Current cycle'):'Cycle count'}<small>Demo · XAUUSDm{showCycle?` · ${ended?'Last side':'Side'}: ${progress?.side||'Unverified'}`:''}{showCycle?(progress?.fresh?'':' · Last reported'):' · 1–10'}</small></label>
    {showCycle?<output className="mt-current-cycle" aria-label="Current cycle">{ended?progress!.executedCount:progress!.current}/{progress!.total}</output>:<input id="demo-cycle-count" aria-label="Demo cycle count" type="text" inputMode="numeric" pattern="[0-9]*" maxLength={2} value={count} disabled={busy||runtimeRunning} onChange={e=>setCount(e.target.value.replace(/\D/g,''))}/>}

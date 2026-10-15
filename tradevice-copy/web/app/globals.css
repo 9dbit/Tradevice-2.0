@@ -279,3 +279,5 @@ body{background:#000;color:#F7F7F7}
 }
 
 .mt-check-pending{display:inline-flex;animation:preflight-spin 1.2s linear infinite;opacity:.65}@keyframes preflight-spin{to{transform:rotate(360deg)}}@media(prefers-reduced-motion:reduce){.mt-check-pending{animation:none}}
+
+.mt-stop-dialog{color:#eee;background:#181818;border:1px solid #444;border-radius:22px;width:min(420px,calc(100vw - 32px));padding:24px;box-sizing:border-box;box-shadow:0 24px 90px #0008}.mt-stop-dialog::backdrop{background:#0009;backdrop-filter:blur(5px)}.mt-stop-dialog h2,.mt-stop-dialog strong{color:#f99b4c}.mt-stop-dialog p{line-height:1.5}.mt-stop-actions{display:flex;gap:12px;margin-top:20px}.mt-stop-actions button{flex:1;padding:12px;border:0;border-radius:24px;background:#333;color:white}.mt-stop-actions button:last-child{background:#f58229;color:#111}.mt-stop-actions button:disabled{opacity:.4}

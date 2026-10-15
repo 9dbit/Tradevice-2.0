@@ -104,7 +104,7 @@ export default function SkillManager({token,engineRaw,now,activation}:{token:str
    <button type="button" disabled={!token||busy||!fresh} onClick={()=>file.current?.click()}>Upload skill</button>
    <input ref={file} type="file" hidden accept=".zip,.json" onChange={e=>{const f=e.target.files?.[0];e.target.value='';if(f)void upload(f);}}/>
   </div>
-  <p className="mt-compact-note">{!fresh?'Selection unverified':selected?(activationFresh&&activation?.activeSkillId===selected.id&&activation?.activeHash===selected.sha256?'Engine loaded skill':'Awaiting engine confirmation'):'All OFF'} · max. 1 active</p>
+  <p className="mt-compact-note">{!fresh?'Selection last reported · refresh pending':selected?(activationFresh&&activation?.activeSkillId===selected.id&&activation?.activeHash===selected.sha256?'Engine loaded skill':'Selected · engine confirmation pending'):'All OFF'} · selection switch · max. 1 active</p>
   <div aria-live="polite">{notice&&<p className="mt-skill-notice">{notice}</p>}{error&&<p role="alert" className="mt-skill-error">{messages[error]||error}</p>}</div>
   {progress&&<div className="mt-skill-progress" data-phase={progress.phase} aria-busy={busy}>
    <div className="mt-skill-progress-heading"><span id="skill-save-help" role="status" aria-live="polite">{progress.label}</span><strong aria-hidden="true">{animatedPercent}%</strong></div>
@@ -114,10 +114,10 @@ export default function SkillManager({token,engineRaw,now,activation}:{token:str
 
   </div>}
   {!catalog&&<p>Skill list unavailable. <button type="button" onClick={()=>void refresh()}>Retry</button></p>}
-  <div className="mt-skill-list">{catalog?.skills.map(skill=><article key={skill.id} className={'mt-skill-item'+(fresh&&skill.active?' is-selected':'')}>
+  <div className="mt-skill-list">{catalog?.skills.map(skill=><article key={skill.id} className={'mt-skill-item'+(catalog.selectedSkillId===skill.id?' is-selected':'')}>
    <div className="mt-skill-item-top"><div><h3>{skill.name}</h3><span>v{skill.version} · {skill.kind==='BUILTIN'?'Built-in candidate':'Uploaded package'}</span></div>
-    <button type="button" role="switch" aria-checked={activationFresh&&activation?.activeSkillId===skill.id} aria-label={'Select '+skill.name+' version '+skill.version} disabled={busy||!fresh||(!skill.active&&skill.executionStatus!=='ADAPTER_AVAILABLE')}
-     onClick={()=>void mutate({action:'SELECT',skillId:skill.active?null:skill.id,expectedRevision:catalog.revision})} className="mt-skill-toggle mt-skill-slider" aria-busy={busy} aria-describedby={progress?'skill-save-help':undefined}><span className="mt-skill-slider-label">{activationFresh?(activation?.activeSkillId===skill.id?'ON':'OFF'):'—'}</span><span className="mt-skill-slider-thumb" aria-hidden="true">{busy&&<span className="mt-skill-slider-spinner"/>}</span></button></div>
+    <button type="button" role="switch" aria-checked={catalog.selectedSkillId===skill.id} aria-label={'Select '+skill.name+' version '+skill.version} disabled={busy||!fresh||(!skill.active&&skill.executionStatus!=='ADAPTER_AVAILABLE')}
+     onClick={()=>void mutate({action:'SELECT',skillId:skill.active?null:skill.id,expectedRevision:catalog.revision})} className="mt-skill-toggle mt-skill-slider" aria-busy={busy} aria-describedby={progress?'skill-save-help':undefined}><span className="mt-skill-slider-label">{catalog.selectedSkillId===skill.id?'ON':'OFF'}</span><span className="mt-skill-slider-thumb" aria-hidden="true">{busy&&<span className="mt-skill-slider-spinner"/>}</span></button></div>
    {skill.executionStatus!=='ADAPTER_AVAILABLE'&&<small>Engine adapter not approved.</small>}
    <ReportDrawer title="Skill details & fingerprint"><p>{skill.description}</p><p>Strategy: {skill.strategy}</p><p className="mt-skill-hash">SHA-256: {skill.sha256}</p><pre>{skill.documentation||'No documentation provided.'}</pre></ReportDrawer>
   </article>)}</div>

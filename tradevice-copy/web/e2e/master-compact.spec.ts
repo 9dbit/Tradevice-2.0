@@ -172,3 +172,17 @@ test('growth chart filters actual timestamped fixtures and remains usable on mob
  await expect(checks.locator('.mt-check-pending')).toHaveCount(2);
  await expect(page.getByRole('button',{name:'Start Cycle',exact:true})).toBeDisabled();expect(f.posts).toHaveLength(0);
  });
+
+ test('interrupted batch explains stop; Close dismisses and Reset never sends a command',async({page})=>{
+ const f=await setup(page);await page.setViewportSize({width:390,height:844});
+ const stoppedBatch={schema:'tradevice.v51.demo.batch.v1',read_only:true,batch_id:'v51_dashboard_'+'a'.repeat(32),observed_ms:Date.now(),status:'STOPPED',requested:10,blockers:[],cycles:Array.from({length:3},(_,i)=>({number:i+1,cycle_id:(i+1).toString(16).padStart(8,'0'),outcome:i===2?'COMPLETE_BROKER_CLOSED':'COMPLETE_TARGET_HISTORY',broker_flat:true,layers:2,peak_lots:.03,net_usd:i===2?3.49:3.5}))};f.setBatch(stoppedBatch);
+ const modal=page.getByRole('dialog');await expect(modal).toBeVisible({timeout:15000});await expect(modal).toContainText('3 / 10');await expect(modal).toContainText('terminal cleanup');await expect(modal).toContainText('3.49 USD');
+ await page.screenshot({path:'/tmp/tradevice-stop-popup.png'});
+ await modal.getByRole('button',{name:'Close',exact:true}).click();await expect(modal).not.toBeVisible();await page.waitForTimeout(5500);await expect(modal).not.toBeVisible();
+ await page.getByRole('button',{name:'Reset',exact:true}).click();await expect(page.getByLabel('Demo cycle count')).toHaveValue('10');f.setBatch({...stoppedBatch,batch_id:'v51_dashboard_'+'b'.repeat(32)});await expect(modal).toBeVisible({timeout:15000});await modal.getByRole('button',{name:'Reset',exact:true}).click();await expect(modal).not.toBeVisible();await expect(page.getByLabel('Demo cycle count')).toHaveValue('10');expect(f.posts).toHaveLength(0);
+ });
+ test('selected skill stays ON when engine heartbeat expires',async({page})=>{
+ const f=await setup(page);const toggle=page.getByRole('switch').first();await expect(toggle).toHaveAttribute('aria-checked','true');
+ f.freeze();f.setFail(true);await expect(page.getByLabel('Engine connection')).toHaveText('Stale',{timeout:15000});
+ await expect(toggle).toHaveAttribute('aria-checked','true');await expect(toggle).toContainText('ON');expect(f.posts).toHaveLength(0);
+ });
