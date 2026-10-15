@@ -175,7 +175,14 @@ def collect(directory, *, transport=download, clock=lambda: int(time.time()*1000
     try:
         fd = os.open(lock, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
     except FileExistsError:
-        output['error'] = 'FETCH_ALREADY_LOCKED'
+        # A concurrent local reader is not a provider cooldown. Reuse only
+        # authenticated unexpired evidence; never steal the owner's lock.
+        cached = read_cache(directory, now)
+        output['next_fetch_utc_ms'] = now+5000
+        if cached:
+            output.update(cached, cache_reused=True,
+                          decision=evaluate_calendar(cached['calendar'],now,source_verified=True))
+        else:output['error'] = 'FETCH_ALREADY_LOCKED'
         return output
     os.close(fd)
     state_path = directory/'fetch_state.json'

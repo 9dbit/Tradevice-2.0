@@ -51,4 +51,32 @@ class ScheduleCache(unittest.TestCase):
    self.assertEqual(v['next_fetch_utc_ms'],self.clock+86400000)
    self.assertFalse((d/'trusted_cache.json').exists())
    self.assertEqual(v['error'],'HTTP_429')
+ def test_lock_contention_reuses_signed_cache_without_fetch_or_timestamp_renewal(self):
+  with tempfile.TemporaryDirectory() as tmp:
+   d=self.setup(tmp);original=collect(d,transport=self.transport,clock=lambda:self.clock)
+   self.clock+=1000;(d/'fetch.lock').write_text('owner')
+   runtime=RuntimeCalendar(collector=lambda *a,**kw:collect(d,transport=self.transport,clock=lambda:self.clock),clock=lambda:self.clock,directory=d)
+   self.assertEqual(runtime.refresh(),5000)
+   self.assertEqual(runtime.decision()['status'],'CLEAR')
+   self.assertEqual(runtime.export()['calendar']['observed_utc_ms'],original['calendar']['observed_utc_ms'])
+   self.assertEqual(self.calls,1);self.assertEqual((d/'fetch.lock').read_text(),'owner')
+   (d/'fetch.lock').unlink();runtime.refresh();self.assertEqual(self.calls,1)
+ def test_lock_without_valid_cache_retries_locally_and_stays_unknown(self):
+  with tempfile.TemporaryDirectory() as tmp:
+   d=self.setup(tmp);(d/'fetch.lock').write_text('owner')
+   runtime=RuntimeCalendar(collector=lambda *a,**kw:collect(d,transport=self.transport,clock=lambda:self.clock),clock=lambda:self.clock,directory=d)
+   self.assertEqual(runtime.refresh(),5000);self.assertEqual(runtime.decision()['status'],'UNKNOWN')
+   self.assertEqual(self.calls,0);self.assertTrue((d/'fetch.lock').exists())
+ def test_lock_does_not_reuse_expired_cache(self):
+  with tempfile.TemporaryDirectory() as tmp:
+   d=self.setup(tmp);collect(d,transport=self.transport,clock=lambda:self.clock)
+   self.clock+=MAX_CALENDAR_AGE_MS+1;(d/'fetch.lock').write_text('owner')
+   v=collect(d,transport=self.transport,clock=lambda:self.clock)
+   self.assertEqual(v['error'],'FETCH_ALREADY_LOCKED');self.assertNotIn('calendar',v);self.assertEqual(self.calls,1)
+ def test_lock_keeps_blackout_enforced(self):
+  with tempfile.TemporaryDirectory() as tmp:
+   d=self.setup(tmp);collect(d,transport=self.transport,clock=lambda:self.clock)
+   self.clock+=3600000;(d/'fetch.lock').write_text('owner')
+   v=collect(d,transport=self.transport,clock=lambda:self.clock)
+   self.assertEqual(v['decision']['status'],'BLACKOUT');self.assertFalse(v['decision']['entries_allowed']);self.assertEqual(self.calls,1)
 if __name__=='__main__':unittest.main()
