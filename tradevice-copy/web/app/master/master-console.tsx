@@ -4,6 +4,8 @@ import { useEffect, useState, type FormEvent } from 'react';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import './master.css';
 import './master-report.css';
+import './master-theme.css';
+import {useMasterTheme,MasterThemeButton} from './master-theme';
 import NewsNotifications from './news-status';
 import {ReportSection} from './report-ui';
 import FinancialOverview from './financial-overview';
@@ -125,6 +127,7 @@ function SectionHead({eyebrow,title,extra}:{eyebrow:string;title:string;extra?:R
   return <div className="mt-section-head"><div><small>{eyebrow}</small><h2>{title}</h2></div>{extra}</div>;
 }
 export default function MasterConsole() {
+  const appearance=useMasterTheme();
   const [tab,setTab]=useState<Tab>('dashboard');
   const [auth,setAuth]=useState<'loading'|'login'|'checking'|'authorized'|'forbidden'>('loading');
   const [client,setClient]=useState<SupabaseClient|null>(null);
@@ -221,6 +224,7 @@ export default function MasterConsole() {
   const roleTitle=routes.find(route=>route.key===tab)?.label||'Overview';
 
   if(auth!=='authorized')return <main className="mt mt-login">
+    <MasterThemeButton theme={appearance.theme} onToggle={appearance.toggle}/>
     <div className="mt-login-card"><Brand/><div className="mt-login-line"/>
       <div className="mt-eyebrow">PRIVATE OPERATOR CONSOLE / STAGING</div>
       <h1>Master Trader<br/><span>Control Center.</span></h1>
@@ -256,7 +260,7 @@ export default function MasterConsole() {
       <header className="mt-topbar">
         <div className="mt-mobile-brand"><Brand/></div>
         <div className="mt-top-crumb"><span>MASTER TRADER</span><Glyph name="chevron" size={14}/><strong>{roleTitle}</strong></div>
-        <div className="mt-top-actions"><NewsNotifications raw={data?.news}/><span className="mt-env-tag">STAGING</span>
+        <div className="mt-top-actions"><MasterThemeButton theme={appearance.theme} onToggle={appearance.toggle}/><NewsNotifications raw={data?.news}/><span className="mt-env-tag">STAGING</span>
           <button type="button" className="mt-refresh" aria-label="Refresh master status" onClick={()=>setRefreshIndex(i=>i+1)}><Glyph name="refresh" size={18}/></button>
           <button type="button" className="mt-logout" onClick={()=>void signOut()} aria-label="Sign out"><Glyph name="logout" size={18}/></button></div>
       </header>

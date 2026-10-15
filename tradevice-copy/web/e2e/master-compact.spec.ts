@@ -73,6 +73,10 @@ test('compact layout: five destinations, aligned status, numeric composer, Syste
  for(const width of [320,360,390,768,1440]){
   await page.setViewportSize({width,height:900});
   expect(await page.evaluate(()=>document.documentElement.scrollWidth-innerWidth)).toBeLessThanOrEqual(1);
+  if(width<=390){
+   const brand=await page.locator('.mt-mobile-brand .mt-brand>span').boundingBox(),actions=await page.locator('.mt-top-actions').boundingBox();
+   expect(brand!.x+brand!.width).toBeLessThanOrEqual(actions!.x);
+  }
   const title=await page.locator('#demo-control-title').boundingBox(),status=await page.getByLabel('Engine connection').boundingBox();
   expect(Math.abs((title!.y+title!.height/2)-(status!.y+status!.height/2))).toBeLessThan(3);
   expect(status!.x).toBeGreaterThan(title!.x+title!.width);
@@ -443,4 +447,61 @@ test('current ATR basket profit changes from four to three dollars ten and 2x us
  emit(3.1,2);await expect(value).toHaveText('$6.20');
  await expect(basket.getByText('-$350.00',{exact:true})).toBeVisible();
  expect(f.posts).toHaveLength(0);
+});
+
+test('master themes keep a solid canvas, preserve controls and persist after reload',async({page})=>{
+ await page.setViewportSize({width:390,height:844});
+ const f=await setup(page);
+ const canvas=()=>page.evaluate(()=>Object.fromEntries(['html','body','.mt-shell','.mt-workspace','.mt-main','.mt-topbar'].map(s=>{
+  const c=getComputedStyle(document.querySelector(s)!);return [s,{color:c.backgroundColor,image:c.backgroundImage}];
+ })));
+ for(const v of Object.values(await canvas()))expect(v).toEqual({color:'rgb(0, 0, 0)',image:'none'});
+ const drawer=page.getByRole('button',{name:'Collapse Telemetry',exact:true});await drawer.click();
+ await page.getByRole('button',{name:'Switch to light mode',exact:true}).click();
+ await expect(page.locator('html')).toHaveAttribute('data-master-theme','light');
+ for(const v of Object.values(await canvas()))expect(v).toEqual({color:'rgb(255, 255, 255)',image:'none'});
+ await expect(page.getByRole('button',{name:'Expand Telemetry',exact:true})).toHaveAttribute('aria-expanded','false');
+ await expect(page.locator('meta[name="theme-color"]')).toHaveAttribute('content','#ffffff');
+ for(const width of [320,390,1440]){
+  await page.setViewportSize({width,height:900});
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth-innerWidth)).toBeLessThanOrEqual(1);
+ }
+ await page.setViewportSize({width:390,height:844});
+ await page.getByRole('button',{name:'Expand Telemetry',exact:true}).click();
+ await expect(page.locator('.mt-telemetry-label').first()).toHaveCSS('color','rgb(85, 85, 85)');
+ await expect(page.getByRole('button',{name:'Skill details & fingerprint',exact:false})).toHaveCSS('background-color','rgba(0, 0, 0, 0)');
+ await page.evaluate(()=>scrollTo({top:0,behavior:'instant'}));await page.waitForTimeout(300);
+ await page.screenshot({path:'/tmp/tradevice-light-mobile.png',fullPage:true});
+ await page.getByRole('button',{name:'Notifications',exact:true}).click();
+ await expect(page.getByRole('dialog',{name:'Notifications',exact:true})).toHaveCSS('background-color','rgb(255, 255, 255)');
+ await page.getByRole('button',{name:'Close notifications'}).click();
+ await page.reload();await expect(page.getByRole('button',{name:'Switch to dark mode',exact:true})).toBeVisible();
+ await expect(page.locator('html')).toHaveAttribute('data-master-theme','light');
+ for(const name of ['Overview','Cycle Monitor','Anomaly Center','System']){
+  await page.locator('.mt-mobile-nav').getByRole('button',{name,exact:true}).click();
+  expect((await canvas())['.mt-main']).toEqual({color:'rgb(255, 255, 255)',image:'none'});
+ }
+ await page.getByRole('button',{name:'Switch to dark mode',exact:true}).click();
+ await page.reload();await expect(page.getByRole('button',{name:'Switch to light mode',exact:true})).toBeVisible();
+ for(const v of Object.values(await canvas()))expect(v).toEqual({color:'rgb(0, 0, 0)',image:'none'});
+ await expect(page.locator('meta[name="theme-color"]')).toHaveAttribute('content','#000000');
+ await page.evaluate(()=>scrollTo({top:0,behavior:'instant'}));
+ await page.screenshot({path:'/tmp/tradevice-black-mobile.png',fullPage:true});
+ expect(f.posts).toHaveLength(0);
+});
+
+test('saved light theme is applied before first painted frame',async({page})=>{
+ const errors:string[]=[];page.on('pageerror',e=>errors.push(e.message));
+ await page.addInitScript(()=>{
+  localStorage.setItem('tradevice-master-theme','light');
+  const w=window as any;w.themeFrames=[];
+  const sample=()=>{w.themeFrames.push({theme:document.documentElement.dataset.masterTheme,color:getComputedStyle(document.documentElement).backgroundColor});if(w.themeFrames.length<30)requestAnimationFrame(sample);};
+  requestAnimationFrame(sample);
+ });
+ const f=await setup(page);
+ await expect(page.getByRole('button',{name:'Switch to dark mode',exact:true})).toBeVisible();
+ const frames=await page.evaluate(()=>(window as any).themeFrames);
+ expect(frames.length).toBeGreaterThan(0);
+ for(const frame of frames)expect(frame).toEqual({theme:'light',color:'rgb(255, 255, 255)'});
+ expect(errors).toEqual([]);expect(f.posts).toHaveLength(0);
 });

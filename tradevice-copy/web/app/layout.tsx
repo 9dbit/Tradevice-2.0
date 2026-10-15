@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from 'next';
 import type { ReactNode } from 'react';
 import './globals.css';
+import {MASTER_THEME_BOOTSTRAP} from '../lib/master-theme';
 export const metadata: Metadata = {
   title: 'Tradevice Copy | Paper Research',
   description: 'Portal riset copy trading. Tidak menerima dana atau mengeksekusi transaksi live.',
@@ -22,5 +23,5 @@ export const viewport: Viewport = {
   themeColor: '#0D0F14',
 };
 export default function RootLayout({ children }: { children: ReactNode }) {
-  return <html lang="id"><body>{children}</body></html>;
+  return <html lang="id" suppressHydrationWarning><head><script dangerouslySetInnerHTML={{__html:MASTER_THEME_BOOTSTRAP}}/></head><body>{children}</body></html>;
 }
