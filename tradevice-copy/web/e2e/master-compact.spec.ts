@@ -59,7 +59,7 @@ async function setup(page:Page){
    if(delay)await new Promise(resolve=>setTimeout(resolve,delay));
    if(fail)return await r.fulfill({status:503,json:{}});
    if(!freeze)stamp=Date.now();
-   await r.fulfill({json:{settingsProtocol:'V51_CLOSE_DISTANCE_20261015',online:!offline,observedMs:stamp,state:offline?'OFFLINE':state,activeSkillId:'fixture',activeHash:'fixture',revision:1,checks:Object.fromEntries(['identity','brokerFlat','quote','spread','margin','commission','news','reconciled','engineHash'].map(k=>[k,!expiredPreflight&&!(blocked&&k==='news')])),blockers:[...(state==='RECOVERY_REQUIRED'?['ENGINE_RECOVERY_REQUIRED']:blocked?['PREFLIGHT_NEWS','NEWS_NOT_CLEAR']:[]),...(expiredPreflight?['ENGINE_NOT_READY',...['identity','brokerFlat','quote','spread','margin','commission','news','reconciled','engineHash'].map(k=>'PREFLIGHT_'+k.toUpperCase())]:[]),...extraBlockers],canStart,commands:[]}});
+   await r.fulfill({json:{settingsProtocol:'V51_ATR_PRICE_DISTANCE_20261015',online:!offline,observedMs:stamp,state:offline?'OFFLINE':state,activeSkillId:'fixture',activeHash:'fixture',revision:1,checks:Object.fromEntries(['identity','brokerFlat','quote','spread','margin','commission','news','reconciled','engineHash'].map(k=>[k,!expiredPreflight&&!(blocked&&k==='news')])),blockers:[...(state==='RECOVERY_REQUIRED'?['ENGINE_RECOVERY_REQUIRED']:blocked?['PREFLIGHT_NEWS','NEWS_NOT_CLEAR']:[]),...(expiredPreflight?['ENGINE_NOT_READY',...['identity','brokerFlat','quote','spread','margin','commission','news','reconciled','engineHash'].map(k=>'PREFLIGHT_'+k.toUpperCase())]:[]),...extraBlockers],canStart,commands:[]}});
   }finally{concurrent--;}
  });
  await page.goto('/master');
@@ -374,8 +374,18 @@ test('batch settings bind lot and ATR/custom TP to a single synthetic START',asy
  await page.getByLabel('Basket TP',{exact:true}).selectOption('ATR_2');
  await page.getByRole('button',{name:'Start Cycle',exact:true}).click();
  expect(f.posts).toHaveLength(1);
- expect(f.posts[0].settings).toEqual({protocol:'V51_CLOSE_DISTANCE_20261015',baseLot:.1,tpMode:'ATR_2',customTpUsd:null});
+ expect(f.posts[0].settings).toEqual({protocol:'V51_ATR_PRICE_DISTANCE_20261015',baseLot:.1,tpMode:'ATR_2',customTpUsd:null});
  f.running();
  await expect(page.getByLabel('Base lot')).toBeDisabled();
  expect(f.posts).toHaveLength(1);
+});
+
+test('ATR basket TP displays points instead of labeling price distance as profit dollars',async({page})=>{
+ const f=await setup(page);
+ f.setEngine({status:'ENGINE_REPORTED',policy:'CLOSE_DISTANCE_RISK_V51',observedMs:Date.now(),cycleId:'fixture-cycle',state:'ACTIVE',hardLossUsd:-250,targetUsd:42,tpBasis:'ATR_PRICE_DISTANCE',tpDistancePrice:4.2,tpDistancePoints:4200,targetPrice:4104.2,riskExitCommitted:false,brokerFlatReconciled:false,entrySuspended:false,pnl:null,decision:null,authorization:'NONE',authorizationExpiresMs:null,orderDispatchAuthorized:false});
+ await expect(page.getByText('4,200 pts',{exact:true})).toBeVisible();
+ await expect(page.getByText('$4.20 price move · weighted entry',{exact:true})).toBeVisible();
+ await page.getByRole('button',{name:/L6–L10 & risk details/}).click();
+ await expect(page.getByText('4104.200',{exact:true})).toBeVisible();
+ expect(f.posts).toHaveLength(0);
 });

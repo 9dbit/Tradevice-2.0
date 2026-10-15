@@ -1,4 +1,4 @@
-export const SETTINGS_PROTOCOL='V51_CLOSE_DISTANCE_20261015';
+export const SETTINGS_PROTOCOL='V51_ATR_PRICE_DISTANCE_20261015';
 export const baseLots=Array.from({length:10},(_,i)=>(i+1)/100);
 export function demoSettings(baseLot,tpMode,custom){
  const lot=Number(baseLot),value=tpMode==='CUSTOM'?Number(custom):null;

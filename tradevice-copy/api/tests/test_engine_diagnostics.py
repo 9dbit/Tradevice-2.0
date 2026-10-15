@@ -64,3 +64,11 @@ def test_distance_policy_binds_reviewed_limit_and_variable_target():
  assert result['hardLossUsd']==-250 and result['targetUsd']==4.2
  assert result['policy']=='CLOSE_DISTANCE_RISK_V51'
  assert project_engine(raw|{'policy':'UNKNN'},N)['status']=='ENGINE_REPORT_INVALID'
+
+
+def test_atr_points_projection_is_distinct_from_profit_usd():
+ raw=report()|dict(policy='CLOSE_DISTANCE_RISK_V51',hard_loss_usd=-250,tp_basis='ATR_PRICE_DISTANCE',tp_distance_price=4.2,tp_distance_points=4200,target_usd=42,target_price=4104.2)
+ x=project_engine(raw,N)
+ assert x['tpBasis']=='ATR_PRICE_DISTANCE' and x['tpDistancePoints']==4200 and x['targetUsd']==42
+ assert project_engine(raw|{'target_usd':None},N)['targetUsd'] is None
+ assert project_engine(raw|{'tp_distance_points':42},N)['status']=='ENGINE_REPORT_INVALID'

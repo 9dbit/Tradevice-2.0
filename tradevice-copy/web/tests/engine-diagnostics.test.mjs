@@ -24,3 +24,10 @@ test('reviewed distance policy reports selected target and hard loss',()=>{
  const v=validateEngine(f,now);assert.equal(v.hardLossUsd,-250);assert.equal(v.targetUsd,4.2);assert.equal(v.policy,f.policy);
  assert.equal(validateEngine({...f,policy:'UNKNOWN'},now).status,'ENGINE_REPORT_INVALID');
 });
+test('ATR points, price distance and profit estimate retain separate units',()=>{
+ const f={...fixture(),policy:'CLOSE_DISTANCE_RISK_V51',hardLossUsd:-250,tpBasis:'ATR_PRICE_DISTANCE',tpDistancePrice:4.2,tpDistancePoints:4200,targetUsd:42,targetPrice:4104.2};
+ const v=validateEngine(f,now);assert.equal(v.tpDistancePoints,4200);assert.equal(v.targetUsd,42);assert.equal(v.tpDistancePrice,4.2);
+ assert.equal(validateEngine({...f,targetUsd:null},now).tpDistancePoints,4200);
+ assert.equal(validateEngine({...f,tpDistancePoints:42},now).status,'ENGINE_REPORT_INVALID');
+ assert.equal(validateEngine(f,now+8001).tpDistancePoints,null);
+});

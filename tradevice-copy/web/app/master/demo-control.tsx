@@ -93,10 +93,10 @@ export default function DemoControl({token,runtime,refresh,now,batchRaw,newsRaw}
   <ReportDrawer title="Batch settings" meta={`${baseLot} lot · ${tpMode==='FIXED_3_5'?'$3.50':tpMode==='CUSTOM'?'Custom TP':tpMode==='ATR_1'?'1× ATR':'2× ATR'}`}>
    <div className="mt-batch-settings">
     <label>Base lot<select aria-label="Base lot" value={baseLot} disabled={busy||!!activeNotice} onChange={e=>setBaseLot(e.target.value)}>{baseLots.map(lot=><option key={lot} value={lot.toFixed(2)}>{lot.toFixed(2)} lot</option>)}</select></label>
-    <label>Basket TP<select aria-label="Basket TP" value={tpMode} disabled={busy||!!activeNotice} onChange={e=>setTpMode(e.target.value)}><option value="FIXED_3_5">$3.50</option><option value="ATR_1">1× current ATR</option><option value="ATR_2">2× current ATR</option><option value="CUSTOM">Custom USD</option></select></label>
+    <label>Basket TP<select aria-label="Basket TP" value={tpMode} disabled={busy||!!activeNotice} onChange={e=>setTpMode(e.target.value)}><option value="FIXED_3_5">$3.50</option><option value="ATR_1">1× ATR · points</option><option value="ATR_2">2× ATR · points</option><option value="CUSTOM">Custom USD</option></select></label>
     {tpMode==='CUSTOM'&&<label>Custom TP · USD<input aria-label="Custom basket TP" type="text" inputMode="decimal" value={customTp} disabled={busy||!!activeNotice} onChange={e=>setCustomTp(e.target.value)}/></label>}
    </div>
-   <p className="mt-compact-note">Hard basket loss: −$250. L6–L10: closed M1 adverse distance &gt;1,700 points. ATR14 M1 is read as USD and locked before each cycle. Lot and margin are verified again on Start.</p>
+   <p className="mt-compact-note">Hard basket loss: −$250. L6–L10: closed M1 adverse distance &gt;1,700 points. ATR14 M1 sets a price distance from the basket weighted entry, locked before each cycle. ATR 2.10 × 2 = 4,200 points ($4.20 price move). $3.50 and Custom USD remain profit targets. Lot and margin are verified again on Start.</p>
    {!settings&&<p className="mt-inline-blocker">Custom TP must be $0.01–$250.00, with at most two decimals.</p>}
    {!settingsReady&&<p className="mt-compact-note">Waiting for the engine settings protocol. Start remains blocked.</p>}
   </ReportDrawer>

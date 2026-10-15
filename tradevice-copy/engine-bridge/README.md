@@ -20,3 +20,5 @@ Heartbeat repair (2026-10-14): the bridge reuses a pinned TLS connection and cou
 TRADEVICEPC task `TRADEVICE-V51-DemoBridge` uses the virtual environment's `pythonw.exe` to avoid a closable console window. Startup remains standby and does not resume a prior run. The previous task XML and bridge source are backed up in the clone's `read_only` directory. No original engine or journal is changed.
 
 2026-10-15 closed-M1/settings revision: see `EXECUTION_SETTINGS_20261015.md` and the baseline-bound patch package. New dashboard Starts require explicit settings protocol; use `apply_execution_settings.py` only after the documented idle/flat checks. Original source and legacy journals retain their baseline configuration digest.
+
+ATR TP correction: `ATR_PRICE_DISTANCE_20261015.md` replaces numeric-USD ATR targets with a frozen price distance from the basket weighted entry. Requires settings protocol `V51_ATR_PRICE_DISTANCE_20261015`.

@@ -1,0 +1,35 @@
+{
+  "baseline_fingerprint_sha256": "722c23673123128a2afe098aba2d29e905af595478246bba804684beea240ae6",
+  "files": {
+    "goldtrap_arc/config.py": {
+      "before_sha256": "c9bbb9921ad0dfa797ad8839ae7cd8ae77422a10f03564e0431b995e56bfbee3",
+      "after_sha256": "9f38196d95c4c6956bda057ddc56849ff0495945631fab89ff0f0a6b52eaaf6e",
+      "patch": "goldtrap_arc__config.py.patch"
+    },
+    "goldtrap_arc/rules.py": {
+      "before_sha256": "a5260559c52615c9dbaa98aaec463db93ae52495903cf18e0019f5e749d512e2",
+      "after_sha256": "74cc2216cc29826d105b7c598c8ec69099b0035ba983f60d22628b76e221c9ca",
+      "patch": "goldtrap_arc__rules.py.patch"
+    },
+    "goldtrap_arc/execution.py": {
+      "before_sha256": "f3916a726676b77d0e5286e541cf003c5f38c6cd23565dd91761db37e51803af",
+      "after_sha256": "2d7f2fd3249962e4100603d4f053d1a2042d3796ea99b78a42c21ed69926fae7",
+      "patch": "goldtrap_arc__execution.py.patch"
+    },
+    "v51_engine_diagnostics.py": {
+      "before_sha256": "2390ffa95c2896ef59b1a65625609c14e7f8a0cb2bbb67b2866a2f6f66761e30",
+      "after_sha256": "3319e76ed46cd744cd0c355018eaa1ded2cf74bc41737c8d03840af5e125d871",
+      "patch": "v51_engine_diagnostics.py.patch"
+    },
+    "demo_settings.py": {
+      "before_sha256": "8f5ed425b7fcc197b571ff04f3a1765f418e938e0e9bfb1a7832d87b9569c300",
+      "after_sha256": "1df209bda7376d5dc35bd880b1e82f194e552f6feaffa23fc4c44c8d337c3185",
+      "patch": "demo_settings.py.patch"
+    },
+    "v51_execution_settings.py": {
+      "before_sha256": "a2191eba710f1416850b2c31283c3697bb46d5e36d445b99116e913e77eaaa46",
+      "after_sha256": "3bf861e035da45eb3a66ab1f6b78843f9fa707c09871b00b27414d23621ded5e",
+      "patch": "v51_execution_settings.py.patch"
+    }
+  }
+}

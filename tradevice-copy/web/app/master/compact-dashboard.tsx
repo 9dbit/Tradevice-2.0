@@ -60,7 +60,7 @@ export default function CompactDashboard({data,token,onNavigate}:{
    <div className="mt-telemetry-grid">
     <Datum icon="activity" label="Basket estimate" value={usd(estimate?.value)} hint={estimate?`${estimate.fresh?'Reported':'Last known'} · ${Math.max(0,Math.floor((now-Math.min(estimate.atMs,estimate.tickMs))/1000))}s ago · costs unverified`:'Awaiting estimate'}/>
     <Datum icon="shield" label="Hard loss" value={usd(engine.hardLossUsd)} hint={engine.riskExitCommitted===true?'Exit committed':'engine report'}/>
-    <Datum icon="check" label="Basket TP" value={usd(engine.targetUsd)} hint="engine report"/>
+    <Datum icon="check" label="Basket TP" value={engine.tpBasis==='ATR_PRICE_DISTANCE'?fmt(engine.tpDistancePoints,' pts'):usd(engine.targetUsd)} hint={engine.tpBasis==='ATR_PRICE_DISTANCE'?`${usd(engine.tpDistancePrice)} price move · weighted entry`:'engine report'}/>
    </div>
    {estimate&&!estimate.fresh&&<p className="mt-compact-note mt-basket-stale">Last known estimate · cycle {estimate.cycleId}. Current basket P&amp;L is unverified.</p>}
    {engine.entrySuspended===true&&<p className="mt-inline-blocker"><I name="alert" size={14}/><span>Entries suspended · resolve blockers and reconcile before a new cycle.</span></p>}
@@ -74,13 +74,14 @@ export default function CompactDashboard({data,token,onNavigate}:{
      <Datum icon="shield" label="Broker flat" value={engine.brokerFlatReconciled===true?'Reported':'Unverified'}/>
     </div>
     <dl className="mt-detail-list">
+     <div><dt>TP price</dt><dd>{engine.targetPrice!=null?engine.targetPrice.toFixed(3):'Unverified'}</dd></div>
      <div><dt>Decision</dt><dd>{decision?.reasons.join(' · ')||'No fresh decision'}</dd></div>
      <div><dt>Authorization</dt><dd>{engine.authorization} · {newsTime(engine.authorizationExpiresMs)}</dd></div>
      <div><dt>Closed candle</dt><dd>{newsTime(decision?.candleCloseMs??null)}</dd></div>
      <div><dt>Cycle</dt><dd>{engine.cycleId||'—'}</dd></div>
      <div><dt>Engine report</dt><dd>{newsTime(engine.observedMs)}</dd></div>
     </dl>
-    <p className="mt-compact-note">Basket estimate uses cached realized results. Open P&amp;L excludes realized results and some costs. A fresh report does not verify protection.</p>
+    <p className="mt-compact-note">ATR TP measures price distance from the volume-weighted entry; fees and swap can affect realized profit. Basket estimate uses cached realized results. Open P&amp;L excludes realized results and some costs. A fresh report does not verify protection.</p>
    </ReportDrawer>
   </ReportSection>
 

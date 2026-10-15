@@ -1,5 +1,7 @@
 # Closed-M1 distance policy and dashboard basket settings
 
+> ATR numeric-USD behavior below is historical and superseded by `ATR_PRICE_DISTANCE_20261015.md`.
+
 Only the isolated V5.1 research clone and staging platform are in scope. This change does not authorize a run, change selected skills, or dispatch an order.
 
 ## Audited incidents

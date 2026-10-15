@@ -1,0 +1,108 @@
+--- a/goldtrap_arc/execution.py
++++ b/goldtrap_arc/execution.py
+@@ -3,12 +3,12 @@
+ from .adaptive_policy import reversal_decision, risk_assessment
+ from .config import ArcAdaptiveDeferred
+ from time import time
+-from .config import CONFIG,ArcSafetyError,ArcAdaptiveSpreadWait,ArcAdaptiveRiskBlocked,verify_spec,execution_policy,execution_config_proof
+-from .models import Side
++from .config import CONFIG,ArcSafetyError,ArcAdaptiveSpreadWait,ArcAdaptiveRiskBlocked,verify_spec,execution_policy,execution_config_proof,atr_tp_distance
++from .models import Side,Position
+ from .mt5_adapter import ArcConnectionWait
+ from .pending_ladder import CONTRACT, ARMING_MODES, initial_plan, fixed_plan, quantized_target, validate_closed_m1, ArcM1BoundaryWait
+ from .rules import (basket_pl,basket_target_price,fixed_next_lot,adaptive_next_lot,
+-                    atr_at,reversal_confirmed)
++                    atr_at,reversal_confirmed,basket_target_profit)
+ 
+ BROKER_SETTLEMENT_TOLERANCE_SECONDS = 1.0
+ SETTLEMENT_WAIT = 'WAIT_BROKER_SETTLEMENT'
+@@ -409,18 +409,55 @@
+ 
+     def target_coordinator(self,reason):
+         if not self.state.get('target_exit_committed'):
+-            snap=self.adapter.snapshot();self.owned(snap);pl=self.exact_total_pl(snap)
+-            if pl+1e-9<self.cfg.basket_profit_target_usd:return False
++            snap=self.adapter.snapshot();positions,_=self.owned(snap);pl=self.exact_total_pl(snap)
++            if atr_tp_distance(self.cfg) is not None:
++                if not positions:return False
++                models=self.adapter.models(positions);target_price=quantized_target(models,self.cfg)
++                executable=snap.tick.bid if models[0].side==Side.BUY else snap.tick.ask
++                if (executable<target_price if models[0].side==Side.BUY else executable>target_price):return False
++                target=basket_target_profit(models,self.cfg)
++            else:
++                target=self.cfg.basket_profit_target_usd
++                if pl+1e-9<target:return False
+             self.state.update(state='TARGET_EXIT',target_exit_committed=True,target_exit_commit_pl=pl,
+                               target_exit_reason=reason,block_next_cycle=True)
+             self.save();self.ledger.append('TARGET_EXIT_COMMITTED',cycle_id=self.state['cycle_id'],
+-                executable_cycle_pl=pl,target=self.cfg.basket_profit_target_usd,reason=reason)
++                executable_cycle_pl=pl,target=target,reason=reason)
+         self._reduce_until_flat('TARGET_EXIT')
+         realized=self.adapter.realized_pl(self.state['cycle_id'])
+         self.mark_complete('COMPLETE_TARGET',cached_realized_pl=realized)
+         self.ledger.append('COMPLETE_TARGET',cycle_id=self.state['cycle_id'],positions=0,orders=0,
+                            actual_realized_pl=realized)
+         return True
++
++    def _atr_history_target_reached(self,life,members=None):
++        """Require TP deals, closed owned volume and distance price evidence.
++
++        A manual exit or positive dollar result alone never proves ATR TP.
++        The fallback handles a prearmed basket filled/closed between polls.
++        """
++        if atr_tp_distance(self.cfg) is None:return False
++        entries=[d for d in life.get('entry_deals',()) if members is None or int(d.position_id) in members]
++        exits=[d for d in life.get('exit_deals',()) if members is None or int(d.position_id) in members]
++        ids={int(d.position_id) for d in entries}
++        if not ids or (members is not None and ids!=set(members)):return False
++        if {int(d.position_id) for d in exits}!=ids:return False
++        types={int(getattr(d,'type',-1)) for d in entries}
++        if len(types)!=1 or not types<={0,1}:return False
++        side=Side.BUY if types=={0} else Side.SELL
++        for pid in ids:
++            opened=sum(float(d.volume) for d in entries if int(d.position_id)==pid)
++            closed=sum(float(d.volume) for d in exits if int(d.position_id)==pid)
++            if opened<=0 or not math.isclose(opened,closed,rel_tol=0,abs_tol=1e-9):return False
++        models=[Position(i+1,side,float(d.volume),float(d.price),0,'HISTORY') for i,d in enumerate(entries)]
++        if any(not math.isfinite(p.entry) or not math.isfinite(p.lot) or p.lot<=0 for p in models):return False
++        target=quantized_target(models,self.cfg)
++        if set(self.state.get('tp_generation_members',()))==ids and self.state.get('tp_generation_status')=='SYNCED':
++            target=self.state['tp_generation_target']
++        tp_reason=getattr(getattr(self.adapter,'mt5',None),'DEAL_REASON_TP',5)
++        return all(int(d.reason)==tp_reason and math.isfinite(float(d.price)) and
++                   (float(d.price)>=target-self.cfg.tick_size/2 if side==Side.BUY else float(d.price)<=target+self.cfg.tick_size/2)
++                   for d in exits)
+ 
+     def _completed_target_prefix(self,life):
+         """Prove a synced basket closed BEFORE any surviving recovery fill.
+@@ -448,7 +485,9 @@
+         if any(int(d.time_msc)<=last_exit for d in entries if int(d.position_id) not in members):return None
+         net=sum(float(getattr(d,k,0.0)) for d in selected_entries+selected_exits
+                 for k in ('profit','commission','swap','fee'))
+-        if net+1e-9<self.cfg.basket_profit_target_usd:return None
++        if atr_tp_distance(self.cfg) is not None:
++            if not self._atr_history_target_reached(life,members):return None
++        elif net+1e-9<self.cfg.basket_profit_target_usd:return None
+         return dict(net_pl=net,position_ids=sorted(members),last_exit_msc=last_exit)
+ 
+     def _finish_terminal_exit(self):
+@@ -491,7 +530,8 @@
+         proven_ids=set(prefix['position_ids'] if prefix else life.get('position_ids',()))
+         if any(p.ticket in proven_ids for p in positions):return False
+         net=float(prefix['net_pl'] if prefix else life.get('net_pl',0.0))
+-        if net+1e-9>=self.cfg.basket_profit_target_usd:
++        target_reached=(bool(prefix) or self._atr_history_target_reached(life)) if atr_tp_distance(self.cfg) is not None else net+1e-9>=self.cfg.basket_profit_target_usd
++        if target_reached:
+             kind='TARGET_HISTORY'
+         elif net<=self.cfg.hard_basket_loss_usd+1e-9:
+             kind='RISK_HISTORY'
+@@ -528,7 +568,8 @@
+                             or self.state.get('tp_generation_target')!=target)
+         if generation_changed:
+             self.state.update(tp_generation=self.state.get('tp_generation',0)+1,tp_generation_status='SYNCING',
+-                              tp_generation_members=members,tp_generation_target=target)
++                              tp_generation_members=members,tp_generation_target=target,
++                              tp_generation_profit_target=basket_target_profit(models,self.cfg))
+             self.save();self.ledger.append('TP_GENERATION_BEGIN',cycle_id=self.state['cycle_id'],
+                 generation=self.state['tp_generation'],target=target,members=members)
+         elif (self.state.get('tp_generation_status')=='SYNCED'

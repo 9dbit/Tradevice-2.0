@@ -97,3 +97,10 @@ def test_command_retry_cannot_change_bound_settings(monkeypatch):
  monkeypatch.setattr(control,'locked',lambda conn:({}, {}, 0))
  assert control.submit('fixture',p,True)['status']=='APPLIED'
  with pytest.raises(SkillError):control.submit('fixture',p|{'settings':p['settings']|{'baseLot':.02}},True)
+
+
+def test_legacy_atr_protocol_can_heartbeat_but_cannot_start():
+ old=snapshot()|{'settingsProtocol':'V51_CLOSE_DISTANCE_20261015'}
+ validate_snapshot(old,old['observedMs'])
+ assert 'ENGINE_SETTINGS_UPGRADE_REQUIRED' in start_blockers(old,dict(selected_skill_id=old['activeSkillId'],revision=1),old['observedMs'],True)
+ with pytest.raises(SkillError):validate_command(command()|{'settings':default_settings()|{'protocol':'V51_CLOSE_DISTANCE_20261015'}})

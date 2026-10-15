@@ -121,13 +121,18 @@ class SettingsTests(unittest.TestCase):
    with self.assertRaises(ValueError):validate_settings(default_settings()|{'baseLot':bad})
   for custom in [0,True,251,1.001,float('inf')]:
    with self.assertRaises(ValueError):validate_settings(default_settings()|{'tpMode':'CUSTOM','customTpUsd':custom})
- def test_atr_is_numeric_usd_and_frozen_per_cycle(self):
+ def test_atr_price_distance_and_fixed_usd_modes_are_separate(self):
   bars=[Bar(time=i*60,open=100,high=101.05,low=98.95,close=100,spread_points=240) for i in range(15)]
   a=NS(cfg=CONFIG,recent_closed_bars=lambda count:bars)
   with patch('v51_execution_settings.time',return_value=900):
    for mode,target in [('ATR_1',2.1),('ATR_2',4.2),('FIXED_3_5',3.5),('CUSTOM',8.75)]:
     c=configure_adapter(a,default_settings()|{'tpMode':mode,'customTpUsd':8.75 if mode=='CUSTOM' else None})
-    self.assertEqual(c.basket_profit_target_usd,target)
-    self.assertEqual(execution_config_proof(c)['target_usd'],target)
+    proof=execution_config_proof(c)
+    if mode.startswith('ATR_'):
+     self.assertAlmostEqual(proof['tp_distance_price'],target)
+     self.assertIsNone(proof['target_usd'])
+    else:
+     self.assertEqual(c.basket_profit_target_usd,target)
+     self.assertEqual(proof['target_usd'],target)
   with patch('v51_execution_settings.time',return_value=1020),self.assertRaises(ArcSafetyError):configure_adapter(a,default_settings()|{'tpMode':'ATR_1'})
 if __name__=='__main__':unittest.main()

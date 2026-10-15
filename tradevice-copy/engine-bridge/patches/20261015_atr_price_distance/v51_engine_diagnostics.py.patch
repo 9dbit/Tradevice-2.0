@@ -1,0 +1,28 @@
+--- a/v51_engine_diagnostics.py
++++ b/v51_engine_diagnostics.py
+@@ -1,7 +1,7 @@
+ """Read-only diagnostic channel; no order APIs, no historical journal adoption."""
+ import json, math, os, tempfile, time
+ from pathlib import Path
+-from goldtrap_arc.config import execution_policy
++from goldtrap_arc.config import execution_policy,atr_tp_distance
+ PATH=Path(r'D:\GoldTrapCore\GoldTrapCore_v0.2_v51_research_20261013\read_only\engine_diagnostics.json')
+ SCHEMA='tradevice.v51.engine.diagnostics.v1'
+ 
+@@ -69,10 +69,15 @@
+     completed=str(state.get('state','')).startswith('COMPLETE')
+     # Never renew a cached P/L observation or describe a telemetry heartbeat as protection.
+     if completed:usable=False
++    distance=atr_tp_distance(engine.cfg)
++    target_usd=state.get('tp_generation_profit_target') if distance is not None else engine.cfg.basket_profit_target_usd
+     return dict(schema=SCHEMA,status='ENGINE_REPORTED',source='V51_RUNNER_DIAGNOSTICS',
+         read_only=True,order_dispatch_authorized=False,observed_ms=now,
+         cycle_id=cycle,state=str(state.get('state','UNKNOWN'))[:48],
+-        policy=execution_policy(engine.cfg),hard_loss_usd=engine.cfg.hard_basket_loss_usd,target_usd=engine.cfg.basket_profit_target_usd,
++        policy=execution_policy(engine.cfg),hard_loss_usd=engine.cfg.hard_basket_loss_usd,target_usd=target_usd,
++        tp_basis='ATR_PRICE_DISTANCE' if distance is not None else 'PROFIT_USD',
++        tp_distance_price=distance,tp_distance_points=distance/engine.cfg.point if distance is not None else None,
++        target_price=state.get('tp_generation_target') if state.get('tp_generation_status')=='SYNCED' else None,
+         risk_exit_committed=state.get('risk_exit_committed') is True,
+         broker_flat_reconciled=completed and state.get('broker_flat_confirmed') is True,
+         entry_suspended=state.get('news_entry_suspended') is True or state.get('safety_paused') is True or state.get('state')!='ACTIVE',
