@@ -5,7 +5,14 @@ export const metadata: Metadata = {
   title: 'Tradevice Copy | Paper Research',
   description: 'Portal riset copy trading. Tidak menerima dana atau mengeksekusi transaksi live.',
   robots: { index: false, follow: false },
-  icons: { icon: [{ url: '/icon.svg?v=orange-20261012', type: 'image/svg+xml' }], shortcut: '/icon.svg?v=orange-20261012' },
+  applicationName: 'Tradevice',
+  manifest: '/manifest.webmanifest',
+  appleWebApp: { capable: true, title: 'Tradevice', statusBarStyle: 'black-translucent' },
+  icons: {
+    icon: [{ url: '/icon.svg?v=sharp-20261015', type: 'image/svg+xml' }],
+    shortcut: '/icon.svg?v=sharp-20261015',
+    apple: [{ url: '/icons/tradevice-180-v2.png', sizes: '180x180', type: 'image/png' }],
+  },
 };
 export const viewport: Viewport = {
   width: 'device-width',
