@@ -266,13 +266,14 @@ export default function MasterConsole() {
         {tab==='dashboard'&&<CompactDashboard data={data} token={token} onNavigate={setTab}/>}
         {tab==='overview'&&<>
           <FinancialOverview data={data}/>
+          <DemoBatchPanel raw={data?.demoBatch??data?.market?.demoBatch}/>
           <section className="mt-panel mt-performance"><SectionHead eyebrow="PAPER PERFORMANCE" title="Verified paper equity curve" extra={<Pill value={data?.equityCurve.length ? "VERIFIED" : "NO DATA"}/>}/>
             <Graph numbers={data?.equityCurve||[]}/>
 
           </section>
         </>}
         {tab==='cycles'&&<>
-          <DemoBatchPanel raw={data?.demoBatch??data?.market?.demoBatch} cycleOnly/>
+
           <section className="mt-panel"><SectionHead eyebrow="MASTER ENGINE" title="Supervisor continuity" extra={<Pill value={mode}/>}/>
             <div className="mt-state-flow">{[
               ['01','MARKET DATA','Source quality and freshness'],

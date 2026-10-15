@@ -10,7 +10,7 @@ export default function DemoBatchPanel({raw,now,cycleOnly=false}:{raw:unknown;no
  const stamp=b?new Intl.DateTimeFormat('en-GB',{timeZone:'Asia/Jakarta',dateStyle:'medium',timeStyle:'medium'}).format(new Date(b.observed_ms))+' WIB':'—';
  const reasons=b?.blockers.map(x=>x==='CALENDAR_STALE_OR_FUTURE'?'Calendar freshness expired — entry suspended':x.replaceAll('_',' '));
  return <section className="mt-u-panel mt-u-market" aria-label="Bounded demo batch evidence">
-  <div className="mt-u-panel-head"><div><span className="mt-u-overline">EXNESS DEMO · BROKER HISTORY</span><h2>Demo Batch · Up to 10 Cycles</h2></div>
+  <div className="mt-u-panel-head"><div><span className="mt-u-overline">EXNESS DEMO · BROKER HISTORY</span><h2>Trading History</h2></div>
    <span className="mt-u-chip">{b?(final?'FINAL RESULT · ':b.fresh?'':'STALE RUNNER · ')+b.status:'NO VERIFIED BATCH'}</span></div>
   <div className="mt-u-market-grid">
    <div className="mt-u-market-cell"><small>Completed / requested</small><strong>{b?`${b.completed} / ${b.requested}`:'—'}</strong><span>{b?`${b.started} cycles started`:'Awaiting broker evidence'}</span></div>
@@ -23,9 +23,9 @@ export default function DemoBatchPanel({raw,now,cycleOnly=false}:{raw:unknown;no
    </>}
    <div className="mt-u-market-cell"><small>Unfinished cycles</small><strong>{b?.unfinished??'—'}</strong><span>{b?.batch_id||'No batch identity'}</span></div>
   </div>
-  <p className="mt-u-help">{reasons?.length?reasons.join(' · '):b?'No reported blocker':'Awaiting signed demo history'}. Last result: {stamp}. {final?'Historical results remain visible while quotes or the runner are offline.':'Running status requires a fresh heartbeat.'} New execution requires a verified preflight.</p>
-  {!!b?.cycles.length&&<div className="mt-table-scroll"><table className="mt-table"><thead><tr><th>Cycle</th><th>Status</th><th>Net</th><th>Layer</th><th>Peak lots</th><th>Broker-flat</th></tr></thead><tbody>
-   {b.cycles.map(c=><tr key={c.cycle_id}><td>{c.number} · {c.cycle_id}</td><td>{c.outcome}</td><td>{money(c.net_usd)}</td><td>{c.layers}</td><td>{c.peak_lots}</td><td>{c.broker_flat?'CONFIRMED':'NOT CONFIRMED'}</td></tr>)}
+  <p className="mt-u-help">{reasons?.length?reasons.join(' · '):b?.status==='SAFETY_STOP'?'Batch stopped at safety limit':b?'No batch-level blocker':'Awaiting signed demo history'}. Last result: {stamp}. {final?'Historical results remain visible while quotes or the runner are offline.':'Running status requires a fresh heartbeat.'} New execution requires a verified preflight.</p>
+  {!!b?.cycles.length&&<div className="mt-table-scroll"><table className="mt-table"><thead><tr><th>Cycle</th><th>Side</th><th>Status</th><th>Net</th><th>Layer</th><th>Peak lots</th><th>Broker-flat</th></tr></thead><tbody>
+   {b.cycles.map(c=><tr key={c.cycle_id}><td>{c.number} · {c.cycle_id}</td><td>{c.side||"—"}</td><td>{c.outcome}</td><td>{money(c.net_usd)}</td><td>{c.layers}</td><td>{c.peak_lots}</td><td>{c.broker_flat?'CONFIRMED':'NOT CONFIRMED'}</td></tr>)}
   </tbody></table></div>}
  </section>;
 }

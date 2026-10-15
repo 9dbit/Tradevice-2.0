@@ -19,12 +19,12 @@ async function setup(page:Page){
    if(delay)await new Promise(resolve=>setTimeout(resolve,delay));
    if(fail)return await r.fulfill({status:503,json:{}});
    if(!freeze)stamp=Date.now();
-   await r.fulfill({json:{online:true,observedMs:stamp,state,activeSkillId:'fixture',activeHash:'fixture',revision:1,checks:Object.fromEntries(['identity','brokerFlat','quote','spread','margin','commission','news','reconciled','engineHash'].map(k=>[k,!(blocked&&k==='news')])),blockers:blocked?['CALENDAR_REFRESH_PENDING']:[],canStart,commands:[]}});
+   await r.fulfill({json:{online:true,observedMs:stamp,state,activeSkillId:'fixture',activeHash:'fixture',revision:1,checks:Object.fromEntries(['identity','brokerFlat','quote','spread','margin','commission','news','reconciled','engineHash'].map(k=>[k,!(blocked&&k==='news')])),blockers:state==='RECOVERY_REQUIRED'?['ENGINE_RECOVERY_REQUIRED']:blocked?['CALENDAR_REFRESH_PENDING']:[],canStart,commands:[]}});
   }finally{concurrent--;}
  });
  await page.goto('/master');
  await expect(page.getByLabel('Engine connection')).toHaveText('Ready');
- return {posts,ready:()=>{state='READY';canStart=true;},setGrowth:(v:any)=>growthHistory=v,setBatch:(v:any)=>demoBatch=v,setTerminal:(v:any)=>terminalMirror=v,block:()=>{canStart=false;blocked=true;},running:()=>{canStart=false;state='RUNNING';},setFail:(v:boolean)=>fail=v,freeze:()=>freeze=true,setDelay:(v:number)=>delay=v,max:()=>maxConcurrent};
+ return {posts,recovery:()=>{state='RECOVERY_REQUIRED';canStart=false;},ready:()=>{state='READY';canStart=true;},setGrowth:(v:any)=>growthHistory=v,setBatch:(v:any)=>demoBatch=v,setTerminal:(v:any)=>terminalMirror=v,block:()=>{canStart=false;blocked=true;},running:()=>{canStart=false;state='RUNNING';},setFail:(v:boolean)=>fail=v,freeze:()=>freeze=true,setDelay:(v:number)=>delay=v,max:()=>maxConcurrent};
 }
 
 test('compact layout: five destinations, aligned status, numeric composer, System contains risk and paper',async({page})=>{
@@ -162,3 +162,13 @@ test('growth chart filters actual timestamped fixtures and remains usable on mob
  await expect(page.getByLabel('Inspect completed cycle')).toHaveAttribute('max','2');
  expect(f.posts).toHaveLength(0);
 });
+
+ test('recovery contradicting true raw checks shows unverified reconciliation and spinner',async({page})=>{
+ const f=await setup(page);f.recovery();await expect(page.getByLabel('Engine connection')).toHaveText('Blocked');
+ await page.getByRole('button',{name:/Preflight/}).click();
+ const checks=page.getByLabel('Demo preflight checks');
+ await expect(checks.locator('li').filter({hasText:'Reconciliation'})).toHaveAttribute('data-verified','false');
+ await expect(checks.locator('li').filter({hasText:'Engine ready'})).toHaveAttribute('data-verified','false');
+ await expect(checks.locator('.mt-check-pending')).toHaveCount(2);
+ await expect(page.getByRole('button',{name:'Start Cycle',exact:true})).toBeDisabled();expect(f.posts).toHaveLength(0);
+ });

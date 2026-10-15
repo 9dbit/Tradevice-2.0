@@ -277,3 +277,5 @@ body{background:#000;color:#F7F7F7}
   .app-shell .bottom-liquid-highlight,
   .app-shell .bottom-item{transition:none!important;animation:none!important}
 }
+
+.mt-check-pending{display:inline-flex;animation:preflight-spin 1.2s linear infinite;opacity:.65}@keyframes preflight-spin{to{transform:rotate(360deg)}}@media(prefers-reduced-motion:reduce){.mt-check-pending{animation:none}}

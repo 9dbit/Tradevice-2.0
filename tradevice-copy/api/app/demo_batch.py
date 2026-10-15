@@ -27,7 +27,7 @@ def project_batch(raw,now):
             if (outcome.startswith('COMPLETE') and not flat) or (done and net is None):raise ValueError()
             ids.add(cid)
             cycles.append(dict(number=i,cycle_id=cid,outcome=outcome,broker_flat=flat,layers=layers,
-                peak_lots=peak,net_usd=net,completed=done))
+                peak_lots=peak,net_usd=net,side=r.get("side") if r.get("side") in ("BUY","SELL") else None,completed=done))
         completed=[r for r in cycles if r['completed']]
         if status=='COMPLETED' and len(completed)!=raw['requested']:raise ValueError()
         return dict(schema=SCHEMA,read_only=True,batch_id=bid,observed_ms=at,status=status,

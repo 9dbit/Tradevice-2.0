@@ -15,7 +15,7 @@ export function validateBatch(r,now=Date.now()){
   (c.outcome.startsWith('COMPLETE')&&!c.broker_flat))return null;
   const completed=c.broker_flat&&c.outcome.startsWith('COMPLETE')&&c.layers>0;
   if(completed&&c.net_usd===null)return null;
-  ids.add(c.cycle_id);cycles.push({number:i+1,cycle_id:c.cycle_id,outcome:c.outcome,broker_flat:c.broker_flat,layers:c.layers,peak_lots:c.peak_lots,net_usd:c.net_usd,completed});
+  ids.add(c.cycle_id);cycles.push({number:i+1,cycle_id:c.cycle_id,outcome:c.outcome,broker_flat:c.broker_flat,layers:c.layers,peak_lots:c.peak_lots,net_usd:c.net_usd,side:['BUY','SELL'].includes(c.side)?c.side:null,completed});
  }
  const done=cycles.filter(c=>c.completed);
  if(r.status==='COMPLETED'&&done.length!==r.requested)return null;

@@ -1,8 +1,9 @@
 'use client';
 import {useCallback,useEffect,useRef,useState} from 'react';
+import {preflightVerified} from '../../lib/preflight-status.mjs';
 import {cycleProgress} from '../../lib/cycle-progress.mjs';
 import {ReportDrawer,ReportIcon as I} from './report-ui';
-const preflightChecks=[['identity','Demo identity'],['brokerFlat','Broker flat'],['quote','Fresh quote'],['spread','Spread'],['margin','Margin'],['commission','Commission'],['news','News'],['reconciled','Reconciliation'],['engineHash','Engine hash']];
+const preflightChecks=[['identity','Demo identity'],['brokerFlat','Broker flat'],['quote','Fresh quote'],['spread','Spread'],['margin','Margin'],['commission','Commission'],['news','News'],['reconciled','Reconciliation'],['engineHash','Engine hash'],['engineReady','Engine ready']];
 export type DemoRuntime={online:boolean;observedMs:number|null;state:string;activeSkillId:string|null;activeHash:string|null;revision:number|null;checks:Record<string,boolean>;blockers:string[];canStart:boolean;commands:Array<{requestId:string;action:string;status:string;errorCode:string|null}>};
 export function useDemoRuntime(token:string){
  const [runtime,setRuntime]=useState<DemoRuntime|null>(null),generation=useRef(0);
@@ -52,12 +53,13 @@ export default function DemoControl({token,runtime,refresh,now,batchRaw}:{token:
  const showReset=!!showCycle&&ended;
  function resetComposer(){if(!showReset||busy)return;setResetBatch(progress!.batchId);setCount(String(progress!.total));setRequest(null);}
  const displayedProgress=resetBatch===progress?.batchId&&!runtimeRunning?null:progress;
- const verifiedCount=preflightChecks.filter(([key])=>fresh&&runtime?.checks[key]===true).length;
+ const checkedKey=(key:string)=>preflightVerified(runtime,fresh,key);
+ const verifiedCount=preflightChecks.filter(([key])=>checkedKey(key)).length;
  const status=!fresh?'Stale':runtime?.canStart?'Ready':({STARTING:'Starting',RUNNING:'Running',PAUSING:'Pausing',PAUSED:'Paused',STOPPING:'Stopping'} as Record<string,string>)[runtime?.state||'']||'Blocked';
  const blocker=!fresh?'Engine heartbeat unavailable':runtime?.canStart?'':runtime?.blockers.join(' · ')||(['STARTING','RUNNING','PAUSING','PAUSED','STOPPING'].includes(runtime?.state||'')?'':'Preflight incomplete');
  return <section className="mt-u-panel mt-demo-control" aria-labelledby="demo-control-title">
   <div className="mt-u-panel-head mt-demo-heading"><h2 id="demo-control-title"><I name="repeat"/> Trading Cycle</h2><strong aria-label="Engine connection" data-state={status}>{status}</strong></div>
-  <div className="mt-demo-inputs"><label htmlFor={showCycle?undefined:'demo-cycle-count'}>{showCycle?(ended?'Executed cycles':'Current cycle'):'Cycle count'}<small>Demo · XAUUSDm{showCycle?(progress?.fresh?'':' · Last reported'):' · 1–10'}</small></label>
+  <div className="mt-demo-inputs"><label htmlFor={showCycle?undefined:'demo-cycle-count'}>{showCycle?(ended?'Executed cycles':'Current cycle'):'Cycle count'}<small>Demo · XAUUSDm{showCycle?` · ${ended?'Last side':'Side'}: ${progress?.side||'Unverified'}`:''}{showCycle?(progress?.fresh?'':' · Last reported'):' · 1–10'}</small></label>
    {showCycle?<output className="mt-current-cycle" aria-label="Current cycle">{ended?progress!.executedCount:progress!.current}/{progress!.total}</output>:<input id="demo-cycle-count" aria-label="Demo cycle count" type="text" inputMode="numeric" pattern="[0-9]*" maxLength={2} value={count} disabled={busy||runtimeRunning} onChange={e=>setCount(e.target.value.replace(/\D/g,''))}/>}
   </div>
   <div className="mt-u-buttons">
@@ -69,12 +71,13 @@ export default function DemoControl({token,runtime,refresh,now,batchRaw}:{token:
    <div className="mt-cycle-track" role="progressbar" aria-label="Completed cycles" aria-valuemin={0} aria-valuemax={displayedProgress?.total??10} {...(displayedProgress?{'aria-valuenow':displayedProgress.completed}:{})} aria-valuetext={displayedProgress?`${displayedProgress.completed} of ${displayedProgress.total} completed${displayedProgress.fresh?'':' · last reported'}`:'Awaiting batch evidence'}><span style={{width:(displayedProgress?.percent??0)+'%'}}/>{displayedProgress?.active&&<i aria-hidden="true" style={{left:(Math.min(displayedProgress.percent,97))+'%'}}/>}</div>
    <div className="mt-cycle-progress-meta"><small>{displayedProgress?`${displayedProgress.completed} / ${displayedProgress.total} completed`:'Awaiting batch evidence'}</small></div>
   </div>
+  {runtime?.blockers.some(b=>/RECOVERY|RECONCILIATION/.test(b))&&<p className="mt-compact-note">Recovery required: reconcile broker positions, orders and command receipts. Reset only clears this form; it does not unlock the engine.</p>}
   {blocker&&<p className="mt-inline-blocker"><I name="alert" size={14}/><span>{blocker}</span></p>}
   <ReportDrawer title="Preflight" meta={`${verifiedCount} / ${preflightChecks.length}`}>
    <ul className="mt-preflight-grid" aria-label="Demo preflight checks">{preflightChecks.map(([key,label])=>{
-    const checked=fresh&&runtime?.checks[key]===true;
-    return <li key={key} data-verified={checked}><span role="img" aria-label={checked?'Verified':'Not verified'} title={checked?'Verified':'Not verified'}><I name={checked?'check':'minus'} size={17}/></span><span>{label}</span></li>;
-   })}</ul><p className="mt-compact-note">✓ Verified · — Unverified</p>
+    const checked=checkedKey(key);
+    return <li key={key} data-verified={checked}><span role="img" aria-label={checked?'Verified':'Not verified'} title={checked?'Verified':'Awaiting verification'} className={checked?'':'mt-check-pending'}><I name={checked?'check':'repeat'} size={17}/></span><span>{label}</span></li>;
+   })}</ul><p className="mt-compact-note">Spinning: awaiting verification. Blockers must clear before Start.</p>
   </ReportDrawer>
   {request&&<div role="status" aria-live="polite" className="mt-demo-command"><strong>{request.action} · {request.phase}</strong><p>{request.error||(['PENDING','DISPATCHED','SENDING'].includes(request.phase)?'Awaiting engine confirmation…':request.phase==='APPLIED'?'Command applied. Basket status is reported separately.':'Not confirmed. Check command history before retrying Start.')}</p></div>}
   <ReportDrawer title="Command history" meta={runtime?runtime.commands.length:'—'}>{runtime?.commands.length?<ul className="mt-command-list">{runtime.commands.map(c=><li key={c.requestId}><strong>{c.action} · {c.status}</strong><small>{c.requestId.slice(0,8)}</small>{c.errorCode&&<span>{c.errorCode}</span>}</li>)}</ul>:<p className="mt-compact-note">No commands yet.</p>}</ReportDrawer>
