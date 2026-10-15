@@ -316,8 +316,8 @@
 .mt-terminal-mirror pre{max-height:240px;min-height:110px;overflow:auto;background:#0c0d0e;color:#b7c5bd;padding:12px 8px;font:10px/1.8 ui-monospace,SFMono-Regular,Consolas,monospace;white-space:pre;tab-size:2;border-radius:5px;scrollbar-width:thin}
 .mt-terminal-footer{font-size:9px;color:#888}.mt-terminal-footer button{color:#aaa;background:none;border:0;font-size:10px;cursor:pointer;white-space:nowrap}.mt-terminal-footer button[aria-pressed=true]{color:#f18c45}
 
-.mt-ai-connection.mt-ai-label{background:#0285ff;color:#fff;font-weight:650;flex-wrap:nowrap;flex-shrink:0;gap:4px;padding:3px 9px 3px 5px;white-space:nowrap}
-.mt-ai-label>img{display:block;width:28px;height:28px;flex:none;object-fit:contain}
+.mt-ai-connection.mt-ai-label{background:#fff;color:#000;font-weight:650;flex-wrap:nowrap;flex-shrink:0;gap:0;padding:2px 8px 2px 3px;white-space:nowrap}
+.mt-ai-label>img{display:block;width:22px;height:22px;margin-right:-3px;flex:none;object-fit:contain}
 .mt-report .mt-growth{grid-column:1/-1;min-width:0}
 .mt-growth-filters{display:flex;gap:5px;margin:4px 0 16px;flex-wrap:wrap}
 .mt-growth-filters button{flex:1;min-width:0;min-height:32px;padding:6px 9px;border:0;border-radius:99px;background:transparent;color:#999;font-size:11px;cursor:pointer}
