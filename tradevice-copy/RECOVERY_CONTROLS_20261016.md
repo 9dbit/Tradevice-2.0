@@ -27,3 +27,13 @@ Batch `v51_dashboard_713456b271f94c3aa77656bd0e7d81df` stopped during its third 
 Deploy compatible copy-api before installing the new bridge protocol, then copy-web. The isolated clone installer validates the prior fingerprint and package manifest, requires stopped bridge/observer tasks, a terminal batch and no processing receipt, obtains the broker lock, backs up replaced files, and verifies original journal hashes remain unchanged. Restart only the bridge and read-only observer. The observer success interval becomes one second plus request duration; failure backoff remains in place.
 
 Original V4/V5, production, master-worker, live/copy execution flags and old journals are unchanged. Existing open exposure requires an explicit user slider action; installation itself performs no broker writes.
+
+## Verified staging rollout
+
+Application commit `47c844a44c0a3b05065ead81834d2e50c9bee6d1` automatically deployed from GitHub. copy-api deployment `5fcf6a37-8773-482c-bc2e-f0668cc30d45` and copy-web `61dea357-48de-4f8d-a4ad-568646029640` reached SUCCESS. Public `/master` returned HTTP 200 and its account-close JavaScript matched the tested local build (SHA-256 `95686f78efff308679cfed89aec89067bd8f776e92b2b732ddd4e98ae987116e`). API health remained paper, live=false, copy=false.
+
+The additional connector deploy request was cancelled by approval; it was not retried. Existing GitHub auto-deploy had already started independently. The unapplied source staging patch was restored to branch-following configuration without a commit pin; no additional deployment is needed for that redundant patch.
+
+Windows initially rejected atomic replacement of the runtime source although its existing write handle and ACL allowed modifications. Both failed attempts were rolled back and the old fingerprint verified. The installer now retries replacement and can use the permitted existing write handle under the stopped-task/global-lock preconditions, with backup, fsync, byte verification and automatic rollback. It changes no ACL or file attributes.
+
+Installation succeeded with fingerprint `b629ab7c2a5aad9bdae51fcdf7f621a51ba0cd6f97eeaf37dc9f73b31440052d`; 144 original journal files were unchanged. Both tasks resumed, the API received the new emergency protocol with engineHash=true, and the observer reported 69 accepted snapshots / zero failures at the verification sample. Recovery remained required, as intended; no trading controls were invoked during rollout.
