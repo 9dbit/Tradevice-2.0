@@ -67,3 +67,20 @@ def test_hung_runner_does_not_steal_execution(tmp_path):
 def test_invalid_intent_fails_closed(tmp_path):
  path=tmp_path/'read_only/emergency_close.json';path.parent.mkdir();path.write_text('{}')
  with pytest.raises(ValueError):requested(tmp_path)
+
+def test_recovery_pause_stop_retire_pending_and_preserve_recovery(tmp_path):
+ c,r=make(tmp_path);c.recovery=True;c.state='RECOVERY_REQUIRED';calls=[]
+ r.retire_pending=lambda rid,expires:(calls.append(rid) or dict(pending_retired=True,broker_flat=False))
+ for action in ('PAUSE','STOP'):
+  x=cmd(None,action);invoke(c,x);c.thread.join(2)
+  assert receipt(c,x['requestId'])[0]=='APPLIED' and c.recovery and c.state=='RECOVERY_REQUIRED'
+ assert len(calls)==2 and r.closes==0 and r.started==0
+
+def test_account_scope_passed_only_when_explicitly_bound(tmp_path):
+ c,r=make(tmp_path);scopes=[]
+ def close(rid,expires,prior,scope=None):scopes.append(scope);update(tmp_path,'COMPLETE',0,0);return dict(broker_flat=True)
+ r.emergency_close=close
+ for settings in (None,{'close_scope':'ALL_DEMO_ACCOUNT'}):
+  x=cmd(None,'EMERGENCY_CLOSE',confirmClose=True)|{'settings':settings};invoke(c,x);c.emergency_thread.join(2)
+  assert receipt(c,x['requestId'])[0]=='APPLIED'
+ assert scopes==[None,'ALL_DEMO_ACCOUNT']

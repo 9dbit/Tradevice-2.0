@@ -15,8 +15,10 @@ class Runtime:
   self.calendar=RuntimeCalendar();self.calendar.start()
  def news_snapshot(self):return self.calendar.export()
  def emergency_snapshot(self):
-  from emergency_state import read
-  try:return read(self.root)
+  from emergency_state import read,PROTOCOL
+  try:
+   value=read(self.root)
+   return dict(value,protocol=PROTOCOL) if value else None
   except ValueError:return None
  def begin_emergency(self,request_id,expires_ms):
   from emergency_state import begin
@@ -25,9 +27,21 @@ class Runtime:
  def emergency_failed(self,code):
   from emergency_state import update
   update(self.root,'RECONCILIATION_REQUIRED')
- def emergency_close(self,request_id,expires_ms,prior_run):
-  from v51_emergency_close import execute
-  return execute(self.root,request_id,expires_ms,prior_run,self.fingerprint)
+ def emergency_close(self,request_id,expires_ms,prior_run,scope=None):
+  if scope!='ALL_DEMO_ACCOUNT':
+   from v51_emergency_close import execute as legacy
+   return legacy(self.root,request_id,expires_ms,prior_run,self.fingerprint)
+  from v51_account_close import execute
+  result=execute(self.root,request_id,expires_ms,self.fingerprint)
+  if prior_run:
+   try:
+    from v51_emergency_close import project_closed_batch
+    project_closed_batch(self.root,prior_run,{cid:p['history'] for cid,p in result.get('prior_cancel_proofs',{}).items()})
+   except Exception:result['reconciliation_required']=True
+  return result
+ def retire_pending(self,request_id,expires_ms):
+  from v51_account_close import execute
+  return execute(self.root,request_id,expires_ms,self.fingerprint,close_positions=False)
  def fingerprint(self):
   manifest=json.loads((self.root/'read_only'/'demo_engine_fingerprint.json').read_text())
   files=manifest['files']
@@ -83,13 +97,17 @@ class Runtime:
   proved=set();evidence=[]
   for p in (self.root/'logs'/'arc_v1').rglob('arc_state.json'):
    before=p.read_bytes();state=ArcStateStore(p.parent).load();ledger=ArcLedger(p.parent)
-   if ledger.unresolved_requests():raise ValueError('PRIOR_REQUEST_UNRESOLVED')
+   if ledger.unresolved_requests():
+    from v51_account_close import proves_cancel_reconciliation
+    if not proves_cancel_reconciliation(self.root,p,ledger):raise ValueError('PRIOR_REQUEST_UNRESOLVED')
    if not state.get('cycles_started') or str(state.get('state','')).startswith('COMPLETE'):continue
    if not state.get('cycle_id'):raise ValueError('PRIOR_CYCLE_ID_MISSING')
    life=adapter.cycle_lifecycle(state['cycle_id'])
    if life.get('all_closed') is not True or not life.get('entry_deals'):
     from v51_emergency_close import cancelled_only_proof
-    if not cancelled_only_proof(self.root,p,ledger,life):raise ValueError('PRIOR_HISTORY_NOT_CLOSED')
+    from v51_account_close import proves_cancel_reconciliation
+    if not cancelled_only_proof(self.root,p,ledger,life) and not (not life.get('entry_deals') and not life.get('exit_deals') and proves_cancel_reconciliation(self.root,p,ledger)):
+     raise ValueError('PRIOR_HISTORY_NOT_CLOSED')
    if before!=p.read_bytes() or ledger.tail!=ArcLedger(p.parent).tail:raise ValueError('PRIOR_JOURNAL_CHANGED')
    proved.add(str(p.resolve()))
    evidence.append(dict(cycle_id=state['cycle_id'],state_sha256=hashlib.sha256(before).hexdigest(),ledger_tail=ledger.tail,

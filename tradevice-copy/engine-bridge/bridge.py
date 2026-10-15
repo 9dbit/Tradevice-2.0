@@ -120,18 +120,20 @@ class Controller:
      while self.trade_running():
       if self.clock()*1000>=c['expiresMs']:raise ValueError('EMERGENCY_WAITING_ENGINE')
       time.sleep(.05)
-     proof=self.runtime.emergency_close(rid,c['expiresMs'],prior)
+     if (c.get('settings') or {}).get('close_scope')=='ALL_DEMO_ACCOUNT':
+      proof=self.runtime.emergency_close(rid,c['expiresMs'],prior,scope='ALL_DEMO_ACCOUNT')
+     else:proof=self.runtime.emergency_close(rid,c['expiresMs'],prior)
      if proof.get('broker_flat') is not True:raise ValueError('EMERGENCY_FLAT_UNCONFIRMED')
      with self.lock:
       current=self.db.execute('SELECT request_id FROM active_run WHERE singleton=1').fetchone()[0]
       if current!=prior:raise ValueError('EMERGENCY_ACTIVE_RUN_CHANGED')
-      self.db.execute('UPDATE active_run SET request_id=NULL WHERE singleton=1')
+      if not proof.get('reconciliation_required'):self.db.execute('UPDATE active_run SET request_id=NULL WHERE singleton=1')
       # A later explicit close may independently reconcile an interrupted close.
       for old_id,body in self.db.execute("SELECT id,payload FROM receipts WHERE status='UNCERTAIN'").fetchall():
        if json.loads(body).get('action')=='EMERGENCY_CLOSE':self.acknowledge(old_id,'APPLIED')
       self.acknowledge(rid,'APPLIED')
-      self.recovery=bool(self.db.execute("SELECT 1 FROM receipts WHERE status='UNCERTAIN' LIMIT 1").fetchone())
-      self.state='RECOVERY_REQUIRED' if self.recovery else 'STOPPED';self.reason='PRIOR_COMMAND_UNCONFIRMED' if self.recovery else None
+      self.recovery=bool(proof.get('reconciliation_required')) or bool(self.db.execute("SELECT 1 FROM receipts WHERE status='UNCERTAIN' LIMIT 1").fetchone())
+      self.state='RECOVERY_REQUIRED' if self.recovery else 'STOPPED';self.reason=('PRIOR_CYCLE_RECONCILIATION_REQUIRED' if proof.get('reconciliation_required') else 'PRIOR_COMMAND_UNCONFIRMED') if self.recovery else None
     except Exception as exc:
      code=str(exc) if re.fullmatch('EMERGENCY_[A-Z_]{1,80}',str(exc)) else 'EMERGENCY_RECONCILIATION_REQUIRED'
      with self.lock:
@@ -140,7 +142,20 @@ class Controller:
      except Exception:pass
    self.emergency_thread=threading.Thread(target=close_all,daemon=False);self.emergency_thread.start();return
   if c['action'] in ('PAUSE','STOP'):
-   if self.recovery:self.acknowledge(rid,'REJECTED','RECOVERY_REQUIRED');return
+   if self.recovery:
+    if self.running() or not hasattr(self.runtime,'retire_pending'):
+     self.acknowledge(rid,'REJECTED','RECOVERY_CONTROL_UNAVAILABLE');return
+    self.mode=c['action'];self.runtime.suspend('OPERATOR_'+c['action'])
+    def retire():
+     try:
+      proof=self.runtime.retire_pending(rid,c['expiresMs'])
+      if proof.get('pending_retired') is not True:raise ValueError('PENDING_RETIREMENT_UNCONFIRMED')
+      self.acknowledge(rid,'APPLIED')
+     except Exception as exc:
+      self.acknowledge(rid,'REJECTED' if str(exc)=='EMERGENCY_SUPERSEDED_CONTROL' else 'UNCERTAIN',
+       'EMERGENCY_SUPERSEDED_CONTROL' if str(exc)=='EMERGENCY_SUPERSEDED_CONTROL' else 'PENDING_RETIREMENT_UNCONFIRMED')
+     # Recovery and the active pointer remain locked, even with no pending orders.
+    self.thread=threading.Thread(target=retire,daemon=False);self.thread.start();return
    self.mode=c['action']
    if self.running():
     self.runtime.suspend('OPERATOR_'+c['action']);self.state='PAUSING' if self.mode=='PAUSE' else 'STOPPING'

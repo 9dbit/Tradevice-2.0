@@ -11,6 +11,7 @@ CHECKS=('identity','brokerFlat','quote','spread','margin','commission','news','r
 STATES={'OFF','READY','STARTING','RUNNING','PAUSING','PAUSED','STOPPING','STOPPED','BLOCKED','RECOVERY_REQUIRED'}
 BUSY={'STARTING','RUNNING','PAUSING','STOPPING','RECOVERY_REQUIRED'}
 EMERGENCY_PROTOCOL='V51_EMERGENCY_CLOSE_20261015'
+EMERGENCY_PROTOCOLS={EMERGENCY_PROTOCOL,'V51_EMERGENCY_CLOSE_20261016'}
 
 def uid(v):
     try:
@@ -76,12 +77,13 @@ def read(dsn,news_clear=False):
     with connection(dsn) as conn:return projection(conn,news_clear)
 
 def validate_command(p):
-    if not isinstance(p,dict) or set(p)-{'settings','confirmClose'}!={'actor_id','requestId','action','targetCycles','confirmDemo','expectedRevision'}:raise SkillError('SKILL_ENGINE_COMMAND_INVALID')
+    if not isinstance(p,dict) or set(p)-{'settings','confirmClose','closeScope'}!={'actor_id','requestId','action','targetCycles','confirmDemo','expectedRevision'}:raise SkillError('SKILL_ENGINE_COMMAND_INVALID')
     uid(p['actor_id']);uid(p['requestId'])
     if p['action']=='EMERGENCY_CLOSE':
+        if p.get('closeScope') not in (None,'ALL_DEMO_ACCOUNT'):raise SkillError('SKILL_EMERGENCY_SCOPE_INVALID')
         if p.get('confirmClose') is not True or p['targetCycles'] is not None or p.get('settings') is not None or p['confirmDemo'] is not False or p['expectedRevision'] is not None:raise SkillError('SKILL_EMERGENCY_CONFIRMATION_REQUIRED')
         return
-    if p.get('confirmClose') is not None:raise SkillError('SKILL_ENGINE_COMMAND_INVALID')
+    if p.get('confirmClose') is not None or p.get('closeScope') is not None:raise SkillError('SKILL_ENGINE_COMMAND_INVALID')
     if p['action'] not in {'START','PAUSE','STOP'}:raise SkillError('SKILL_ENGINE_COMMAND_INVALID')
     if type(p['expectedRevision']) is not int or not 0<=p['expectedRevision']<=2**53-1:raise SkillError('SKILL_REVISION_INVALID')
     if p['action']=='START':
@@ -92,7 +94,7 @@ def validate_command(p):
 
 def submit(dsn,p,news_clear):
     validate_command(p)
-    p=dict(p,settings=p.get('settings'))
+    p=dict(p,settings={'close_scope':'ALL_DEMO_ACCOUNT'} if p['action']=='EMERGENCY_CLOSE' and p.get('closeScope')=='ALL_DEMO_ACCOUNT' else p.get('settings'))
     with connection(dsn) as conn:
         sel,row,now=locked(conn)
         old=conn.execute('SELECT * FROM master_demo.commands WHERE request_id=%s',(p['requestId'],)).fetchone()
@@ -110,7 +112,8 @@ def submit(dsn,p,news_clear):
             if conn.execute("SELECT 1 FROM master_demo.commands WHERE status IN ('PENDING','DISPATCHED','UNCERTAIN') LIMIT 1").fetchone():blockers.append('COMMAND_UNCONFIRMED')
             if blockers:raise SkillError('SKILL_START_'+blockers[0],409)
         elif p['action']=='EMERGENCY_CLOSE':
-            if s.get('emergencyCloseProtocol')!=EMERGENCY_PROTOCOL:raise SkillError('SKILL_EMERGENCY_UPGRADE_REQUIRED',409)
+            if p.get('closeScope')=='ALL_DEMO_ACCOUNT' and s.get('emergencyCloseProtocol')!='V51_EMERGENCY_CLOSE_20261016':raise SkillError('SKILL_EMERGENCY_UPGRADE_REQUIRED',409)
+            if s.get('emergencyCloseProtocol') not in EMERGENCY_PROTOCOLS:raise SkillError('SKILL_EMERGENCY_UPGRADE_REQUIRED',409)
             # Emergency reduction outranks every pending START and all entry gates.
             conn.execute("UPDATE master_demo.commands SET status='REJECTED',error_code='EMERGENCY_SUPERSEDED',processed_at=now() WHERE action='START' AND status IN ('PENDING','DISPATCHED')")
         elif not fresh(s,now):raise SkillError('SKILL_ENGINE_OFFLINE',409)
@@ -120,12 +123,12 @@ def submit(dsn,p,news_clear):
 
 def validate_snapshot(p,now):
     if not isinstance(p,dict) or set(p)-{'news','settingsProtocol','emergencyCloseProtocol','emergencyClose'}!={'observedMs','bootId','activeSkillId','activeHash','revision','state','checks','blockers','receipts'}:raise SkillError('SKILL_ENGINE_REPORT_INVALID')
-    if 'emergencyCloseProtocol' in p and p['emergencyCloseProtocol']!=EMERGENCY_PROTOCOL:raise SkillError('SKILL_EMERGENCY_PROTOCOL_INVALID')
+    if 'emergencyCloseProtocol' in p and p['emergencyCloseProtocol'] not in EMERGENCY_PROTOCOLS:raise SkillError('SKILL_EMERGENCY_PROTOCOL_INVALID')
     e=p.get('emergencyClose')
     if e is not None:
         if not isinstance(e,dict) or set(e)!={'protocol','requestId','expiresMs','phase','observedMs','positionsRemaining','ordersRemaining'}:raise SkillError('SKILL_EMERGENCY_REPORT_INVALID')
         uid(e['requestId'])
-        if p.get('emergencyCloseProtocol')!=EMERGENCY_PROTOCOL or e['protocol']!=EMERGENCY_PROTOCOL or e['phase'] not in {'WAITING_ENGINE','CANCELLING_PENDING','CLOSING_POSITIONS','VERIFYING_FLAT','CONNECTION_UNAVAILABLE','RECONCILIATION_REQUIRED','COMPLETE'}:raise SkillError('SKILL_EMERGENCY_REPORT_INVALID')
+        if p.get('emergencyCloseProtocol') not in EMERGENCY_PROTOCOLS or e['protocol']!=p.get('emergencyCloseProtocol') or e['phase'] not in {'WAITING_ENGINE','CANCELLING_PENDING','CLOSING_POSITIONS','VERIFYING_FLAT','CONNECTION_UNAVAILABLE','RECONCILIATION_REQUIRED','COMPLETE'}:raise SkillError('SKILL_EMERGENCY_REPORT_INVALID')
         if any(type(e[k]) is not int or e[k]<0 for k in ('expiresMs','observedMs')) or e['observedMs']>now+1000:raise SkillError('SKILL_EMERGENCY_REPORT_INVALID')
         if any(e[k] is not None and (type(e[k]) is not int or not 0<=e[k]<=10000) for k in ('positionsRemaining','ordersRemaining')):raise SkillError('SKILL_EMERGENCY_REPORT_INVALID')
         if e['phase']=='COMPLETE' and (e['positionsRemaining']!=0 or e['ordersRemaining']!=0):raise SkillError('SKILL_EMERGENCY_REPORT_INVALID')

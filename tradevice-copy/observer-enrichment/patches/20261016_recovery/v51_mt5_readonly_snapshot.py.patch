@@ -1,0 +1,11 @@
+--- a/v51_mt5_readonly_snapshot.py
++++ b/v51_mt5_readonly_snapshot.py
+@@ -6,7 +6,7 @@
+ import tempfile
+ import time
+ from pathlib import Path
+-from v51_engine_diagnostics import read_diagnostics
++from v51_recovery_display import read_diagnostics
+ from v51_batch_direction import read_batch
+ 
+ OUTPUT = Path(r"D:\GoldTrapCore\GoldTrapCore_v0.2_v51_research_20261013\read_only\mt5_snapshot.json")

@@ -83,3 +83,11 @@ def test_dynamic_atr_profit_usd_and_mode_specific_hard_loss():
 def test_heartbeat_does_not_renew_atr_candle():
  r=report()|dict(policy='CLOSE_DISTANCE_RISK_V51',hard_loss_usd=-250,tp_basis='ATR_CURRENT_USD',tp_atr_value=4,tp_multiplier=1,tp_atr_candle_ms=N-120001,tp_atr_fresh=True,target_usd=4)
  assert project_engine(r,N)['tpAtrFresh'] is False
+
+def test_historical_configuration_retains_timestamp_but_never_authority():
+ raw=report();out=project_engine(raw,N+3600000)
+ assert out['observedMs']==N and out['status']=='ENGINE_REPORT_STALE'
+ assert out['hardLossUsd']==-120 and out['targetUsd']==3.5
+ assert out['pnl'] is None and out['decision'] is None and out['authorization']=='UNKNOWN'
+ assert out['brokerFlatReconciled'] is False and out['orderDispatchAuthorized'] is False
+ assert project_engine(raw,N+604800001)['targetUsd'] is None

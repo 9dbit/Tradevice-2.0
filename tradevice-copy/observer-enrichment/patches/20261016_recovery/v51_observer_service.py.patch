@@ -1,0 +1,11 @@
+--- a/v51_observer_service.py
++++ b/v51_observer_service.py
+@@ -47,7 +47,7 @@
+             # A busy/missing/unwritable status file must not kill the publisher.
+             # The previous status naturally expires; retry on the next bounded poll.
+             status_write_failures+=1
+-        delay=min(60,4*2**min(consecutive,4))
++        delay=min(60,4*2**min(consecutive,4)) if consecutive else 1
+         for _ in range(delay):
+             if stop_requested():break
+             sleeper(1)

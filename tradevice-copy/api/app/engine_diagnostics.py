@@ -24,7 +24,8 @@ def project_engine(raw,now):
             return missing(raw['status'])
         if raw.get('status')!='ENGINE_REPORTED' or raw.get('source')!='V51_RUNNER_DIAGNOSTICS':raise ValueError()
         at=stamp(raw.get('observed_ms'))
-        if not 0<=now-at<=8000:return missing('ENGINE_REPORT_STALE')
+        if not 0<=now-at<=604800000:return missing('ENGINE_REPORT_STALE')
+        stale=now-at>8000
         cycle=raw.get('cycle_id')
         if cycle is not None and (not isinstance(cycle,str) or not re.fullmatch(r'[a-zA-Z0-9_-]{1,80}',cycle)):raise ValueError()
         state=raw.get('state')
@@ -80,10 +81,10 @@ def project_engine(raw,now):
             if not isinstance(reasons,list) or not 1<=len(reasons)<=8 or any(not isinstance(r,str) or not re.fullmatch('[A-Z0-9_]{1,80}',r) for r in reasons):raise ValueError()
             if 0<=now-close<=120000:
                 decision=dict(layer=d['layer'],candleCloseMs=close,accepted=d['accepted'],structuralReversal=d.get('structural_reversal'),reasons=reasons,**values)
-        return dict(policy=policy,status='ENGINE_REPORTED',observedMs=at,cycleId=cycle,state=state,
+        return dict(policy=policy,status='ENGINE_REPORT_STALE' if stale else 'ENGINE_REPORTED',observedMs=at,cycleId=cycle,state=state,
             hardLossUsd=loss,targetUsd=target,tpAtrValue=atr_value,tpMultiplier=multiplier,tpAtrCandleMs=atr_candle,tpAtrFresh=atr_fresh,tpBasis=basis,tpDistancePrice=distance,tpDistancePoints=points,targetPrice=price,riskExitCommitted=raw['risk_exit_committed'],
-            brokerFlatReconciled=raw['broker_flat_reconciled'],entrySuspended=raw['entry_suspended'],
-            pnl=pnl,decision=decision,authorization=auth,authorizationExpiresMs=expiry,
+            brokerFlatReconciled=False if stale else raw['broker_flat_reconciled'],entrySuspended=raw['entry_suspended'],
+            pnl=None if stale else pnl,decision=None if stale else decision,authorization='UNKNOWN' if stale else auth,authorizationExpiresMs=None if stale else expiry,
             orderDispatchAuthorized=False)
     except (ValueError,TypeError,AttributeError,KeyError):return missing('ENGINE_REPORT_INVALID')
 

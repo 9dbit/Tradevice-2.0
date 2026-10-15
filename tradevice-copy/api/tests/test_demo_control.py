@@ -140,3 +140,19 @@ def test_emergency_queue_independent_of_stale_news_kill_revision(monkeypatch,sup
  else:
   with pytest.raises(SkillError,match='SKILL_EMERGENCY_UPGRADE_REQUIRED'):submit('fixture',emergency_command(),False)
   assert not any('INSERT INTO' in q for q,_ in calls)
+
+def test_account_scope_is_explicit_and_bound_to_retry(monkeypatch):
+ from contextlib import contextmanager
+ import app.demo_control as control
+ p=emergency_command()|{'closeScope':'ALL_DEMO_ACCOUNT'};validate_command(p)
+ with pytest.raises(SkillError):validate_command(p|{'closeScope':'ANY'})
+ with pytest.raises(SkillError):validate_command(command()|{'closeScope':'ALL_DEMO_ACCOUNT'})
+ old=dict(actor_id=p['actor_id'],action=p['action'],target_cycles=None,selection_revision=1,settings={'close_scope':'ALL_DEMO_ACCOUNT'},status='PENDING')
+ class Conn:
+  def execute(self,*args):return self
+  def fetchone(self):return old
+ @contextmanager
+ def connection(dsn):yield Conn()
+ monkeypatch.setattr(control,'connection',connection);monkeypatch.setattr(control,'locked',lambda conn:({}, {}, 0))
+ assert control.submit('fixture',p,False)['status']=='PENDING'
+ with pytest.raises(SkillError):control.submit('fixture',emergency_command(),False)

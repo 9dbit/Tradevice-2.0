@@ -2,7 +2,7 @@
 import {useEffect,useRef,useState,type ReactNode} from 'react';
 import CloseSlider from './close-slider';
 import type {DemoRuntime} from './demo-control';
-const protocol='V51_EMERGENCY_CLOSE_20261015';
+const protocol='V51_EMERGENCY_CLOSE_20261016';
 const storageKey='tradevice-emergency-request-v1';
 type Request={id:string;status:string;sentMs:number;error?:string};
 const phases:Record<string,string>={WAITING_ENGINE:'Stopping the batch',CANCELLING_PENDING:'Cancelling pending orders',CLOSING_POSITIONS:'Closing positions',VERIFYING_FLAT:'Verifying broker-flat',CONNECTION_UNAVAILABLE:'MT5 connection unavailable',RECONCILIATION_REQUIRED:'Broker reconciliation required',COMPLETE:'Broker-flat verified'};
@@ -33,7 +33,7 @@ export default function EmergencyClose({token,runtime,refresh,now,enabled,visibl
   const id=unconfirmed&&request?request.id:crypto.randomUUID(),sentMs=unconfirmed&&request?request.sentMs:Date.now();
   setRequest({id,status:'SENDING',sentMs});
   try{
-   const response=await fetch('/api/master/demo',{method:'POST',headers:{Authorization:'Bearer '+token,'Content-Type':'application/json'},body:JSON.stringify({requestId:id,action:'EMERGENCY_CLOSE',targetCycles:null,confirmDemo:false,confirmClose:true,expectedRevision:null,settings:null}),signal:AbortSignal.timeout(12000)});
+   const response=await fetch('/api/master/demo',{method:'POST',headers:{Authorization:'Bearer '+token,'Content-Type':'application/json'},body:JSON.stringify({requestId:id,action:'EMERGENCY_CLOSE',closeScope:'ALL_DEMO_ACCOUNT',targetCycles:null,confirmDemo:false,confirmClose:true,expectedRevision:null,settings:null}),signal:AbortSignal.timeout(12000)});
    const body=await response.json();
    if(!response.ok){setRequest({id,sentMs,status:response.status>=500?'UNKNOWN':'REJECTED',error:body?.detail?.code||'COMMAND_UNAVAILABLE'});return;}
    if(body.requestId!==id||!['PENDING','DISPATCHED','APPLIED','REJECTED','EXPIRED','UNCERTAIN'].includes(body.status))throw Error();
@@ -44,7 +44,8 @@ export default function EmergencyClose({token,runtime,refresh,now,enabled,visibl
  const status=verified?'Last close: broker-flat verified':request?.status==='APPLIED'?'Close confirmed; awaiting broker evidence':request?.status==='REJECTED'?'Request rejected':request?.status==='EXPIRED'?'Request expired; closure not confirmed':request?.status==='UNCERTAIN'?'Closure unconfirmed; reconciliation required':unconfirmed?'Request unconfirmed; check connection':evidence&&evidence.phase!=='COMPLETE'?phases[evidence.phase]:pending?(fresh?'Close requested; awaiting bridge':'Queued; bridge offline'):supported?'Emergency close available':'Emergency bridge upgrade required';
  return <>
   <div className="mt-u-buttons">{visible?<CloseSlider disabled={!ready||!supported||!enabled||busy||pending} onConfirm={()=>void send()} label={busy?'Sending…':pending?'Closing…':unconfirmed?'Verify close':'Close all'}/>:primary}{secondary}</div>
-  {visible&&<p id="close-all-help" className="mt-compact-note mt-close-help">Slide right to close TRADEVICE positions and cancel pending orders.</p>}
+  {!visible&&<div className="mt-close-standby"><CloseSlider disabled={!ready||!supported||!enabled||busy||pending} onConfirm={()=>void send()} label={busy?'Sending…':pending?'Closing…':unconfirmed?'Verify close':'Close all'}/></div>}
+  {<p id="close-all-help" className="mt-compact-note mt-close-help">Slide right to close ALL positions and cancel ALL pending orders on the connected demo account.</p>}
   {request&&<div className="mt-emergency-status" role="status" aria-label="Close all status"><strong>{status}</strong>
    {evidence&&<span>{evidence.positionsRemaining!=null&&evidence.ordersRemaining!=null?`${evidence.positionsRemaining} positions · ${evidence.ordersRemaining} pending orders · `:''}Last report {new Date(evidence.observedMs).toLocaleTimeString('en-GB',{timeZone:'Asia/Jakarta'})} WIB{!fresh?' · connection stale':''}</span>}
    {request.error&&<span>{request.error.replaceAll('_',' ')}</span>}

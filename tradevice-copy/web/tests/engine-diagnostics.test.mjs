@@ -29,7 +29,7 @@ test('ATR points, price distance and profit estimate retain separate units',()=>
  const v=validateEngine(f,now);assert.equal(v.tpDistancePoints,4200);assert.equal(v.targetUsd,42);assert.equal(v.tpDistancePrice,4.2);
  assert.equal(validateEngine({...f,targetUsd:null},now).tpDistancePoints,4200);
  assert.equal(validateEngine({...f,tpDistancePoints:42},now).status,'ENGINE_REPORT_INVALID');
- assert.equal(validateEngine(f,now+8001).tpDistancePoints,null);
+ const old=validateEngine(f,now+8001);assert.equal(old.tpDistancePoints,4200);assert.equal(old.status,'ENGINE_REPORT_STALE');assert.equal(old.authorization,'UNKNOWN');assert.equal(old.pnl,null);
 });
 
 

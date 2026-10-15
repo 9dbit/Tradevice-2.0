@@ -1,0 +1,33 @@
+{
+  "previous_fingerprint": "173f90948dca95f7b9cb254ced35ee3c7a7656ea306993c41ac17bf9ed0a29bb",
+  "files": {
+    "bridge.py": {
+      "before": "024158d34bb53b83f170d9b59e4fba5c4b6ad3958bc60b65e8614198ac84608d",
+      "sha256": "efd1ec230c004d03ce13eee3565976b60d4a693fc995fde7c3b793bb7a0ae49e"
+    },
+    "v51_dashboard_runtime.py": {
+      "before": "f8a717b647e5fc2ecbdb4692af267ca8697ea102121d029990efd21b19b92eba",
+      "sha256": "612bc947e91ae7db6529c9f0c22d44986f763a140fc4eef36c553e7dfa92b639"
+    },
+    "emergency_state.py": {
+      "before": "6d33b2325aaa5d79f55448ba50d7e52388bdab72364714b45269284c77306404",
+      "sha256": "d43f2a64c917a83e9f4a0f61fc8bad7061c5a822e4dbba444814d9003011ebfe"
+    },
+    "v51_account_close.py": {
+      "before": null,
+      "sha256": "5b38905411b0e9b7fec2888bb6ffc226505813769e7e5d3d27d3a99f2f31e5a7"
+    },
+    "v51_recovery_display.py": {
+      "before": null,
+      "sha256": "ad8c0008d000a6ef248be18870d5ef6dc9f372c121bcfce9fbb4b4eda1b08a97"
+    },
+    "v51_mt5_readonly_snapshot.py": {
+      "before": "9683f3f8ffcc94279d8afef51130d4b02f67900ef42e73544acb4d31c125498a",
+      "sha256": "f0bdeaac4040e863195bbdcd1b703f08f1395584895617c0b7bf7d441826473f"
+    },
+    "v51_observer_service.py": {
+      "before": "db45d180e0b7ca69cfe477eada57e2581ac0b4038b3fe8abfca1804c442cedff",
+      "sha256": "3058d27e871702834c407cb22ae009dc1eb7b2276227e2e9a29ee4128098ded0"
+    }
+  }
+}

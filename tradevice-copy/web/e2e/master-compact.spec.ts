@@ -60,7 +60,7 @@ async function setup(page:Page){
    if(delay)await new Promise(resolve=>setTimeout(resolve,delay));
    if(fail)return await r.fulfill({status:503,json:{}});
    if(!freeze)stamp=Date.now();
-   await r.fulfill({json:{emergencyCloseProtocol:'V51_EMERGENCY_CLOSE_20261015',emergencyClose:emergency,settingsProtocol:'V51_DYNAMIC_ATR_USD_20261015',online:!offline,observedMs:stamp,state:offline?'OFFLINE':state,activeSkillId:'fixture',activeHash:'fixture',revision:1,checks:Object.fromEntries(['identity','brokerFlat','quote','spread','margin','commission','news','reconciled','engineHash'].map(k=>[k,!expiredPreflight&&!(blocked&&k==='news')])),blockers:[...(state==='RECOVERY_REQUIRED'?['ENGINE_RECOVERY_REQUIRED']:blocked?['PREFLIGHT_NEWS','NEWS_NOT_CLEAR']:[]),...(expiredPreflight?['ENGINE_NOT_READY',...['identity','brokerFlat','quote','spread','margin','commission','news','reconciled','engineHash'].map(k=>'PREFLIGHT_'+k.toUpperCase())]:[]),...extraBlockers],canStart,commands:receipts}});
+   await r.fulfill({json:{emergencyCloseProtocol:'V51_EMERGENCY_CLOSE_20261016',emergencyClose:emergency,settingsProtocol:'V51_DYNAMIC_ATR_USD_20261015',online:!offline,observedMs:stamp,state:offline?'OFFLINE':state,activeSkillId:'fixture',activeHash:'fixture',revision:1,checks:Object.fromEntries(['identity','brokerFlat','quote','spread','margin','commission','news','reconciled','engineHash'].map(k=>[k,!expiredPreflight&&!(blocked&&k==='news')])),blockers:[...(state==='RECOVERY_REQUIRED'?['ENGINE_RECOVERY_REQUIRED']:blocked?['PREFLIGHT_NEWS','NEWS_NOT_CLEAR']:[]),...(expiredPreflight?['ENGINE_NOT_READY',...['identity','brokerFlat','quote','spread','margin','commission','news','reconciled','engineHash'].map(k=>'PREFLIGHT_'+k.toUpperCase())]:[]),...extraBlockers],canStart,commands:receipts}});
   }finally{concurrent--;}
  });
  await page.goto('/master');
@@ -533,7 +533,7 @@ async function slideClose(page:Page,fraction=1){
 test('close slider replaces Start only for active batch and follows Pause Stop availability',async({page})=>{
  await page.setViewportSize({width:390,height:844});const f=await setup(page);
  await expect(page.getByRole('button',{name:'Start Cycle',exact:true})).toBeVisible();
- await expect(page.getByRole('slider',{name:'Slide to close all'})).toHaveCount(0);
+ await expect(page.getByRole('slider',{name:'Slide to close all'})).toBeEnabled();
  await expect(page.getByRole('button',{name:'Emergency Close',exact:true})).toHaveCount(0);
  f.running();await expect(page.getByLabel('Engine connection')).toHaveText('Running');
  const slider=page.getByRole('slider',{name:'Slide to close all'});
@@ -549,7 +549,7 @@ test('close slider replaces Start only for active batch and follows Pause Stop a
  const staleBox=await page.locator('.mt-close-slider').boundingBox();expect(Math.abs(staleBox!.y-sliderBox!.y)).toBeLessThan(2);
  f.setOffline(false);await expect(slider).toBeEnabled();await slideClose(page);
  await expect(page.getByRole('status',{name:'Close all status'})).toContainText('Close requested');expect(f.posts).toHaveLength(1);
- const post=f.posts[0];expect(post).toMatchObject({action:'EMERGENCY_CLOSE',confirmClose:true,targetCycles:null,confirmDemo:false,expectedRevision:null});
+ const post=f.posts[0];expect(post).toMatchObject({action:'EMERGENCY_CLOSE',closeScope:'ALL_DEMO_ACCOUNT',confirmClose:true,targetCycles:null,confirmDemo:false,expectedRevision:null});
  await page.reload();await expect(page.getByRole('status',{name:'Close all status'})).toContainText('Close requested');expect(f.posts).toHaveLength(1);
  f.setReceipts([{requestId:post.requestId,action:'EMERGENCY_CLOSE',status:'APPLIED',errorCode:null}]);
  f.setEmergency({requestId:post.requestId,phase:'COMPLETE',positionsRemaining:0,ordersRemaining:0,observedMs:Date.now()});
@@ -565,4 +565,26 @@ test('close slider keyboard confirmation and lost response retain identical requ
  await expect(page.getByRole('status',{name:'Close all status'})).toContainText('Request unconfirmed');const id=f.posts[0].requestId;
  f.setPostLost(false);await slider.focus();await slider.press('End');await slider.press('Enter');
  await expect(page.getByRole('status',{name:'Close all status'})).toContainText('Close requested');expect(f.posts).toHaveLength(2);expect(f.posts[1].requestId).toBe(id);
+});
+
+
+test('recovery keeps account Close all and pending controls available with independent basket values',async({page})=>{
+ await page.setViewportSize({width:390,height:844});const f=await setup(page);f.recovery();
+ const report={status:'ENGINE_REPORT_STALE',observedMs:Date.now()-3600000,cycleId:'e12c4d92',state:'TRAP_ARMED',policy:'CLOSE_DISTANCE_RISK_V51',hardLossUsd:-250,targetUsd:3.5,
+  riskExitCommitted:false,brokerFlatReconciled:false,entrySuspended:true,pnl:null,authorization:'UNKNOWN',authorizationExpiresMs:null,orderDispatchAuthorized:false};
+ f.setEngine(report);f.setMarket({ownedPositionPnl:{value:-2.21,currency:'USD',positions:4,pending:2,basis:'MAGIC_SYMBOL_OPEN_PROFIT_PLUS_SWAP',netCyclePnlVerified:false}});
+ const basket=page.locator('[aria-labelledby=risk-title]');
+ await expect(basket).toContainText('Recovery required');await expect(basket).toContainText('-$2.21');await expect(basket).toContainText('-$250.00');await expect(basket).toContainText('$3.50');
+ await expect(basket).toContainText('enforcement unverified');await expect(basket).toContainText('Engine stopped');
+ await page.reload();await expect(basket).toContainText('-$2.21');await expect(basket).toContainText('-$250.00');
+ const slider=page.getByRole('slider',{name:'Slide to close all'});
+ await expect(slider).toBeEnabled();await expect(page.getByRole('button',{name:'Start Cycle',exact:true})).toHaveCount(0);
+ await expect(page.getByRole('button',{name:'Pause',exact:true})).toBeEnabled();await expect(page.getByRole('button',{name:'Stop',exact:true})).toBeEnabled();
+ await page.getByRole('button',{name:'Pause',exact:true}).click();expect(f.posts[0].action).toBe('PAUSE');
+ f.setReceipts([{requestId:f.posts[0].requestId,action:'PAUSE',status:'APPLIED',errorCode:null}]);
+ await expect(page.getByRole('button',{name:'Stop',exact:true})).toBeEnabled();await page.getByRole('button',{name:'Stop',exact:true}).click();expect(f.posts[1].action).toBe('STOP');
+ f.setReceipts([{requestId:f.posts[1].requestId,action:'STOP',status:'APPLIED',errorCode:null}]);
+ await expect(slider).toBeEnabled();await expect(page.locator('#close-all-help')).toContainText('ALL positions');
+ await page.screenshot({path:'/tmp/tradevice-recovery-controls.png',fullPage:true});
+ await slideClose(page);expect(f.posts[2]).toMatchObject({action:'EMERGENCY_CLOSE',closeScope:'ALL_DEMO_ACCOUNT',confirmClose:true});
 });

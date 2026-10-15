@@ -39,9 +39,11 @@ export default function CompactDashboard({data,token,onNavigate}:{
  useEffect(()=>{if(market)lastMarket.current=market;},[market]);
  const displayMarket=market??lastMarket.current;
  const marketLabel=market?'Fresh':displayMarket?'Last known · stale':'Unavailable';
- const engine=validateEngine(market?.engineDiagnostics,now);
- const owned=validateOwned(market?.ownedPositionPnl);
- const decision=engine.decision;
+ const engine=validateEngine(displayMarket?.engineDiagnostics,now);
+ const owned=validateOwned(displayMarket?.ownedPositionPnl);
+ const recovery=demoRuntime?.state==='RECOVERY_REQUIRED';
+ const engineCurrent=marketFresh&&engine.status==='ENGINE_REPORTED'&&!recovery;
+ const decision=engineCurrent?engine.decision:null;
  const [lastEstimate,setLastEstimate]=useState<BasketEstimate|null>(null);
  const estimate=basketEstimate(lastEstimate,data?.market?.engineDiagnostics,now,marketFresh);
  useEffect(()=>{setLastEstimate(estimate);},[data?.market?.engineDiagnostics,now,marketFresh]);
@@ -61,16 +63,17 @@ export default function CompactDashboard({data,token,onNavigate}:{
   <DemoControl token={token} runtime={demoRuntime} refresh={refreshDemo} now={now} batchRaw={data?.demoBatch??data?.market?.demoBatch} newsRaw={data?.news}/>
 
   <ReportSection title="Basket &amp; Adaptive" className="mt-u-panel" aria-labelledby="risk-title" header={<div className="mt-u-panel-head"><h2 id="risk-title"><I name="shield"/> Basket &amp; Adaptive</h2>
-    <span className="mt-u-chip">{engine.entrySuspended===true?'Entry suspended':engine.status==='ENGINE_REPORTED'?engine.state||'Reported':'Unverified'}</span></div>}>
+    <span className="mt-u-chip">{recovery?'Recovery required':engine.status==='ENGINE_REPORT_STALE'?'Last engine report':engine.entrySuspended===true?'Entry suspended':engine.status==='ENGINE_REPORTED'?engine.state||'Reported':'Unverified'}</span></div>}>
 
    <div className="mt-telemetry-grid">
-    <Datum icon="activity" label="Basket estimate" value={usd(estimate?.value)} hint={estimate?`${estimate.fresh?'Reported':'Last known'} · ${Math.max(0,Math.floor((now-Math.min(estimate.atMs,estimate.tickMs))/1000))}s ago · costs unverified`:'Awaiting estimate'}/>
-    <Datum icon="shield" label="Hard loss" value={usd(engine.hardLossUsd)} hint={engine.riskExitCommitted===true?'Exit committed':'engine report'}/>
-    <Datum icon="check" label="Basket TP" value={engine.tpBasis==='ATR_PRICE_DISTANCE'?fmt(engine.tpDistancePoints,' pts'):usd(engine.targetUsd)} hint={engine.tpBasis==='ATR_CURRENT_USD'?`${engine.tpMultiplier}× current ATR · ${engine.tpAtrFresh?'profit USD':'last known USD'}`:engine.tpBasis==='ATR_PRICE_DISTANCE'?`${usd(engine.tpDistancePrice)} price move · weighted entry`:'engine report'}/>
+    <Datum icon="activity" label="Basket estimate" value={usd((!engineCurrent||!estimate?.fresh)&&owned?owned.value:estimate?.value)} hint={(!engineCurrent||!estimate?.fresh)&&owned?`${marketFresh?'Observed':'Last known'} open P&L + swap · realized excluded`:estimate?`${estimate.fresh?'Reported':'Last known'} · ${Math.max(0,Math.floor((now-Math.min(estimate.atMs,estimate.tickMs))/1000))}s ago · costs unverified`:'Awaiting estimate'}/>
+    <Datum icon="shield" label="Hard loss" value={usd(engine.hardLossUsd)} hint={!engineCurrent?'Last target · enforcement unverified':engine.riskExitCommitted===true?'Exit committed':'engine report'}/>
+    <Datum icon="check" label="Basket TP" value={engine.tpBasis==='ATR_PRICE_DISTANCE'?fmt(engine.tpDistancePoints,' pts'):usd(engine.targetUsd)} hint={!engineCurrent?'Last target · enforcement unverified':engine.tpBasis==='ATR_CURRENT_USD'?`${engine.tpMultiplier}× current ATR · ${engine.tpAtrFresh?'profit USD':'last known USD'}`:engine.tpBasis==='ATR_PRICE_DISTANCE'?`${usd(engine.tpDistancePrice)} price move · weighted entry`:'engine report'}/>
    </div>
-   {estimate&&!estimate.fresh&&<p className="mt-compact-note mt-basket-stale">Last known estimate · cycle {estimate.cycleId}. Current basket P&amp;L is unverified.</p>}
+   {!owned&&estimate&&!estimate.fresh&&<p className="mt-compact-note mt-basket-stale">Last known estimate · cycle {estimate.cycleId}. Current basket P&amp;L is unverified.</p>}
+   {recovery&&<p className="mt-compact-note">Engine stopped. Open P&amp;L comes from the independent MT5 observer; automatic basket exits and adaptive entries are not verified. Use Close all to request an account-wide exit.</p>}
    {engine.entrySuspended===true&&<p className="mt-inline-blocker"><I name="alert" size={14}/><span>Entries suspended · resolve blockers and reconcile before a new cycle.</span></p>}
-   <ReportDrawer title="L6–L10 & risk details" meta={decision?'L'+decision.layer:'No decision'}>
+   <ReportDrawer title="L6–L10 & risk details" meta={recovery?'Engine stopped':decision?'L'+decision.layer:'No fresh decision'}>
     <div className="mt-telemetry-grid">
      <Datum icon="wallet" label="Open P&L + swap" value={usd(owned?.value)} hint="owned positions"/>
      <Datum icon="spread" label="Adverse distance" value={fmt(decision?.distance_points)} hint={engine.policy==='CLOSE_DISTANCE_RISK_V51'?'>1,700 pts at close':'min 1,700 pts'}/>

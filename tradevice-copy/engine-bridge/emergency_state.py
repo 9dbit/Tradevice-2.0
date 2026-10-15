@@ -1,7 +1,7 @@
 """Durable operator close intent. It never grants permission to open a trade."""
 import json,os,time,uuid
 from pathlib import Path
-PROTOCOL='V51_EMERGENCY_CLOSE_20261015'
+PROTOCOL='V51_EMERGENCY_CLOSE_20261016'
 FILENAME='emergency_close.json'
 class EmergencyHandoff(RuntimeError):pass
 def read(root):
@@ -10,7 +10,7 @@ def read(root):
  try:
   if p.stat().st_size>4096:raise ValueError()
   value=json.loads(p.read_text())
-  if value.get('protocol')!=PROTOCOL or not isinstance(value.get('requestId'),str):raise ValueError()
+  if value.get('protocol') not in (PROTOCOL,'V51_EMERGENCY_CLOSE_20261015') or not isinstance(value.get('requestId'),str):raise ValueError()
   uuid.UUID(value['requestId'])
   if set(value)!={'protocol','requestId','expiresMs','phase','observedMs','positionsRemaining','ordersRemaining'}:raise ValueError()
   if value['phase'] not in {'WAITING_ENGINE','CANCELLING_PENDING','CLOSING_POSITIONS','VERIFYING_FLAT','CONNECTION_UNAVAILABLE','RECONCILIATION_REQUIRED','COMPLETE'}:raise ValueError()

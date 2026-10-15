@@ -5,15 +5,16 @@ export function validateEngine(raw,now=Date.now()){
  riskExitCommitted:null,brokerFlatReconciled:null,entrySuspended:null,pnl:null,decision:null,
  authorization:'UNKNOWN',authorizationExpiresMs:null,orderDispatchAuthorized:false};
  if(!raw||raw.orderDispatchAuthorized!==false)return empty;
- if(['ENGINE_NOT_CONNECTED','ENGINE_REPORT_STALE','ENGINE_REPORT_INVALID'].includes(raw.status))return {...empty,status:raw.status};
+ if((['ENGINE_NOT_CONNECTED','ENGINE_REPORT_INVALID'].includes(raw.status)||(raw.status==='ENGINE_REPORT_STALE'&&raw.observedMs==null)))return {...empty,status:raw.status};
  const policy=raw.policy??'REVERSAL_RISK_V5';
  const invalid={...empty,status:'ENGINE_REPORT_INVALID'};
  if(!['REVERSAL_RISK_V5','CLOSE_DISTANCE_RISK_V51'].includes(policy))return invalid;
- if(raw.status!=='ENGINE_REPORTED'||!fresh(raw.observedMs,now,8000))return {...empty,status:'ENGINE_REPORT_STALE'};
+ if(!['ENGINE_REPORTED','ENGINE_REPORT_STALE'].includes(raw.status)||!fresh(raw.observedMs,now,604800000))return {...empty,status:'ENGINE_REPORT_STALE'};
  if((raw.cycleId!==null&&(typeof raw.cycleId!=='string'||!/^[a-zA-Z0-9_-]{1,80}$/.test(raw.cycleId)))||
  typeof raw.state!=='string'||!/^[A-Z_]{1,48}$/.test(raw.state)||!(policy==='CLOSE_DISTANCE_RISK_V51'?[-250,-350]:[-120]).includes(raw.hardLossUsd)||
  ['riskExitCommitted','brokerFlatReconciled','entrySuspended'].some(k=>typeof raw[k]!=='boolean')||
  (raw.brokerFlatReconciled&&!raw.state.startsWith('COMPLETE')))return invalid;
+ const stale=raw.status==='ENGINE_REPORT_STALE'||!fresh(raw.observedMs,now,8000);
  const tpBasis=raw.tpBasis??'PROFIT_USD',tpDistancePrice=raw.tpDistancePrice??null,tpDistancePoints=raw.tpDistancePoints??null,targetPrice=raw.targetPrice??null;
  const tpAtrValue=raw.tpAtrValue??null,tpMultiplier=raw.tpMultiplier??null,tpAtrCandleMs=raw.tpAtrCandleMs??null;
  let tpAtrFresh=null;
@@ -40,9 +41,9 @@ export function validateEngine(raw,now=Date.now()){
  !Array.isArray(d.reasons)||d.reasons.length<1||d.reasons.length>8||d.reasons.some(r=>typeof r!=='string'||!/^[A-Z0-9_]{1,80}$/.test(r)))return invalid;
  if(fresh(d.candleCloseMs,now,120000))decision={layer:d.layer,candleCloseMs:d.candleCloseMs,accepted:d.accepted,
  structuralReversal:d.structuralReversal,distance_points:d.distance_points,atr:d.atr,body_atr:d.body_atr,body_range:d.body_range,reasons:[...d.reasons]};}
- return {...empty,policy,status:raw.status,observedMs:raw.observedMs,cycleId:raw.cycleId,state:raw.state,
- hardLossUsd:raw.hardLossUsd,targetUsd:raw.targetUsd,tpAtrValue,tpMultiplier,tpAtrCandleMs,tpAtrFresh,tpBasis,tpDistancePrice,tpDistancePoints,targetPrice,riskExitCommitted:raw.riskExitCommitted,brokerFlatReconciled:raw.brokerFlatReconciled,
- entrySuspended:raw.entrySuspended,pnl,decision,authorization,authorizationExpiresMs:raw.authorizationExpiresMs};
+ return {...empty,policy,status:stale?'ENGINE_REPORT_STALE':'ENGINE_REPORTED',observedMs:raw.observedMs,cycleId:raw.cycleId,state:raw.state,
+ hardLossUsd:raw.hardLossUsd,targetUsd:raw.targetUsd,tpAtrValue,tpMultiplier,tpAtrCandleMs,tpAtrFresh,tpBasis,tpDistancePrice,tpDistancePoints,targetPrice,riskExitCommitted:raw.riskExitCommitted,brokerFlatReconciled:stale?false:raw.brokerFlatReconciled,
+ entrySuspended:raw.entrySuspended,pnl:stale?null:pnl,decision:stale?null:decision,authorization:stale?'UNKNOWN':authorization,authorizationExpiresMs:stale?null:raw.authorizationExpiresMs};
 }
 export function validateOwned(raw){
  if(!raw||raw.basis!=='MAGIC_SYMBOL_OPEN_PROFIT_PLUS_SWAP'||raw.netCyclePnlVerified!==false||
