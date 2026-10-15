@@ -283,14 +283,27 @@
 .mt-ai-connection{display:inline-flex;align-items:center;justify-content:center;flex-wrap:wrap;gap:3px 6px;max-width:190px;border-radius:999px;padding:6px 10px;font-size:10px;line-height:1.35;background:#333;color:#ddd;text-align:center}
 .mt-ai-connection>span{font-weight:700}
 .mt-ai-connection[data-connected=true]{background:#16884b;color:white}
-.mt-shell{--mt-header-height:68px;--mt-sidebar-width:256px}
+/* The fixed header paints behind the status bar; its controls stay below it.
+   Share the full height with the workspace so content is offset exactly once. */
+.mt-shell{
+ --mt-safe-top:env(safe-area-inset-top,0px);
+ --mt-safe-right:env(safe-area-inset-right,0px);
+ --mt-safe-bottom:env(safe-area-inset-bottom,0px);
+ --mt-safe-left:env(safe-area-inset-left,0px);
+ --mt-header-height:calc(68px + var(--mt-safe-top));
+ --mt-sidebar-width:256px;
+}
 .mt-shell .mt-workspace{padding-top:var(--mt-header-height)}
-.mt-shell .mt-topbar{position:fixed;top:0;right:0;left:var(--mt-sidebar-width);height:var(--mt-header-height);z-index:60;background:rgba(9,9,9,.94);backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px);box-sizing:border-box}
-.mt-report :is(button,input,summary){scroll-margin-top:90px}
+.mt-shell .mt-topbar{position:fixed;top:0;right:0;left:var(--mt-sidebar-width);height:var(--mt-header-height);padding-top:var(--mt-safe-top);padding-right:max(clamp(24px,4vw,62px),var(--mt-safe-right));padding-left:max(clamp(24px,4vw,62px),var(--mt-safe-left));z-index:60;background:rgba(9,9,9,.94);backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px);box-sizing:border-box}
+.mt-report :is(button,input,summary){scroll-margin-top:calc(var(--mt-header-height) + 22px)}
+.mt-shell .mt-skip:focus{top:calc(var(--mt-safe-top) + 8px)}
 @media(max-width:1240px){.mt-shell{--mt-sidebar-width:222px}}
 @media(max-width:1000px){.mt-shell{--mt-sidebar-width:206px}}
 @media(max-width:760px){
  .mt-shell{--mt-sidebar-width:0px}
+ .mt-shell .mt-topbar{padding-left:max(18px,var(--mt-safe-left));padding-right:max(18px,var(--mt-safe-right))}
+ .mt-shell .mt-report{padding-left:max(18px,var(--mt-safe-left));padding-right:max(18px,var(--mt-safe-right));padding-bottom:calc(100px + var(--mt-safe-bottom))}
+ .mt-shell .mt-mobile-nav{bottom:max(14px,calc(var(--mt-safe-bottom) + 7px));width:min(430px,calc(100vw - 24px - var(--mt-safe-left) - var(--mt-safe-right)));left:calc(50% + (var(--mt-safe-left) - var(--mt-safe-right))/2)}
  .mt-mobile-nav{background:rgba(80,80,80,.30);border:1px solid rgba(255,255,255,.16);backdrop-filter:blur(26px) saturate(170%);-webkit-backdrop-filter:blur(26px) saturate(170%);box-shadow:0 6px 24px #0005,inset 0 1px 0 #ffffff12}
  .mt-report .mt-page-header h1{font-size:25px}
  .mt-ai-connection{max-width:155px;font-size:9px;padding:6px 9px}

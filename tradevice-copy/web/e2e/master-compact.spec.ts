@@ -1,4 +1,42 @@
 import {test,expect,type Page} from '@playwright/test';
+// Emulators have no hardware insets. Inject those inputs, then measure the
+// rendered production layout. All API calls use the synthetic setup below.
+for(const device of [
+ {name:'small browser',width:320,height:740,top:0,bottom:0,left:0,right:0},
+ {name:'notched PWA',width:390,height:844,top:47,bottom:34,left:0,right:0},
+ {name:'Dynamic Island PWA',width:430,height:932,top:59,bottom:34,left:0,right:0},
+ {name:'landscape safe edges',width:740,height:390,top:0,bottom:21,left:44,right:44},
+ {name:'desktop',width:1440,height:900,top:0,bottom:0,left:0,right:0},
+])test(`master safe area: ${device.name}`,async({page})=>{
+ await page.setViewportSize({width:device.width,height:device.height});
+ const f=await setup(page);
+ await page.locator('.mt-shell').evaluate((el,d)=>{
+  const style=(el as HTMLElement).style;
+  for(const edge of ['top','right','bottom','left'] as const)style.setProperty(`--mt-safe-${edge}`,`${d[edge]}px`);
+ },device);
+ const measure=()=>page.evaluate(()=>{
+  const rect=(selector:string)=>{const r=document.querySelector(selector)!.getBoundingClientRect();return {top:r.top,bottom:r.bottom,left:r.left,right:r.right,height:r.height};};
+  return {header:rect('.mt-topbar'),actions:rect('.mt-top-actions'),main:rect('.mt-page-header'),nav:rect('.mt-mobile-nav'),overflow:document.documentElement.scrollWidth-innerWidth};
+ });
+ const initial=await measure();
+ expect(initial.header.height).toBe(68+device.top);
+ expect(initial.actions.top).toBeGreaterThanOrEqual(device.top);
+ expect(initial.actions.bottom).toBeLessThanOrEqual(initial.header.bottom);
+ expect(initial.main.top).toBeGreaterThanOrEqual(initial.header.bottom);
+ expect(initial.overflow).toBeLessThanOrEqual(1);
+ if(device.width<=760){
+  expect(initial.nav.bottom).toBeLessThanOrEqual(device.height-device.bottom-7);
+  expect(initial.nav.left).toBeGreaterThanOrEqual(device.left);
+  expect(initial.nav.right).toBeLessThanOrEqual(device.width-device.right);
+  const brand=await page.locator('.mt-mobile-brand').boundingBox();
+  expect(brand!.y).toBeGreaterThanOrEqual(device.top);
+ }
+ await page.evaluate(()=>window.scrollTo({top:250,behavior:'instant'}));
+ const scrolled=await measure();
+ expect(scrolled.header.top).toBe(0);
+ expect(scrolled.actions.top).toBe(initial.actions.top);
+ expect(f.posts).toHaveLength(0);
+});
 // Synthetic UI fixtures only. All API traffic intercepted; no broker commands.
 async function setup(page:Page){
  let canStart=true,state='READY',blocked=false;
