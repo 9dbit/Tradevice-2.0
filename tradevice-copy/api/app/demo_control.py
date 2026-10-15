@@ -1,13 +1,10 @@
 """Durable demo-only inbox. Uploaded packages are never executable code."""
 import hashlib,hmac,json,re,time
-from contextlib import contextmanager
 from uuid import UUID
-import psycopg
-from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
-from .master_control import allowed_operator_dsn
 from .master_skills import SkillError
 from .demo_settings import SETTINGS_PROTOCOL,validate_settings
+from .demo_pool import connection
 
 APPROVED_HASH='bcdefbaf270419f2dbe5968bd10e5a88dc3fe4efc7086fef5b2869fb40f81cee'
 CHECKS=('identity','brokerFlat','quote','spread','margin','commission','news','reconciled','engineHash')
@@ -21,13 +18,6 @@ def uid(v):
         if not n.int:raise ValueError()
         return str(n)
     except (ValueError,TypeError,AttributeError):raise SkillError('SKILL_ENGINE_INVALID_ID') from None
-
-@contextmanager
-def connection(dsn):
-    if not allowed_operator_dsn(dsn):raise RuntimeError('DEMO_STAGING_DSN_REQUIRED')
-    with psycopg.connect(dsn,connect_timeout=5,options='-c statement_timeout=5000 -c lock_timeout=3000',row_factory=dict_row) as conn:
-        if conn.execute('SELECT current_user AS role').fetchone()['role']!='tradevice_master_operator':raise RuntimeError('DEMO_OPERATOR_REQUIRED')
-        yield conn
 
 def fresh(s,now):
     return type(s.get('observedMs')) is int and 0<=now-s['observedMs']<=8000

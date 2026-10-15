@@ -1,6 +1,6 @@
 /* Master report presentation. Content has no cards, outlines or divider frames. */
 .mt-report{--report-orange:#ff923d;max-width:1440px}
-.mt-report :is(section,article,div,p,table,td,th,footer):not(.mt-u-progress-track,.mt-skill-progress-track){border:0!important;box-shadow:none!important;background:transparent!important}
+.mt-report :is(section,article,div,p,table,td,th,footer):not(.mt-u-progress-track,.mt-skill-progress-track,.mt-close-slider){border:0!important;box-shadow:none!important;background:transparent!important}
 .mt-report .mt-metric::after{display:none}
 .mt-report .mt-metrics{padding:0;border-radius:0}
 .mt-report .mt-u-terminal-window:has(.mt-u-terminal-empty){height:auto;min-height:0;padding:0}

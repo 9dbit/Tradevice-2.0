@@ -9,7 +9,6 @@ import {NewsStatus} from './news-status';
 import GrowthChart from './growth-chart';
 import TerminalMirror from './terminal-mirror';
 import SkillManager from './skill-manager';
-import EmergencyClose from './emergency-close';
 import DemoControl,{useDemoRuntime} from './demo-control';
 import {validateNews} from '../../lib/news-calendar.mjs';
 import {ReportSection,ReportIcon as I,ReportDrawer,TelemetryDatum as Datum} from './report-ui';
@@ -59,7 +58,6 @@ export default function CompactDashboard({data,token,onNavigate}:{
  return <div className="mt-unified mt-dense-dashboard">
   {diagnostic&&<div className="mt-u-diagnostic" role="alert"><I name="alert"/>
    <div><strong>Telemetry unavailable</strong><p>{diagnostic}</p></div></div>}
-  <EmergencyClose token={token} runtime={demoRuntime} refresh={refreshDemo} now={now}/>
   <DemoControl token={token} runtime={demoRuntime} refresh={refreshDemo} now={now} batchRaw={data?.demoBatch??data?.market?.demoBatch} newsRaw={data?.news}/>
 
   <ReportSection title="Basket &amp; Adaptive" className="mt-u-panel" aria-labelledby="risk-title" header={<div className="mt-u-panel-head"><h2 id="risk-title"><I name="shield"/> Basket &amp; Adaptive</h2>

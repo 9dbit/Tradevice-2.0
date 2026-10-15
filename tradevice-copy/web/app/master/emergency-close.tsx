@@ -1,12 +1,13 @@
 'use client';
-import {useEffect,useRef,useState} from 'react';
+import {useEffect,useRef,useState,type ReactNode} from 'react';
+import CloseSlider from './close-slider';
 import type {DemoRuntime} from './demo-control';
 const protocol='V51_EMERGENCY_CLOSE_20261015';
 const storageKey='tradevice-emergency-request-v1';
 type Request={id:string;status:string;sentMs:number;error?:string};
 const phases:Record<string,string>={WAITING_ENGINE:'Stopping the batch',CANCELLING_PENDING:'Cancelling pending orders',CLOSING_POSITIONS:'Closing positions',VERIFYING_FLAT:'Verifying broker-flat',CONNECTION_UNAVAILABLE:'MT5 connection unavailable',RECONCILIATION_REQUIRED:'Broker reconciliation required',COMPLETE:'Broker-flat verified'};
-export default function EmergencyClose({token,runtime,refresh,now}:{token:string;runtime:DemoRuntime|null;refresh:()=>void;now:number}){
- const dialog=useRef<HTMLDialogElement>(null),sending=useRef(false);
+export default function EmergencyClose({token,runtime,refresh,now,enabled,visible,primary,secondary}:{token:string;runtime:DemoRuntime|null;refresh:()=>void;now:number;enabled:boolean;visible:boolean;primary:ReactNode;secondary:ReactNode}){
+ const sending=useRef(false);
  const [request,setRequest]=useState<Request|null>(null),[ready,setReady]=useState(false),[busy,setBusy]=useState(false);
  useEffect(()=>{try{const saved=JSON.parse(sessionStorage.getItem(storageKey)||'null');if(saved&&/^[a-f0-9-]{36}$/.test(saved.id)&&typeof saved.sentMs==='number')setRequest(saved);}catch{}setReady(true);},[]);
  useEffect(()=>{if(ready){try{if(request)sessionStorage.setItem(storageKey,JSON.stringify(request));}catch{}}},[request,ready]);
@@ -26,8 +27,8 @@ export default function EmergencyClose({token,runtime,refresh,now}:{token:string
  const evidence=runtime?.emergencyClose?.requestId===request?.id?runtime?.emergencyClose:null;
  const verified=request?.status==='APPLIED'&&evidence?.phase==='COMPLETE';
  async function send(){
-  if(sending.current||!supported||pending)return;
-  sending.current=true;setBusy(true);dialog.current?.close();
+  if(sending.current||!supported||pending||!enabled)return;
+  sending.current=true;setBusy(true);
   // A transport timeout reuses its request ID; it never silently creates another close.
   const id=unconfirmed&&request?request.id:crypto.randomUUID(),sentMs=unconfirmed&&request?request.sentMs:Date.now();
   setRequest({id,status:'SENDING',sentMs});
@@ -40,22 +41,14 @@ export default function EmergencyClose({token,runtime,refresh,now}:{token:string
   }catch{setRequest({id,sentMs,status:'UNKNOWN',error:'CONNECTION_UNAVAILABLE'});}
   finally{sending.current=false;setBusy(false);}
  }
- const status=verified?'Broker-flat verified':request?.status==='APPLIED'?'Close confirmed; awaiting broker evidence':request?.status==='REJECTED'?'Request rejected':request?.status==='EXPIRED'?'Request expired; closure not confirmed':request?.status==='UNCERTAIN'?'Closure unconfirmed; reconciliation required':unconfirmed?'Request unconfirmed; check connection':evidence&&evidence.phase!=='COMPLETE'?phases[evidence.phase]:pending?(fresh?'Close requested; awaiting bridge':'Queued; bridge offline'):supported?'Emergency close available':'Emergency bridge upgrade required';
- return <section className="mt-emergency" aria-label="Emergency close">
-  <button className="mt-emergency-button" type="button" disabled={!ready||!supported||busy||pending} onClick={()=>dialog.current?.showModal()}>{busy?'Sending close request…':pending?'Emergency close requested':unconfirmed?'Verify emergency request':'Emergency Close'}</button>
-  <p className="mt-compact-note">Stop the batch, cancel pending orders and close all TRADEVICE XAUUSDm positions.</p>
-  <div className="mt-emergency-status" role="status"><strong>{status}</strong>
+ const status=verified?'Last close: broker-flat verified':request?.status==='APPLIED'?'Close confirmed; awaiting broker evidence':request?.status==='REJECTED'?'Request rejected':request?.status==='EXPIRED'?'Request expired; closure not confirmed':request?.status==='UNCERTAIN'?'Closure unconfirmed; reconciliation required':unconfirmed?'Request unconfirmed; check connection':evidence&&evidence.phase!=='COMPLETE'?phases[evidence.phase]:pending?(fresh?'Close requested; awaiting bridge':'Queued; bridge offline'):supported?'Emergency close available':'Emergency bridge upgrade required';
+ return <>
+  <div className="mt-u-buttons">{visible?<CloseSlider disabled={!ready||!supported||!enabled||busy||pending} onConfirm={()=>void send()} label={busy?'Sending…':pending?'Closing…':unconfirmed?'Verify close':'Close all'}/>:primary}{secondary}</div>
+  {visible&&<p id="close-all-help" className="mt-compact-note mt-close-help">Slide right to close TRADEVICE positions and cancel pending orders.</p>}
+  {request&&<div className="mt-emergency-status" role="status" aria-label="Close all status"><strong>{status}</strong>
    {evidence&&<span>{evidence.positionsRemaining!=null&&evidence.ordersRemaining!=null?`${evidence.positionsRemaining} positions · ${evidence.ordersRemaining} pending orders · `:''}Last report {new Date(evidence.observedMs).toLocaleTimeString('en-GB',{timeZone:'Asia/Jakarta'})} WIB{!fresh?' · connection stale':''}</span>}
-   {request?.error&&<span>{request.error.replaceAll('_',' ')}</span>}
-   {supported&&!fresh&&<span>Bridge offline. Requests expire after 60 seconds. If connectivity cannot recover, use MT5 directly.</span>}
-   {verified&&<span>This batch will not resume. A new batch requires an explicit Start and verified preflight.</span>}
-  </div>
-  <dialog ref={dialog} className="mt-stop-dialog mt-emergency-dialog" aria-labelledby="emergency-title" aria-describedby="emergency-description">
-   <h2 id="emergency-title">Close all TRADEVICE positions?</h2>
-   <p id="emergency-description">Stop this batch, cancel its pending orders and close all verified TRADEVICE XAUUSDm positions on the connected demo account at market prices.</p>
-   <p>Other symbols and unrelated trades are outside this command. Ownership conflicts require reconciliation. Execution requires a working bridge and MT5 connection.</p>
-   {!fresh&&<p>Bridge offline: the request can wait up to 60 seconds. Closure is not guaranteed while disconnected.</p>}
-   <div className="mt-stop-actions"><button type="button" autoFocus onClick={()=>dialog.current?.close()}>Cancel</button><button className="mt-emergency-button" type="button" disabled={busy||pending||!supported} onClick={()=>void send()}>{unconfirmed?'Verify same request':'Confirm Emergency Close'}</button></div>
-  </dialog>
- </section>;
+   {request.error&&<span>{request.error.replaceAll('_',' ')}</span>}
+   {verified&&<span>The closed batch will not resume. A new batch requires an explicit Start and verified preflight.</span>}
+  </div>}
+ </>;
 }

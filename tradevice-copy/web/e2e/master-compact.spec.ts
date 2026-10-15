@@ -352,10 +352,10 @@ test('growth chart filters actual timestamped fixtures and remains usable on mob
  expect(f.overviewPolls.length-pollStart).toBeGreaterThanOrEqual(5);
  await expect(value).toHaveText('-$12.34');await expect(basket).toContainText('Last known');
  f.setOffline(true);f.setOverviewFail(true);
- await expect(note).toContainText('Batch running (last reported).');
- await expect(note).toContainText('current execution is unverified');
+ await expect(note).toContainText('Batch running. Last reported state; see bridge status below for freshness.');
+ await expect(page.locator('.mt-bridge-status')).toHaveText('Bridge reconnecting · controls unavailable');
  await expect(value).toHaveText('-$12.34');
- await expect(page.getByRole('button',{name:'Start Cycle',exact:true})).toBeDisabled();
+ await expect(page.getByRole('slider',{name:'Slide to close all'})).toBeDisabled();
  await page.getByRole('button',{name:'Collapse Trading Cycle',exact:true}).click();await expect(note).toBeVisible();
  await page.evaluate(()=>{(window as any).observeStable=false;});
  expect(await page.evaluate(()=>[(window as any).blankFrames,(window as any).noteMissingFrames])).toEqual([0,0]);
@@ -522,31 +522,47 @@ test('saved light theme is applied before first painted frame',async({page})=>{
 });
 
 
-test('emergency close: explicit confirmation, offline queue, broker proof and no Start',async({page})=>{
+
+async function slideClose(page:Page,fraction=1){
+ const thumb=page.getByRole('slider',{name:'Slide to close all'}),box=await thumb.boundingBox();
+ const width=await page.locator('.mt-close-slider').evaluate(e=>e.clientWidth-46);
+ await page.mouse.move(box!.x+box!.width/2,box!.y+box!.height/2);await page.mouse.down();
+ await page.mouse.move(box!.x+box!.width/2+width*fraction,box!.y+box!.height/2,{steps:8});
+ await page.waitForTimeout(180);await page.mouse.up();
+}
+test('close slider replaces Start only for active batch and follows Pause Stop availability',async({page})=>{
  await page.setViewportSize({width:390,height:844});const f=await setup(page);
- f.recovery();f.setOffline(true);
- await expect(page.getByLabel('Engine connection')).toHaveText('Stale');
- const region=page.getByRole('region',{name:'Emergency close'});
- await region.getByRole('button',{name:'Emergency Close',exact:true}).click();
- await expect(page.getByRole('dialog',{name:'Close all TRADEVICE positions?'})).toBeVisible();
- await page.screenshot({path:'/tmp/tradevice-emergency-confirm.png'});
- await page.getByRole('button',{name:'Cancel',exact:true}).click();expect(f.posts).toHaveLength(0);
- await region.getByRole('button',{name:'Emergency Close',exact:true}).click();
- await page.getByRole('button',{name:'Confirm Emergency Close',exact:true}).click();
- await expect(region).toContainText('Queued; bridge offline');expect(f.posts).toHaveLength(1);
- const post=f.posts[0];expect(post).toMatchObject({action:'EMERGENCY_CLOSE',confirmClose:true,targetCycles:null,confirmDemo:false,expectedRevision:null,settings:null});
- await page.reload();await expect(region).toContainText('Queued; bridge offline');expect(f.posts).toHaveLength(1);
- f.setOffline(false);f.setReceipts([{requestId:post.requestId,action:'EMERGENCY_CLOSE',status:'APPLIED',errorCode:null}]);
+ await expect(page.getByRole('button',{name:'Start Cycle',exact:true})).toBeVisible();
+ await expect(page.getByRole('slider',{name:'Slide to close all'})).toHaveCount(0);
+ await expect(page.getByRole('button',{name:'Emergency Close',exact:true})).toHaveCount(0);
+ f.running();await expect(page.getByLabel('Engine connection')).toHaveText('Running');
+ const slider=page.getByRole('slider',{name:'Slide to close all'});
+ await expect(slider).toBeEnabled();await expect(page.getByRole('button',{name:'Start Cycle',exact:true})).toHaveCount(0);
+ await expect(page.locator('.mt-close-slider')).toHaveCSS('background-color','rgb(180, 35, 45)');
+ const sliderBox=await page.locator('.mt-close-slider').boundingBox(),pause=await page.getByRole('button',{name:'Pause',exact:true}).boundingBox();
+ expect(Math.abs(sliderBox!.y-pause!.y)).toBeLessThan(2);expect(sliderBox!.x+sliderBox!.width).toBeLessThan(pause!.x);
+ await page.locator('.mt-close-slider').click({position:{x:100,y:22}});expect(f.posts).toHaveLength(0);
+ await slideClose(page,.5);expect(f.posts).toHaveLength(0);await expect(slider).toHaveAttribute('aria-valuenow','0');
+ await page.screenshot({path:'/tmp/tradevice-close-slider.png'});
+ f.setOffline(true);await expect(slider).toBeDisabled();await expect(page.getByRole('button',{name:'Pause',exact:true})).toBeDisabled();await expect(page.getByRole('button',{name:'Stop',exact:true})).toBeDisabled();
+ await expect(page.locator('.mt-bridge-status')).toHaveText('Bridge reconnecting · controls unavailable');
+ const staleBox=await page.locator('.mt-close-slider').boundingBox();expect(Math.abs(staleBox!.y-sliderBox!.y)).toBeLessThan(2);
+ f.setOffline(false);await expect(slider).toBeEnabled();await slideClose(page);
+ await expect(page.getByRole('status',{name:'Close all status'})).toContainText('Close requested');expect(f.posts).toHaveLength(1);
+ const post=f.posts[0];expect(post).toMatchObject({action:'EMERGENCY_CLOSE',confirmClose:true,targetCycles:null,confirmDemo:false,expectedRevision:null});
+ await page.reload();await expect(page.getByRole('status',{name:'Close all status'})).toContainText('Close requested');expect(f.posts).toHaveLength(1);
+ f.setReceipts([{requestId:post.requestId,action:'EMERGENCY_CLOSE',status:'APPLIED',errorCode:null}]);
  f.setEmergency({requestId:post.requestId,phase:'COMPLETE',positionsRemaining:0,ordersRemaining:0,observedMs:Date.now()});
- await expect(region).toContainText('Broker-flat verified');await expect(region).toContainText('0 positions · 0 pending orders');
- expect(f.posts.every(x=>x.action==='EMERGENCY_CLOSE')).toBe(true);
+ await expect(page.getByRole('status',{name:'Close all status'})).toContainText('broker-flat verified');
 });
 
-test('emergency close: lost response retries identical ID and keeps unconfirmed visible',async({page})=>{
- const f=await setup(page);f.setPostLost(true);const region=page.getByRole('region',{name:'Emergency close'});
- await region.getByRole('button',{name:'Emergency Close',exact:true}).click();await page.getByRole('button',{name:'Confirm Emergency Close',exact:true}).click();
- await expect(region).toContainText('Request unconfirmed; check connection');const id=f.posts[0].requestId;
- f.setPostLost(false);await region.getByRole('button',{name:'Verify emergency request',exact:true}).click();
- await page.getByRole('button',{name:'Verify same request',exact:true}).click();
- await expect(region).toContainText('Close requested; awaiting bridge');expect(f.posts).toHaveLength(2);expect(f.posts[1].requestId).toBe(id);
+test('close slider keyboard confirmation and lost response retain identical request ID',async({page})=>{
+ const f=await setup(page);f.running();f.setPostLost(true);
+ const slider=page.getByRole('slider',{name:'Slide to close all'});await expect(slider).toBeEnabled();
+ await slider.focus();await slider.press('End');expect(f.posts).toHaveLength(0);
+ await slider.press('Escape');await expect(slider).toHaveAttribute('aria-valuenow','0');
+ await slider.press('End');await slider.press('Enter');
+ await expect(page.getByRole('status',{name:'Close all status'})).toContainText('Request unconfirmed');const id=f.posts[0].requestId;
+ f.setPostLost(false);await slider.focus();await slider.press('End');await slider.press('Enter');
+ await expect(page.getByRole('status',{name:'Close all status'})).toContainText('Close requested');expect(f.posts).toHaveLength(2);expect(f.posts[1].requestId).toBe(id);
 });

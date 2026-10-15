@@ -2,6 +2,7 @@
 import {useCallback,useEffect,useRef,useState} from 'react';
 import {preflightVerified,preflightDeferred,preflightStatus,preflightBlockers} from '../../lib/preflight-status.mjs';
 import {SETTINGS_PROTOCOL,baseLots,demoSettings} from '../../lib/demo-settings.mjs';
+import EmergencyClose from './emergency-close';
 import {NewsStatus} from './news-status';
 import {batchStopNotice} from '../../lib/batch-stop.mjs';
 import {cycleProgress} from '../../lib/cycle-progress.mjs';
@@ -78,9 +79,12 @@ export default function DemoControl({token,runtime,refresh,now,batchRaw,newsRaw}
  const visibleBlockers=preflightBlockers(runtime,fresh);
  const checkedKey=(key:string)=>preflightVerified(runtime,fresh,key);
  const verifiedCount=preflightChecks.filter(([key])=>checkedKey(key)).length;
+ const pauseEnabled=fresh&&!pending&&['STARTING','RUNNING'].includes(runtime?.state||'');
+ const stopEnabled=fresh&&!pending&&['STARTING','RUNNING','PAUSING','PAUSED'].includes(runtime?.state||'');
+ const showClose=!showReset&&!!(runtimeRunning||activeNotice||progress?.unfinished);
  const status=!fresh?'Stale':runtime?.canStart?'Ready':({STARTING:'Starting',RUNNING:'Running',PAUSING:'Pausing',PAUSED:'Paused',STOPPING:'Stopping'} as Record<string,string>)[runtime?.state||'']||'Blocked';
  const blocker=!fresh?'Engine heartbeat unavailable':runtime?.canStart?'':visibleBlockers.filter(b=>!['PREFLIGHT_NEWS','NEWS_NOT_CLEAR'].includes(b)).join(' · ')||(['STARTING','RUNNING','PAUSING','PAUSED','STOPPING'].includes(runtime?.state||'')?'':'Preflight incomplete');
- return <ReportSection notice={activeNotice&&<p className="mt-compact-note mt-batch-notice" role="status">Batch {activeNotice.state.toLowerCase()}{!fresh&&' (last reported)'}. {!fresh?'Engine heartbeat stale; current execution is unverified.':deferred?'New-batch preflight is deferred while the batch is active.':'New entries remain blocked; review engine status and blockers.'} Before each next cycle, the engine checks admission again after broker-flat reconciliation. Continuation is not guaranteed.</p>} title="Trading Cycle" className="mt-u-panel mt-demo-control" aria-labelledby="demo-control-title" header={<div className="mt-u-panel-head mt-demo-heading"><h2 id="demo-control-title"><I name="repeat"/> Trading Cycle</h2><strong aria-label="Engine connection" data-state={status}>{status}</strong></div>} overlay={<dialog ref={stopDialog} className="mt-stop-dialog" aria-labelledby="batch-stop-title" aria-describedby="batch-stop-reason" onCancel={e=>{e.preventDefault();dismissStop();}}>
+ return <ReportSection notice={activeNotice&&<p className="mt-compact-note mt-batch-notice" role="status">Batch {activeNotice.state.toLowerCase()}. Last reported state; see bridge status below for freshness. New batches remain locked while this batch is active. Before each next cycle, the engine checks admission again after broker-flat reconciliation. Continuation is not guaranteed.</p>} title="Trading Cycle" className="mt-u-panel mt-demo-control" aria-labelledby="demo-control-title" header={<div className="mt-u-panel-head mt-demo-heading"><h2 id="demo-control-title"><I name="repeat"/> Trading Cycle</h2><strong aria-label="Engine connection" data-state={status}>{status}</strong></div>} overlay={<dialog ref={stopDialog} className="mt-stop-dialog" aria-labelledby="batch-stop-title" aria-describedby="batch-stop-reason" onCancel={e=>{e.preventDefault();dismissStop();}}>
    <h2 id="batch-stop-title">{stopNotice?.title}</h2>
    <strong>{progress?.completed??0} / {progress?.total??0} cycles completed</strong>
    <p id="batch-stop-reason">{stopNotice?.reason}</p>
@@ -90,6 +94,7 @@ export default function DemoControl({token,runtime,refresh,now,batchRaw,newsRaw}
   </dialog>}>
 
 
+  <p className="mt-bridge-status" role="status">{fresh?'Bridge connected':'Bridge reconnecting · controls unavailable'}</p>
   <ReportDrawer title="Batch settings" meta={`${baseLot} lot · ${tpMode==='FIXED_3_5'?'$3.50':tpMode==='CUSTOM'?'Custom TP':tpMode==='ATR_1'?'1× ATR':'2× ATR'}`}>
    <div className="mt-batch-settings">
     <label>Base lot<select aria-label="Base lot" value={baseLot} disabled={busy||!!activeNotice} onChange={e=>setBaseLot(e.target.value)}>{baseLots.map(lot=><option key={lot} value={lot.toFixed(2)}>{lot.toFixed(2)} lot</option>)}</select></label>
@@ -103,11 +108,8 @@ export default function DemoControl({token,runtime,refresh,now,batchRaw,newsRaw}
   <div className="mt-demo-inputs"><label htmlFor={showCycle?undefined:'demo-cycle-count'}>{showCycle?(ended?'Executed cycles':'Current cycle'):'Cycle count'}<small>Demo · XAUUSDm{showCycle?` · ${ended?'Last side':'Side'}: ${progress?.side||'Unverified'}`:''}{showCycle?(progress?.fresh?'':' · Last reported'):' · 1–10'}</small></label>
    {showCycle?<output className="mt-current-cycle" aria-label="Current cycle">{ended?progress!.executedCount:progress!.current}/{progress!.total}</output>:<input id="demo-cycle-count" aria-label="Demo cycle count" type="text" inputMode="numeric" pattern="[0-9]*" maxLength={2} value={count} disabled={busy||runtimeRunning} onChange={e=>setCount(e.target.value.replace(/\D/g,''))}/>}
   </div>
-  <div className="mt-u-buttons">
-   <button className="mt-u-primary" type="button" disabled={showReset?busy:!settingsReady||!settings||!!showCycle||!fresh||!runtime?.canStart||busy||!/^([1-9]|10)$/.test(count)} onClick={()=>showReset?resetComposer():void send('START')}><I name={showReset?"repeat":"play"} size={15}/>{showReset?'Reset':'Start Cycle'}</button>
-   <button className="mt-u-secondary mt-cycle-icon" type="button" aria-label="Pause" title="Pause" disabled={!fresh||pending||!['STARTING','RUNNING'].includes(runtime?.state||'')} onClick={()=>void send('PAUSE')}><I name="pause" size={19}/></button>
-   <button className="mt-u-secondary mt-cycle-icon" type="button" aria-label="Stop" title="Stop" disabled={!fresh||pending||!['STARTING','RUNNING','PAUSING','PAUSED'].includes(runtime?.state||'')} onClick={()=>void send('STOP')}><I name="stop" size={19}/></button>
-  </div>
+  <EmergencyClose token={token} runtime={runtime} refresh={refresh} now={evidenceNow} enabled={pauseEnabled||stopEnabled} visible={showClose} primary={<button className="mt-u-primary" type="button" disabled={showReset?busy:!settingsReady||!settings||!!showCycle||!fresh||!runtime?.canStart||busy||!/^([1-9]|10)$/.test(count)} onClick={()=>showReset?resetComposer():void send('START')}><I name={showReset?"repeat":"play"} size={15}/>{showReset?'Reset':'Start Cycle'}</button>} secondary={<>   <button className="mt-u-secondary mt-cycle-icon" type="button" aria-label="Pause" title="Pause" disabled={!pauseEnabled} onClick={()=>void send('PAUSE')}><I name="pause" size={19}/></button>
+   <button className="mt-u-secondary mt-cycle-icon" type="button" aria-label="Stop" title="Stop" disabled={!stopEnabled} onClick={()=>void send('STOP')}><I name="stop" size={19}/></button></>}/>
   <div className="mt-cycle-progress" data-running={displayedProgress?.active===true} data-stale={displayedProgress?!displayedProgress.fresh:false}>
    <div className="mt-cycle-track" role="progressbar" aria-label="Completed cycles" aria-valuemin={0} aria-valuemax={displayedProgress?.total??10} {...(displayedProgress?{'aria-valuenow':displayedProgress.completed}:{})} aria-valuetext={displayedProgress?`${displayedProgress.completed} of ${displayedProgress.total} completed${displayedProgress.fresh?'':' · last reported'}`:'Awaiting batch evidence'}><span style={{width:(displayedProgress?.percent??0)+'%'}}/>{displayedProgress?.active&&<i aria-hidden="true" style={{left:(Math.min(displayedProgress.percent,97))+'%'}}/>}</div>
    <div className="mt-cycle-progress-meta"><small>{displayedProgress?`${displayedProgress.completed} / ${displayedProgress.total} completed`:'Awaiting batch evidence'}</small></div>
