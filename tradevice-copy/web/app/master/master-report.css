@@ -329,3 +329,6 @@
 .mt-growth-empty{padding:30px 0;color:#888;font-size:12px}
 @media(max-width:760px){.mt-growth-filters{gap:1px}.mt-growth-filters button{padding:6px 4px;font-size:10px}.mt-growth-range{grid-template-columns:1fr}.mt-growth-range input{font-size:16px}}
 @media(min-width:1100px){.mt-report .mt-dense-dashboard>.mt-demo-control{grid-column:1/-1}}
+
+.mt-preflight-state{display:block;font-size:10px;line-height:1.4;color:#888}
+.mt-preflight-grid li[data-status=Blocked]>span:first-child{color:#e3b28d}

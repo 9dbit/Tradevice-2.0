@@ -1,6 +1,6 @@
 'use client';
 import {useCallback,useEffect,useRef,useState} from 'react';
-import {preflightVerified} from '../../lib/preflight-status.mjs';
+import {preflightVerified,preflightDeferred,preflightStatus,preflightBlockers} from '../../lib/preflight-status.mjs';
 import {NewsStatus} from './news-status';
 import {batchStopNotice} from '../../lib/batch-stop.mjs';
 import {cycleProgress} from '../../lib/cycle-progress.mjs';
@@ -66,10 +66,12 @@ export default function DemoControl({token,runtime,refresh,now,batchRaw,newsRaw}
 
  function resetComposer(){if(!ended||busy||!progress||progress.unfinished>0)return;setResetBatch(progress!.batchId);setCount(String(progress!.total));setRequest(null);}
  const displayedProgress=resetBatch===progress?.batchId&&!runtimeRunning?null:progress;
+ const deferred=preflightDeferred(runtime,fresh);
+ const visibleBlockers=preflightBlockers(runtime,fresh);
  const checkedKey=(key:string)=>preflightVerified(runtime,fresh,key);
  const verifiedCount=preflightChecks.filter(([key])=>checkedKey(key)).length;
  const status=!fresh?'Stale':runtime?.canStart?'Ready':({STARTING:'Starting',RUNNING:'Running',PAUSING:'Pausing',PAUSED:'Paused',STOPPING:'Stopping'} as Record<string,string>)[runtime?.state||'']||'Blocked';
- const blocker=!fresh?'Engine heartbeat unavailable':runtime?.canStart?'':runtime?.blockers.filter(b=>!['PREFLIGHT_NEWS','NEWS_NOT_CLEAR'].includes(b)).join(' · ')||(['STARTING','RUNNING','PAUSING','PAUSED','STOPPING'].includes(runtime?.state||'')?'':'Preflight incomplete');
+ const blocker=!fresh?'Engine heartbeat unavailable':runtime?.canStart?'':visibleBlockers.filter(b=>!['PREFLIGHT_NEWS','NEWS_NOT_CLEAR'].includes(b)).join(' · ')||(['STARTING','RUNNING','PAUSING','PAUSED','STOPPING'].includes(runtime?.state||'')?'':'Preflight incomplete');
  return <section className="mt-u-panel mt-demo-control" aria-labelledby="demo-control-title">
   <dialog ref={stopDialog} className="mt-stop-dialog" aria-labelledby="batch-stop-title" aria-describedby="batch-stop-reason" onCancel={e=>{e.preventDefault();dismissStop();}}>
    <h2 id="batch-stop-title">{stopNotice?.title}</h2>
@@ -93,13 +95,15 @@ export default function DemoControl({token,runtime,refresh,now,batchRaw,newsRaw}
    <div className="mt-cycle-progress-meta"><small>{displayedProgress?`${displayedProgress.completed} / ${displayedProgress.total} completed`:'Awaiting batch evidence'}</small></div>
   </div>
   {runtime?.blockers.some(b=>/RECOVERY|RECONCILIATION/.test(b))&&<p className="mt-compact-note">Recovery required: reconcile broker positions, orders and command receipts. Reset only clears this form; it does not unlock the engine.</p>}
-  {runtime?.blockers.some(b=>['PREFLIGHT_NEWS','NEWS_NOT_CLEAR'].includes(b))&&<NewsStatus raw={newsRaw} now={evidenceNow} compact/>}
-  {blocker&&(blocker!=='Preflight incomplete'||!runtime?.blockers.some(b=>['PREFLIGHT_NEWS','NEWS_NOT_CLEAR'].includes(b)))&&<p className="mt-inline-blocker"><I name="alert" size={14}/><span>{blocker}</span></p>}
-  <ReportDrawer title="Preflight" meta={`${verifiedCount} / ${preflightChecks.length}`}>
+  {visibleBlockers.some(b=>['PREFLIGHT_NEWS','NEWS_NOT_CLEAR'].includes(b))&&<NewsStatus raw={newsRaw} now={evidenceNow} compact/>}
+  {blocker&&(blocker!=='Preflight incomplete'||!visibleBlockers.some(b=>['PREFLIGHT_NEWS','NEWS_NOT_CLEAR'].includes(b)))&&<p className="mt-inline-blocker"><I name="alert" size={14}/><span>{blocker}</span></p>}
+  {deferred&&<p className="mt-compact-note" role="status">Batch {runtime?.state.toLowerCase()}. New-batch preflight is deferred while the engine owns MT5. Before each next cycle, the engine checks admission again after broker-flat reconciliation. Continuation is not guaranteed.</p>}
+  <ReportDrawer title="Preflight" meta={deferred?'Deferred · batch active':!runtime?'Unavailable':!fresh?'Stale':`${verifiedCount} / ${preflightChecks.length}`}>
+   {deferred&&<p className="mt-compact-note">These checks apply to a new Start command; they are not live basket health checks. See cycle progress and engine alerts for the current batch.</p>}
    <ul className="mt-preflight-grid" aria-label="Demo preflight checks">{preflightChecks.map(([key,label])=>{
-    const checked=checkedKey(key);
-    return <li key={key} data-verified={checked}><span role="img" aria-label={checked?'Verified':'Not verified'} title={checked?'Verified':'Awaiting verification'} className={checked?'':'mt-check-pending'}><I name={checked?'check':'repeat'} size={17}/></span><span>{label}</span></li>;
-   })}</ul><p className="mt-compact-note">Spinning: awaiting verification. Blockers must clear before Start.</p>
+    const state=preflightStatus(runtime,fresh,key),checked=state==='Verified';
+    return <li key={key} data-verified={checked} data-status={state}><span role="img" aria-label={state} title={state}><I name={checked?'check':state==='Blocked'?'alert':state==='Stale'?'clock':'minus'} size={17}/></span><span>{label}<small className="mt-preflight-state">{state}</small></span></li>;
+   })}</ul><p className="mt-compact-note">{deferred?'Preflight will be evaluated again when the batch ends.':!fresh?'Fresh engine evidence is required. Last-known checks do not authorize Start.':'Blocked checks must clear before Start. This panel does not trigger the next cycle.'}</p>
   </ReportDrawer>
   {request&&<div role="status" aria-live="polite" className="mt-demo-command"><strong>{request.action} · {request.phase}</strong><p>{request.error||(['PENDING','DISPATCHED','SENDING'].includes(request.phase)?'Awaiting engine confirmation…':request.phase==='APPLIED'?'Command applied. Basket status is reported separately.':'Not confirmed. Check command history before retrying Start.')}</p></div>}
   <ReportDrawer title="Command history" meta={runtime?runtime.commands.length:'—'}>{runtime?.commands.length?<ul className="mt-command-list">{runtime.commands.map(c=><li key={c.requestId}><strong>{c.action} · {c.status}</strong><small>{c.requestId.slice(0,8)}</small>{c.errorCode&&<span>{c.errorCode}</span>}</li>)}</ul>:<p className="mt-compact-note">No commands yet.</p>}</ReportDrawer>

@@ -39,7 +39,8 @@ for(const device of [
 });
 // Synthetic UI fixtures only. All API traffic intercepted; no broker commands.
 async function setup(page:Page){
- let canStart=true,state='READY',blocked=false;
+ let canStart=true,state='READY',blocked=false,expiredPreflight=false;
+ let extraBlockers:string[]=[];
  let demoBatch:any=null,terminalMirror:any=null,growthHistory:any=null,news:any=null;
  const marketStamp=Date.now();
  const session={access_token:'fixture.admin.token',refresh_token:'fixture',token_type:'bearer',expires_in:7200,expires_at:Math.floor(Date.now()/1000)+7200,user:{id:'11111111-1111-4111-8111-111111111111',email:'admin@example.invalid',aud:'authenticated',role:'authenticated',app_metadata:{tradevice_master_admin:true}}};
@@ -57,12 +58,12 @@ async function setup(page:Page){
    if(delay)await new Promise(resolve=>setTimeout(resolve,delay));
    if(fail)return await r.fulfill({status:503,json:{}});
    if(!freeze)stamp=Date.now();
-   await r.fulfill({json:{online:true,observedMs:stamp,state,activeSkillId:'fixture',activeHash:'fixture',revision:1,checks:Object.fromEntries(['identity','brokerFlat','quote','spread','margin','commission','news','reconciled','engineHash'].map(k=>[k,!(blocked&&k==='news')])),blockers:state==='RECOVERY_REQUIRED'?['ENGINE_RECOVERY_REQUIRED']:blocked?['PREFLIGHT_NEWS','NEWS_NOT_CLEAR']:[],canStart,commands:[]}});
+   await r.fulfill({json:{online:true,observedMs:stamp,state,activeSkillId:'fixture',activeHash:'fixture',revision:1,checks:Object.fromEntries(['identity','brokerFlat','quote','spread','margin','commission','news','reconciled','engineHash'].map(k=>[k,!expiredPreflight&&!(blocked&&k==='news')])),blockers:[...(state==='RECOVERY_REQUIRED'?['ENGINE_RECOVERY_REQUIRED']:blocked?['PREFLIGHT_NEWS','NEWS_NOT_CLEAR']:[]),...(expiredPreflight?['ENGINE_NOT_READY',...['identity','brokerFlat','quote','spread','margin','commission','news','reconciled','engineHash'].map(k=>'PREFLIGHT_'+k.toUpperCase())]:[]),...extraBlockers],canStart,commands:[]}});
   }finally{concurrent--;}
  });
  await page.goto('/master');
  await expect(page.getByLabel('Engine connection')).toHaveText('Ready');
- return {posts,setNews:(v:any)=>news=v,recovery:()=>{state='RECOVERY_REQUIRED';canStart=false;},ready:()=>{state='READY';canStart=true;},setGrowth:(v:any)=>growthHistory=v,setBatch:(v:any)=>demoBatch=v,setTerminal:(v:any)=>terminalMirror=v,block:()=>{canStart=false;blocked=true;},running:()=>{canStart=false;state='RUNNING';},setFail:(v:boolean)=>fail=v,freeze:()=>freeze=true,setDelay:(v:number)=>delay=v,max:()=>maxConcurrent};
+ return {posts,expirePreflight:()=>{expiredPreflight=true;},setExtraBlockers:(v:string[])=>extraBlockers=v,restorePreflight:()=>{expiredPreflight=false;},setNews:(v:any)=>news=v,recovery:()=>{state='RECOVERY_REQUIRED';canStart=false;},ready:()=>{state='READY';canStart=true;},setGrowth:(v:any)=>growthHistory=v,setBatch:(v:any)=>demoBatch=v,setTerminal:(v:any)=>terminalMirror=v,block:()=>{canStart=false;blocked=true;},running:()=>{canStart=false;state='RUNNING';},setFail:(v:boolean)=>fail=v,freeze:()=>freeze=true,setDelay:(v:number)=>delay=v,max:()=>maxConcurrent};
 }
 
 test('compact layout: five destinations, aligned status, numeric composer, System contains risk and paper',async({page})=>{
@@ -128,14 +129,15 @@ test('fresh heartbeat cannot imply Ready with blocked preflight, and stale evide
  const f=await setup(page);f.block();
  await expect(page.getByLabel('Engine connection')).toHaveText('Blocked');
  await expect(page.getByRole('button',{name:'Start Cycle',exact:true})).toBeDisabled();
- await expect(page.locator('.mt-demo-control .mt-inline-blocker')).toContainText('CALENDAR_REFRESH_PENDING');
- await page.getByRole('button',{name:'Preflight 8 / 9',exact:true}).click();
+ await expect(page.locator('.mt-demo-control .mt-news-explanation')).toHaveAttribute('data-status','UNKNOWN');
+ await expect(page.locator('.mt-demo-control .mt-news-explanation')).toContainText('New entries remain blocked.');
+ await page.getByRole('button',{name:'Preflight 8 / 10',exact:true}).click();
  await expect(page.getByRole('img',{name:'Verified',exact:true})).toHaveCount(8);
- await expect(page.getByRole('img',{name:'Not verified',exact:true})).toHaveCount(1);
+ await expect(page.getByRole('img',{name:'Blocked',exact:true})).toHaveCount(2);
  f.freeze();f.setFail(true);
  await expect(page.getByLabel('Engine connection')).toHaveText('Stale',{timeout:10000});
  await expect(page.getByRole('img',{name:'Verified',exact:true})).toHaveCount(0);
- await expect(page.getByRole('img',{name:'Not verified',exact:true})).toHaveCount(9);
+ await expect(page.getByRole('img',{name:'Stale',exact:true})).toHaveCount(10);
  await expect(page.locator('[aria-labelledby=telemetry-title] > .mt-telemetry-grid .mt-telemetry-datum > strong')).toHaveText(['—','—','—','—','—','—']);
  expect(f.posts).toHaveLength(0);
 });
@@ -202,13 +204,14 @@ test('growth chart filters actual timestamped fixtures and remains usable on mob
  expect(f.posts).toHaveLength(0);
 });
 
- test('recovery contradicting true raw checks shows unverified reconciliation and spinner',async({page})=>{
+ test('recovery contradicting true raw checks shows blocked reconciliation without a spinner',async({page})=>{
  const f=await setup(page);f.recovery();await expect(page.getByLabel('Engine connection')).toHaveText('Blocked');
  await page.getByRole('button',{name:/Preflight/}).click();
  const checks=page.getByLabel('Demo preflight checks');
  await expect(checks.locator('li').filter({hasText:'Reconciliation'})).toHaveAttribute('data-verified','false');
  await expect(checks.locator('li').filter({hasText:'Engine ready'})).toHaveAttribute('data-verified','false');
- await expect(checks.locator('.mt-check-pending')).toHaveCount(2);
+ await expect(checks.getByRole('img',{name:'Blocked',exact:true})).toHaveCount(2);
+ await expect(checks.locator('.mt-check-pending')).toHaveCount(0);
  await expect(page.getByRole('button',{name:'Start Cycle',exact:true})).toBeDisabled();expect(f.posts).toHaveLength(0);
  });
 
@@ -234,4 +237,26 @@ test('growth chart filters actual timestamped fixtures and remains usable on mob
  await page.getByRole('button',{name:'Notifications',exact:true}).click();const dialog=page.getByRole('dialog',{name:'Notifications'});await expect(dialog).toBeVisible();await expect(dialog).toContainText('Next 24 hours');await expect(dialog).toContainText('WIB');
  for(const width of [320,390,1440]){await page.setViewportSize({width,height:844});expect(await page.evaluate(()=>document.documentElement.scrollWidth-innerWidth)).toBeLessThanOrEqual(1);}
  await page.setViewportSize({width:390,height:844});await page.screenshot({path:'/tmp/tradevice-news-notifications.png'});await page.getByRole('button',{name:'Close notifications'}).click();await expect(dialog).not.toBeVisible();expect(f.posts).toHaveLength(0);
+ });
+
+ test('running batch defers expired new-start preflight without hiding real engine blockers',async({page})=>{
+ const f=await setup(page);f.running();f.expirePreflight();
+ await page.setViewportSize({width:390,height:844});
+ await expect(page.getByLabel('Engine connection')).toHaveText('Running');
+ await page.getByRole('button',{name:'Preflight Deferred · batch active',exact:true}).click();
+ const checks=page.getByLabel('Demo preflight checks');
+ await expect(checks.getByRole('img',{name:'Deferred',exact:true})).toHaveCount(10);
+ await expect(checks.locator('.mt-check-pending')).toHaveCount(0);
+ await expect(page.locator('.mt-demo-control .mt-inline-blocker')).toHaveCount(0);
+ await expect(page.getByRole('button',{name:'Start Cycle',exact:true})).toBeDisabled();
+ await expect(page.getByText(/Before each next cycle, the engine checks admission again/)).toBeVisible();
+ f.setExtraBlockers(['ENGINE_FINGERPRINT_MISMATCH']);
+ await expect(page.locator('.mt-demo-control .mt-inline-blocker')).toContainText('ENGINE_FINGERPRINT_MISMATCH');
+ f.setExtraBlockers(['NEWS_NOT_CLEAR']);
+ await expect(page.locator('.mt-demo-control .mt-news-explanation')).toHaveAttribute('data-status','UNKNOWN');
+ await expect(page.locator('.mt-demo-control .mt-news-explanation')).toContainText('New entries remain blocked.');
+ f.setExtraBlockers([]);f.restorePreflight();f.ready();
+ await expect(page.getByRole('button',{name:'Preflight 10 / 10',exact:true})).toBeVisible();
+ await expect(checks.getByRole('img',{name:'Verified',exact:true})).toHaveCount(10);
+ expect(f.posts).toHaveLength(0);
  });
