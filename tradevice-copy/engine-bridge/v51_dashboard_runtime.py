@@ -128,4 +128,14 @@ class Runtime:
     adapter_class=ResearchBatchAdapter,admission=session.admission,reporter=session.emit,cycle_limit=target,stop_requested=lambda:bool(outer.reason),prior_reconciliation=self.reconcile_prior)
    # run() only returns after cycle history + broker-flat reconciliation.
    return result==0
+  except ArcSafetyError as exc:
+   from v51_terminal_reconciliation import RISK_STOP_MESSAGE,RISK_STOP_FLAT,prove_risk_stop
+   if str(exc)!=RISK_STOP_MESSAGE:raise
+   from goldtrap_arc.mt5_adapter import MT5ArcAdapter
+   from goldtrap_arc.persistence import ArcLedger
+   from v51_batch_core import IDENTITY
+   adapter=MT5ArcAdapter(mt5,allow_execution=False)
+   adapter.initialize()
+   prove_risk_stop(self.root,request_id,adapter,ArcLedger,IDENTITY)
+   return RISK_STOP_FLAT
   finally:mt5.shutdown()

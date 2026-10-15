@@ -118,3 +118,20 @@ def test_calendar_evidence_is_negotiated_without_starting_cycle(tmp_path):
  c.received(dict(calendarEvidencePolicy='SCHEDULE_6H_V1',killSwitch=False,selection=dict(skillId=s,revision=1,sha256=b.APPROVED_HASH),commands=[],confirmed=[]))
  assert c.snapshot()['news']['policyVersion']=='SCHEDULE_6H_V1'
  assert r.started==0
+
+def test_proved_risk_stop_clears_active_pointer_without_next_cycle(tmp_path):
+ c,r,s=setup(tmp_path)
+ def run(rid,n,ready,expires):r.started+=1;ready();return 'RISK_STOP_FLAT'
+ r.run=run;x=cmd(s);invoke(c,x);c.thread.join(2)
+ assert c.state=='STOPPED' and not c.recovery and r.started==1
+ assert c.db.execute('SELECT request_id FROM active_run').fetchone()[0] is None
+ invoke(c,x);assert r.started==1
+
+def test_unexpected_exception_keeps_recovery_and_reconciliation_unverified(tmp_path):
+ c,r,s=setup(tmp_path)
+ def run(rid,n,ready,expires):ready();raise RuntimeError('synthetic')
+ r.run=run;x=cmd(s);invoke(c,x);c.thread.join(2)
+ assert c.recovery and c.state=='RECOVERY_REQUIRED'
+ assert c.db.execute('SELECT request_id FROM active_run').fetchone()[0]==x['requestId']
+ snap=c.snapshot();assert not snap['checks']['reconciled']
+ assert snap['blockers']==['ENGINE_RECOVERY_REQUIRED']

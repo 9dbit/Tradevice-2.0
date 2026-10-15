@@ -54,14 +54,16 @@ class Controller:
     except Exception:blockers=['PREFLIGHT_UNAVAILABLE']
    else:
     checks=self.runtime.checks()
-   if self.recovery:blockers.append('PROCESS_RESTART_RECONCILIATION_REQUIRED')
+   if self.recovery:
+    checks['reconciled']=False
+    blockers.append('ENGINE_RECOVERY_REQUIRED' if self.reason else 'PROCESS_RESTART_RECONCILIATION_REQUIRED')
    if self.reason:blockers.append(self.reason)
    now=int(self.clock()*1000)
    self.last_stamp=max(now,self.last_stamp+1)
    receipts=[dict(requestId=i,status=s,errorCode=e) for i,s,e in self.db.execute("SELECT id,status,error FROM receipts WHERE status!='PROCESSING' AND confirmed=0 LIMIT 16")]
    payload=dict(observedMs=self.last_stamp,bootId=self.boot,activeSkillId=self.active,
     activeHash=APPROVED_HASH if self.active else None,revision=self.revision,state=self.state,
-    checks=checks,blockers=blockers[:20],receipts=receipts)
+    checks=checks,blockers=list(dict.fromkeys(blockers))[:20],receipts=receipts)
    if self.calendar_protocol:payload['news']=self.runtime.news_snapshot() if hasattr(self.runtime,'news_snapshot') else None
    return payload
  def running(self):return self.thread is not None and self.thread.is_alive()
@@ -124,7 +126,7 @@ class Controller:
    try:
     flat=self.runtime.run(rid,c['targetCycles'],ready,c['expiresMs'])
     with self.lock:
-     if flat is not True:self.recovery=True;self.state='RECOVERY_REQUIRED';self.reason='BROKER_FLAT_UNCONFIRMED'
+     if flat is not True and flat!='RISK_STOP_FLAT':self.recovery=True;self.state='RECOVERY_REQUIRED';self.reason='BROKER_FLAT_UNCONFIRMED'
      else:
       self.db.execute('UPDATE active_run SET request_id=NULL WHERE singleton=1')
       self.state='PAUSED' if self.mode=='PAUSE' else 'STOPPED'

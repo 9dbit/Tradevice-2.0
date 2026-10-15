@@ -45,7 +45,7 @@ def install(root,previous_fingerprint=None):
  files=list((root/'goldtrap_arc').glob('*.py'))+[root/name for name in (
   'v51_batch_core.py','v51_batch_research.py','v51_demo_batch_runtime.py','v51_batch_telemetry.py',
   'v51_guarded_engine.py','v51_observed_engine.py','v51_engine_diagnostics.py','v51_runtime_calendar.py',
-  'v51_forexfactory_calendar.py','v51_news_guard.py','v51_dashboard_runtime.py','bridge.py','arc_spec.json')]
+  'v51_forexfactory_calendar.py','v51_news_guard.py','v51_terminal_reconciliation.py','v51_dashboard_runtime.py','bridge.py','arc_spec.json')]
  manifest=dict(skillHash='bcdefbaf270419f2dbe5968bd10e5a88dc3fe4efc7086fef5b2869fb40f81cee',
   files={p.relative_to(root).as_posix():hashlib.sha256(p.read_bytes()).hexdigest() for p in files})
  target=root/'read_only'/'demo_engine_fingerprint.json'
