@@ -6,7 +6,7 @@ const protocol='V51_EMERGENCY_CLOSE_20261016';
 const storageKey='tradevice-emergency-request-v1';
 type Request={id:string;status:string;sentMs:number;error?:string};
 const phases:Record<string,string>={WAITING_ENGINE:'Stopping the batch',CANCELLING_PENDING:'Cancelling pending orders',CLOSING_POSITIONS:'Closing positions',VERIFYING_FLAT:'Verifying broker-flat',CONNECTION_UNAVAILABLE:'MT5 connection unavailable',RECONCILIATION_REQUIRED:'Broker reconciliation required',COMPLETE:'Broker-flat verified'};
-export default function EmergencyClose({token,runtime,refresh,now,enabled,visible,primary,secondary}:{token:string;runtime:DemoRuntime|null;refresh:()=>void;now:number;enabled:boolean;visible:boolean;primary:ReactNode;secondary:ReactNode}){
+export default function EmergencyClose({token,runtime,refresh,now,enabled,visible,closed,primary,secondary}:{token:string;runtime:DemoRuntime|null;refresh:()=>void;now:number;enabled:boolean;visible:boolean;closed:boolean;primary:ReactNode;secondary:ReactNode}){
  const sending=useRef(false);
  const [request,setRequest]=useState<Request|null>(null),[ready,setReady]=useState(false),[busy,setBusy]=useState(false);
  useEffect(()=>{try{const saved=JSON.parse(sessionStorage.getItem(storageKey)||'null');if(saved&&/^[a-f0-9-]{36}$/.test(saved.id)&&typeof saved.sentMs==='number')setRequest(saved);}catch{}setReady(true);},[]);
@@ -44,8 +44,8 @@ export default function EmergencyClose({token,runtime,refresh,now,enabled,visibl
  const status=verified?'Last close: broker-flat verified':request?.status==='APPLIED'?'Close confirmed; awaiting broker evidence':request?.status==='REJECTED'?'Request rejected':request?.status==='EXPIRED'?'Request expired; closure not confirmed':request?.status==='UNCERTAIN'?'Closure unconfirmed; reconciliation required':unconfirmed?'Request unconfirmed; check connection':evidence&&evidence.phase!=='COMPLETE'?phases[evidence.phase]:pending?(fresh?'Close requested; awaiting bridge':'Queued; bridge offline'):supported?'Emergency close available':'Emergency bridge upgrade required';
  return <>
   <div className="mt-u-buttons">{visible?<CloseSlider disabled={!ready||!supported||!enabled||busy||pending} onConfirm={()=>void send()} label={busy?'Sending…':pending?'Closing…':unconfirmed?'Verify close':'Close all'}/>:primary}{secondary}</div>
-  {!visible&&<div className="mt-close-standby"><CloseSlider disabled={!ready||!supported||!enabled||busy||pending} onConfirm={()=>void send()} label={busy?'Sending…':pending?'Closing…':unconfirmed?'Verify close':'Close all'}/></div>}
-  {<p id="close-all-help" className="mt-compact-note mt-close-help">Slide right to close ALL positions and cancel ALL pending orders on the connected demo account.</p>}
+  {!visible&&!closed&&<div className="mt-close-standby"><CloseSlider disabled={!ready||!supported||!enabled||busy||pending} onConfirm={()=>void send()} label={busy?'Sending…':pending?'Closing…':unconfirmed?'Verify close':'Close all'}/></div>}
+  {!closed&&<p id="close-all-help" className="mt-compact-note mt-close-help">Slide right to close ALL positions and cancel ALL pending orders on the connected demo account.</p>}
   {request&&<div className="mt-emergency-status" role="status" aria-label="Close all status"><strong>{status}</strong>
    {evidence&&<span>{evidence.positionsRemaining!=null&&evidence.ordersRemaining!=null?`${evidence.positionsRemaining} positions · ${evidence.ordersRemaining} pending orders · `:''}Last report {new Date(evidence.observedMs).toLocaleTimeString('en-GB',{timeZone:'Asia/Jakarta'})} WIB{!fresh?' · connection stale':''}</span>}
    {request.error&&<span>{request.error.replaceAll('_',' ')}</span>}

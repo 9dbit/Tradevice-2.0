@@ -588,3 +588,28 @@ test('recovery keeps account Close all and pending controls available with indep
  await page.screenshot({path:'/tmp/tradevice-recovery-controls.png',fullPage:true});
  await slideClose(page);expect(f.posts[2]).toMatchObject({action:'EMERGENCY_CLOSE',closeScope:'ALL_DEMO_ACCOUNT',confirmClose:true});
 });
+
+test('verified Close all replaces slider with local Reset then gated Start despite historical unfinished cycle',async({page})=>{
+ await page.setViewportSize({width:390,height:844});const f=await setup(page);f.recovery();
+ f.setBatch({schema:'tradevice.v51.demo.batch.v1',read_only:true,batch_id:'v51_dashboard_'+'c'.repeat(32),observed_ms:Date.now(),status:'SAFETY_STOP',requested:10,blockers:['BROKER_REJECT_10013'],cycles:[{number:1,cycle_id:'53fbfb71',outcome:'SAFETY_STOP',broker_flat:false,layers:1,peak_lots:.01,net_usd:0}]});
+ const dialog=page.getByRole('dialog',{name:'Trading batch stopped'});
+ await expect(dialog).toBeVisible();await expect(dialog.getByRole('button',{name:'Reset',exact:true})).toBeDisabled();
+ await dialog.getByRole('button',{name:'Close',exact:true}).click();
+ const slider=page.getByRole('slider',{name:'Slide to close all'});await expect(slider).toBeEnabled();
+ await slideClose(page);const id=f.posts[0].requestId;
+ f.setReceipts([{requestId:id,action:'EMERGENCY_CLOSE',status:'APPLIED',errorCode:null}]);
+ f.setEmergency({requestId:id,phase:'VERIFYING_FLAT',positionsRemaining:0,ordersRemaining:0,observedMs:Date.now()});
+ await expect(page.getByRole('status',{name:'Close all status'})).toContainText('awaiting broker evidence');await expect(slider).toBeVisible();
+ f.setEmergency({requestId:id,phase:'COMPLETE',positionsRemaining:0,ordersRemaining:0,observedMs:Date.now()});
+ const reset=page.locator('.mt-u-buttons').getByRole('button',{name:'Reset',exact:true});
+ await expect(reset).toBeEnabled();await expect(slider).toHaveCount(0);
+ await expect(page.getByRole('button',{name:'Pause',exact:true})).toBeDisabled();await expect(page.getByRole('button',{name:'Stop',exact:true})).toBeDisabled();
+ await page.reload();await expect(reset).toBeEnabled();await expect(slider).toHaveCount(0);
+ await reset.click();const start=page.getByRole('button',{name:'Start Cycle',exact:true});await expect(start).toBeVisible();await expect(start).toBeDisabled();
+ await expect(page.getByLabel('Demo cycle count')).toHaveValue('10');await expect(page.getByLabel('Engine connection')).toHaveText('Blocked');expect(f.posts).toHaveLength(1);
+ await page.screenshot({path:'/tmp/tradevice-post-close-reset.png',fullPage:true});
+ f.ready();await expect(start).toBeEnabled();expect(f.posts).toHaveLength(1);
+ // A newer Start invalidates historical close proof even before runtime catches up.
+ f.setReceipts([{requestId:'new-start',action:'START',status:'PENDING',errorCode:null},{requestId:id,action:'EMERGENCY_CLOSE',status:'APPLIED',errorCode:null}]);
+ f.running();await expect(slider).toBeEnabled();await expect(start).toHaveCount(0);expect(f.posts).toHaveLength(1);
+});
