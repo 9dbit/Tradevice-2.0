@@ -1,5 +1,5 @@
 """Reviewed local adapter for the V5.1 isolated clone. Startup/preflight is read-only.
-Only run(), invoked by a fresh authenticated START, constructs an execution adapter.
+Only explicit START or EMERGENCY_CLOSE commands can construct execution adapters.
 """
 import hashlib,json,threading,time
 from pathlib import Path
@@ -14,6 +14,20 @@ class Runtime:
   from v51_runtime_calendar import RuntimeCalendar
   self.calendar=RuntimeCalendar();self.calendar.start()
  def news_snapshot(self):return self.calendar.export()
+ def emergency_snapshot(self):
+  from emergency_state import read
+  try:return read(self.root)
+  except ValueError:return None
+ def begin_emergency(self,request_id,expires_ms):
+  from emergency_state import begin
+  # Verify reviewed source, independently of entry/news/ATR/margin readiness.
+  self.fingerprint();return begin(self.root,request_id,expires_ms)
+ def emergency_failed(self,code):
+  from emergency_state import update
+  update(self.root,'RECONCILIATION_REQUIRED')
+ def emergency_close(self,request_id,expires_ms,prior_run):
+  from v51_emergency_close import execute
+  return execute(self.root,request_id,expires_ms,prior_run,self.fingerprint)
  def fingerprint(self):
   manifest=json.loads((self.root/'read_only'/'demo_engine_fingerprint.json').read_text())
   files=manifest['files']
@@ -54,6 +68,10 @@ class Runtime:
   except Exception:blockers.append('BROKER_PREFLIGHT_UNAVAILABLE')
   finally:mt5.shutdown()
   news=self.calendar.decision();checks['news']=news.get('status')=='CLEAR' and news.get('entries_allowed') is True
+  from emergency_state import requested
+  try:
+   if requested(self.root):checks['reconciled']=False;blockers.append('EMERGENCY_CLOSE_UNRESOLVED')
+  except ValueError:checks['reconciled']=False;blockers.append('EMERGENCY_INTENT_INVALID')
   blockers.extend('PREFLIGHT_'+k.upper() for k,v in checks.items() if not v)
   self._checks=checks;self.checked_at=time.time()
   return checks,blockers
@@ -69,7 +87,9 @@ class Runtime:
    if not state.get('cycles_started') or str(state.get('state','')).startswith('COMPLETE'):continue
    if not state.get('cycle_id'):raise ValueError('PRIOR_CYCLE_ID_MISSING')
    life=adapter.cycle_lifecycle(state['cycle_id'])
-   if life.get('all_closed') is not True or not life.get('entry_deals'):raise ValueError('PRIOR_HISTORY_NOT_CLOSED')
+   if life.get('all_closed') is not True or not life.get('entry_deals'):
+    from v51_emergency_close import cancelled_only_proof
+    if not cancelled_only_proof(self.root,p,ledger,life):raise ValueError('PRIOR_HISTORY_NOT_CLOSED')
    if before!=p.read_bytes() or ledger.tail!=ArcLedger(p.parent).tail:raise ValueError('PRIOR_JOURNAL_CHANGED')
    proved.add(str(p.resolve()))
    evidence.append(dict(cycle_id=state['cycle_id'],state_sha256=hashlib.sha256(before).hexdigest(),ledger_tail=ledger.tail,

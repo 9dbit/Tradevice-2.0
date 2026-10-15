@@ -45,7 +45,7 @@ class Controller:
   self.db.execute('INSERT OR IGNORE INTO active_run VALUES(1,NULL)')
   interrupted=self.db.execute('SELECT request_id FROM active_run WHERE singleton=1').fetchone()[0]
   self.recovery=bool(interrupted) or bool(self.db.execute("SELECT 1 FROM receipts WHERE status='UNCERTAIN' LIMIT 1").fetchone())
-  self.active=None;self.revision=0;self.state='RECOVERY_REQUIRED' if self.recovery else 'OFF';self.thread=None
+  self.active=None;self.revision=0;self.state='RECOVERY_REQUIRED' if self.recovery else 'OFF';self.thread=None;self.emergency_thread=None
   self.kill=True;self.reason=None;self.mode=None;self.last_ok=0;self.last_stamp=0;self.calendar_protocol=False
  def snapshot(self):
   with self.lock:
@@ -66,10 +66,15 @@ class Controller:
     activeHash=APPROVED_HASH if self.active else None,revision=self.revision,state=self.state,
     checks=checks,blockers=list(dict.fromkeys(blockers))[:20],receipts=receipts)
    if self.calendar_protocol:payload['news']=self.runtime.news_snapshot() if hasattr(self.runtime,'news_snapshot') else None
+   if hasattr(self.runtime,'emergency_snapshot'):
+    from emergency_state import PROTOCOL
+    payload['emergencyCloseProtocol']=PROTOCOL;payload['emergencyClose']=self.runtime.emergency_snapshot()
    return payload
- def running(self):return self.thread is not None and self.thread.is_alive()
+ def trade_running(self):return self.thread is not None and self.thread.is_alive()
+ def emergency_running(self):return self.emergency_thread is not None and self.emergency_thread.is_alive()
+ def running(self):return self.trade_running() or self.emergency_running()
  def acknowledge(self,rid,status,error=None):
-  with self.lock:self.db.execute('UPDATE receipts SET status=?,error=? WHERE id=?',(status,error,rid))
+  with self.lock:self.db.execute('UPDATE receipts SET status=?,error=?,confirmed=0 WHERE id=?',(status,error,rid))
  def received(self,result):
   with self.lock:
    self.calendar_protocol=result.get('calendarEvidencePolicy')=='SCHEDULE_6H_V1'
@@ -86,7 +91,12 @@ class Controller:
       except Exception:self.state='BLOCKED';self.reason='ENGINE_FINGERPRINT_MISMATCH'
       else:self.active=selection['skillId'];self.revision=selection['revision'];self.state='READY';self.reason=None
      else:self.state='BLOCKED';self.reason='SKILL_ADAPTER_NOT_APPROVED'
-   for command in result.get('commands',[]):self.command(command)
+   commands=result.get('commands',[]);closing=any(c.get('action')=='EMERGENCY_CLOSE' for c in commands)
+   for command in sorted(commands,key=lambda c:c.get('action')!='EMERGENCY_CLOSE'):
+    if closing and command.get('action')=='START':
+     rid=str(uuid.UUID(command['requestId']))
+     self.db.execute("INSERT OR IGNORE INTO receipts(id,payload,status,error) VALUES(?,?,'REJECTED','EMERGENCY_SUPERSEDED')",(rid,json.dumps(command,sort_keys=True)))
+    else:self.command(command)
  def command(self,c):
   rid=str(uuid.UUID(c['requestId']));raw=json.dumps(c,sort_keys=True)
   # Durable PROCESSING precedes any engine operation. Retries never launch twice.
@@ -95,6 +105,40 @@ class Controller:
   self.db.execute('INSERT INTO receipts(id,payload,status) VALUES(?,?,?)',(rid,raw,'PROCESSING'))
   if type(c.get('expiresMs')) is not int or self.clock()*1000>=c['expiresMs']:
    self.acknowledge(rid,'REJECTED','COMMAND_EXPIRED');return
+  if c['action']=='EMERGENCY_CLOSE':
+   if c.get('confirmClose') is not True or not hasattr(self.runtime,'begin_emergency'):
+    self.acknowledge(rid,'REJECTED','EMERGENCY_NOT_SUPPORTED');return
+   if self.emergency_running():self.acknowledge(rid,'REJECTED','EMERGENCY_ALREADY_ACTIVE');return
+   try:self.runtime.begin_emergency(rid,c['expiresMs'])
+   except Exception:self.acknowledge(rid,'REJECTED','EMERGENCY_INTENT_WRITE_FAILED');return
+   self.mode='EMERGENCY_CLOSE';self.state='STOPPING';self.reason='EMERGENCY_CLOSE_ACTIVE';self.recovery=True
+   try:self.runtime.suspend('OPERATOR_EMERGENCY_CLOSE')
+   except Exception:pass # The durable entry latch is authoritative.
+   prior=self.db.execute('SELECT request_id FROM active_run WHERE singleton=1').fetchone()[0]
+   def close_all():
+    try:
+     while self.trade_running():
+      if self.clock()*1000>=c['expiresMs']:raise ValueError('EMERGENCY_WAITING_ENGINE')
+      time.sleep(.05)
+     proof=self.runtime.emergency_close(rid,c['expiresMs'],prior)
+     if proof.get('broker_flat') is not True:raise ValueError('EMERGENCY_FLAT_UNCONFIRMED')
+     with self.lock:
+      current=self.db.execute('SELECT request_id FROM active_run WHERE singleton=1').fetchone()[0]
+      if current!=prior:raise ValueError('EMERGENCY_ACTIVE_RUN_CHANGED')
+      self.db.execute('UPDATE active_run SET request_id=NULL WHERE singleton=1')
+      # A later explicit close may independently reconcile an interrupted close.
+      for old_id,body in self.db.execute("SELECT id,payload FROM receipts WHERE status='UNCERTAIN'").fetchall():
+       if json.loads(body).get('action')=='EMERGENCY_CLOSE':self.acknowledge(old_id,'APPLIED')
+      self.acknowledge(rid,'APPLIED')
+      self.recovery=bool(self.db.execute("SELECT 1 FROM receipts WHERE status='UNCERTAIN' LIMIT 1").fetchone())
+      self.state='RECOVERY_REQUIRED' if self.recovery else 'STOPPED';self.reason='PRIOR_COMMAND_UNCONFIRMED' if self.recovery else None
+    except Exception as exc:
+     code=str(exc) if re.fullmatch('EMERGENCY_[A-Z_]{1,80}',str(exc)) else 'EMERGENCY_RECONCILIATION_REQUIRED'
+     with self.lock:
+      self.recovery=True;self.state='RECOVERY_REQUIRED';self.reason=code;self.acknowledge(rid,'UNCERTAIN',code)
+     try:self.runtime.emergency_failed(code)
+     except Exception:pass
+   self.emergency_thread=threading.Thread(target=close_all,daemon=False);self.emergency_thread.start();return
   if c['action'] in ('PAUSE','STOP'):
    if self.recovery:self.acknowledge(rid,'REJECTED','RECOVERY_REQUIRED');return
    self.mode=c['action']
@@ -128,13 +172,15 @@ class Controller:
    try:
     flat=self.runtime.run(rid,c['targetCycles'],ready,c['expiresMs'])
     with self.lock:
-     if flat is not True and flat!='RISK_STOP_FLAT':self.recovery=True;self.state='RECOVERY_REQUIRED';self.reason='BROKER_FLAT_UNCONFIRMED'
+     if self.mode=='EMERGENCY_CLOSE':pass
+     elif flat is not True and flat!='RISK_STOP_FLAT':self.recovery=True;self.state='RECOVERY_REQUIRED';self.reason='BROKER_FLAT_UNCONFIRMED'
      else:
       self.db.execute('UPDATE active_run SET request_id=NULL WHERE singleton=1')
       self.state='PAUSED' if self.mode=='PAUSE' else 'STOPPED'
     if not started:self.acknowledge(rid,'REJECTED','ENTRY_NOT_STARTED')
    except Exception:
-    with self.lock:self.recovery=True;self.state='RECOVERY_REQUIRED';self.reason='ENGINE_RECOVERY_REQUIRED'
+    with self.lock:
+     if self.mode!='EMERGENCY_CLOSE':self.recovery=True;self.state='RECOVERY_REQUIRED';self.reason='ENGINE_RECOVERY_REQUIRED'
     if not started:self.acknowledge(rid,'UNCERTAIN','ENGINE_START_UNCONFIRMED')
   self.thread=threading.Thread(target=execute,daemon=False);self.thread.start()
  def disconnected(self):

@@ -1,0 +1,42 @@
+--- a/v51_batch_core.py
++++ b/v51_batch_core.py
+@@ -19,6 +19,19 @@
+ IDENTITY = (416429834, 'Exness-MT5Trial14', 'XAUUSDm', 8802001)
+ LOCK_KEY = '|'.join(map(str, IDENTITY))
+ 
++
++def broker_batch_stop(rows,history):
++    """Only the exact, resolved 10013 activation race can defer a rejection."""
++    for row in rows:
++        if row.get('resolution')=='PARTIAL_EFFECT':return True
++        if row.get('classification')!='DEFINITIVE_REJECT':continue
++        rid=row.get('request_id');related=[r for r in history if r.get('request_id')==rid]
++        safe=(row.get('retcode')==10013 and bool(rid)
++              and any(r.get('event')=='BROKER_REQUEST_INTENT' and r.get('operation')=='PENDING_MODIFY' for r in related)
++              and any(r.get('resolution')=='PROVEN_NO_EFFECT_AFTER_REJECT' for r in related)
++              and any(r.get('event')=='PENDING_TRANSITION_DEFERRED' for r in related))
++        if not safe:return True
++    return False
+ 
+ def validate_manifest(m):
+     if m.get('no_new_cycle'):
+@@ -268,8 +281,7 @@
+                     reporter(m,engine)
+                     new_rows = ledger.rows[seen:]
+                     seen = len(ledger.rows)
+-                    if any(r.get('classification') == 'DEFINITIVE_REJECT'
+-                           or r.get('resolution') == 'PARTIAL_EFFECT' for r in new_rows):
++                    if broker_batch_stop(new_rows,ledger.rows):
+                         raise ArcSafetyError('Broker safety rejection/partial effect; whole batch stopped')
+                     if state in (SETTLEMENT_WAIT, QUOTE_RECOVERY_WAIT, CONNECTION_RECOVERY_WAIT, 'NEWS_WAIT_FRESH_QUOTE', 'NEWS_WAIT_SETTLEMENT'):
+                         sleeper(0.05)
+@@ -344,7 +356,8 @@
+             print(json.dumps(dict(event='BATCH_STOP', status=m['status'], cycles=len(m['slots']))), flush=True)
+             return 0
+         except BaseException as exc:
+-            if engine is not None and not str(engine.state.get('state','')).startswith('COMPLETE'):
++            from emergency_state import EmergencyHandoff
++            if engine is not None and not isinstance(exc,EmergencyHandoff) and not str(engine.state.get('state','')).startswith('COMPLETE'):
+                 engine.pause_safety(exc)
+             # Fail closed durably, including an administrative stop read from
+             # disk during recovery. Never overwrite it with an older false flag.

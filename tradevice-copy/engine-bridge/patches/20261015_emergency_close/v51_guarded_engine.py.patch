@@ -1,0 +1,28 @@
+--- a/v51_guarded_engine.py
++++ b/v51_guarded_engine.py
+@@ -6,10 +6,17 @@
+ from goldtrap_arc.mt5_adapter import ArcConnectionWait
+ from goldtrap_arc.execution import ArcBrokerSettlementWait,SETTLEMENT_WAIT
+ from v51_runtime_calendar import REFRESH_PENDING
++from pathlib import Path
++from emergency_state import requested as emergency_requested,EmergencyHandoff
+ 
+ class NewsEntryBlocked(RuntimeError):pass
+ 
+ class NewsGuardedArcExecutionEngine(ObservedArcExecutionEngine):
++    def step(self):
++        # Handoff occurs outside the normal safety-cleanup handler. The close
++        # executor takes the same broker lock only after this runner releases it.
++        if emergency_requested(Path(__file__).resolve().parent):raise EmergencyHandoff('OPERATOR_EMERGENCY_CLOSE')
++        return super().step()
+     def __init__(self,*args,news_provider=None,**kwargs):
+         super().__init__(*args,**kwargs)
+         self.news_provider=news_provider
+@@ -49,6 +56,7 @@
+ 
+     def _entry_guard(self,operation):
+         if operation not in ('TRAP_PENDING','FIXED_PENDING','ADAPTIVE_MARKET','PENDING_MODIFY'):return
++        if emergency_requested(Path(__file__).resolve().parent):raise EmergencyHandoff('OPERATOR_EMERGENCY_CLOSE')
+         if not self._observe_news():raise NewsEntryBlocked('NEWS_ENTRY_NOT_AUTHORIZED')
+ 
+     def _step(self):

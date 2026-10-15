@@ -32,6 +32,8 @@ class PendingTransition(unittest.TestCase):
   self.api.order_send=send
   with self.assertRaises(ArcPendingTransitionWait):self.a.modify_pending(before,before.entry_price,before.tp+.1)
   self.assertEqual(len(self.api.sent),count+1);self.assertFalse(self.ledger.unresolved_requests())
+  from v51_batch_core import broker_batch_stop
+  self.assertFalse(broker_batch_stop(self.ledger.rows,self.ledger.rows))
   self.assertEqual(len(self.api.orders),10)
  def test_check_reject_with_exact_activation_defers_without_dispatch(self):
   before=self.armed();count=len(self.api.sent)

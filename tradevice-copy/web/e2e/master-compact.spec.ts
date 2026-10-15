@@ -40,6 +40,7 @@ for(const device of [
 // Synthetic UI fixtures only. All API traffic intercepted; no broker commands.
 async function setup(page:Page){
  let canStart=true,state='READY',blocked=false,expiredPreflight=false;
+ let emergency:any=null,receipts:any[]=[],postLost=false;
  let extraBlockers:string[]=[];
  let demoBatch:any=null,terminalMirror:any=null,growthHistory:any=null,news:any=null;
  let marketStamp=Date.now(),engineDiagnostics:any=null,overviewFail=false,overviewUnavailable=false,overviewDelay=0,marketValues:Record<string,unknown>={},offline=false;
@@ -53,18 +54,18 @@ async function setup(page:Page){
  let fail=false,stamp=Date.now(),freeze=false,delay=0,concurrent=0,maxConcurrent=0;
  const posts:any[]=[];
  await page.route('**/api/master/demo',async r=>{
-  if(r.request().method()==='POST'){const body=r.request().postDataJSON();posts.push(body);return r.fulfill({json:{requestId:body.requestId,status:'PENDING'}});}
+  if(r.request().method()==='POST'){const body=r.request().postDataJSON();posts.push(body);if(postLost)return r.abort();return r.fulfill({json:{requestId:body.requestId,status:'PENDING'}});}
   concurrent++;maxConcurrent=Math.max(concurrent,maxConcurrent);
   try{
    if(delay)await new Promise(resolve=>setTimeout(resolve,delay));
    if(fail)return await r.fulfill({status:503,json:{}});
    if(!freeze)stamp=Date.now();
-   await r.fulfill({json:{settingsProtocol:'V51_DYNAMIC_ATR_USD_20261015',online:!offline,observedMs:stamp,state:offline?'OFFLINE':state,activeSkillId:'fixture',activeHash:'fixture',revision:1,checks:Object.fromEntries(['identity','brokerFlat','quote','spread','margin','commission','news','reconciled','engineHash'].map(k=>[k,!expiredPreflight&&!(blocked&&k==='news')])),blockers:[...(state==='RECOVERY_REQUIRED'?['ENGINE_RECOVERY_REQUIRED']:blocked?['PREFLIGHT_NEWS','NEWS_NOT_CLEAR']:[]),...(expiredPreflight?['ENGINE_NOT_READY',...['identity','brokerFlat','quote','spread','margin','commission','news','reconciled','engineHash'].map(k=>'PREFLIGHT_'+k.toUpperCase())]:[]),...extraBlockers],canStart,commands:[]}});
+   await r.fulfill({json:{emergencyCloseProtocol:'V51_EMERGENCY_CLOSE_20261015',emergencyClose:emergency,settingsProtocol:'V51_DYNAMIC_ATR_USD_20261015',online:!offline,observedMs:stamp,state:offline?'OFFLINE':state,activeSkillId:'fixture',activeHash:'fixture',revision:1,checks:Object.fromEntries(['identity','brokerFlat','quote','spread','margin','commission','news','reconciled','engineHash'].map(k=>[k,!expiredPreflight&&!(blocked&&k==='news')])),blockers:[...(state==='RECOVERY_REQUIRED'?['ENGINE_RECOVERY_REQUIRED']:blocked?['PREFLIGHT_NEWS','NEWS_NOT_CLEAR']:[]),...(expiredPreflight?['ENGINE_NOT_READY',...['identity','brokerFlat','quote','spread','margin','commission','news','reconciled','engineHash'].map(k=>'PREFLIGHT_'+k.toUpperCase())]:[]),...extraBlockers],canStart,commands:receipts}});
   }finally{concurrent--;}
  });
  await page.goto('/master');
  await expect(page.getByLabel('Engine connection')).toHaveText('Ready');
- return {posts,overviewPolls,setMarket:(v:Record<string,unknown>)=>{marketValues=v;marketStamp=Date.now();},setOverviewUnavailable:(v:boolean)=>overviewUnavailable=v,setOverviewDelay:(v:number)=>overviewDelay=v,setOverviewFail:(v:boolean)=>overviewFail=v,setOffline:(v:boolean)=>offline=v,setEngine:(v:any)=>{engineDiagnostics=v;marketStamp=Date.now();},expirePreflight:()=>{expiredPreflight=true;},setExtraBlockers:(v:string[])=>extraBlockers=v,restorePreflight:()=>{expiredPreflight=false;},setNews:(v:any)=>news=v,recovery:()=>{state='RECOVERY_REQUIRED';canStart=false;},ready:()=>{state='READY';canStart=true;},setGrowth:(v:any)=>growthHistory=v,setBatch:(v:any)=>demoBatch=v,setTerminal:(v:any)=>terminalMirror=v,block:()=>{canStart=false;blocked=true;},running:()=>{canStart=false;state='RUNNING';},setFail:(v:boolean)=>fail=v,freeze:()=>freeze=true,setDelay:(v:number)=>delay=v,max:()=>maxConcurrent};
+ return {posts,overviewPolls,setEmergency:(v:any)=>emergency=v,setReceipts:(v:any[])=>receipts=v,setPostLost:(v:boolean)=>postLost=v,setMarket:(v:Record<string,unknown>)=>{marketValues=v;marketStamp=Date.now();},setOverviewUnavailable:(v:boolean)=>overviewUnavailable=v,setOverviewDelay:(v:number)=>overviewDelay=v,setOverviewFail:(v:boolean)=>overviewFail=v,setOffline:(v:boolean)=>offline=v,setEngine:(v:any)=>{engineDiagnostics=v;marketStamp=Date.now();},expirePreflight:()=>{expiredPreflight=true;},setExtraBlockers:(v:string[])=>extraBlockers=v,restorePreflight:()=>{expiredPreflight=false;},setNews:(v:any)=>news=v,recovery:()=>{state='RECOVERY_REQUIRED';canStart=false;},ready:()=>{state='READY';canStart=true;},setGrowth:(v:any)=>growthHistory=v,setBatch:(v:any)=>demoBatch=v,setTerminal:(v:any)=>terminalMirror=v,block:()=>{canStart=false;blocked=true;},running:()=>{canStart=false;state='RUNNING';},setFail:(v:boolean)=>fail=v,freeze:()=>freeze=true,setDelay:(v:number)=>delay=v,max:()=>maxConcurrent};
 }
 
 test('compact layout: five destinations, aligned status, numeric composer, System contains risk and paper',async({page})=>{
@@ -518,4 +519,34 @@ test('saved light theme is applied before first painted frame',async({page})=>{
  expect(frames.length).toBeGreaterThan(0);
  for(const frame of frames)expect(frame).toEqual({theme:'light',color:'rgb(255, 255, 255)'});
  expect(errors).toEqual([]);expect(f.posts).toHaveLength(0);
+});
+
+
+test('emergency close: explicit confirmation, offline queue, broker proof and no Start',async({page})=>{
+ await page.setViewportSize({width:390,height:844});const f=await setup(page);
+ f.recovery();f.setOffline(true);
+ await expect(page.getByLabel('Engine connection')).toHaveText('Stale');
+ const region=page.getByRole('region',{name:'Emergency close'});
+ await region.getByRole('button',{name:'Emergency Close',exact:true}).click();
+ await expect(page.getByRole('dialog',{name:'Close all TRADEVICE positions?'})).toBeVisible();
+ await page.screenshot({path:'/tmp/tradevice-emergency-confirm.png'});
+ await page.getByRole('button',{name:'Cancel',exact:true}).click();expect(f.posts).toHaveLength(0);
+ await region.getByRole('button',{name:'Emergency Close',exact:true}).click();
+ await page.getByRole('button',{name:'Confirm Emergency Close',exact:true}).click();
+ await expect(region).toContainText('Queued; bridge offline');expect(f.posts).toHaveLength(1);
+ const post=f.posts[0];expect(post).toMatchObject({action:'EMERGENCY_CLOSE',confirmClose:true,targetCycles:null,confirmDemo:false,expectedRevision:null,settings:null});
+ await page.reload();await expect(region).toContainText('Queued; bridge offline');expect(f.posts).toHaveLength(1);
+ f.setOffline(false);f.setReceipts([{requestId:post.requestId,action:'EMERGENCY_CLOSE',status:'APPLIED',errorCode:null}]);
+ f.setEmergency({requestId:post.requestId,phase:'COMPLETE',positionsRemaining:0,ordersRemaining:0,observedMs:Date.now()});
+ await expect(region).toContainText('Broker-flat verified');await expect(region).toContainText('0 positions · 0 pending orders');
+ expect(f.posts.every(x=>x.action==='EMERGENCY_CLOSE')).toBe(true);
+});
+
+test('emergency close: lost response retries identical ID and keeps unconfirmed visible',async({page})=>{
+ const f=await setup(page);f.setPostLost(true);const region=page.getByRole('region',{name:'Emergency close'});
+ await region.getByRole('button',{name:'Emergency Close',exact:true}).click();await page.getByRole('button',{name:'Confirm Emergency Close',exact:true}).click();
+ await expect(region).toContainText('Request unconfirmed; check connection');const id=f.posts[0].requestId;
+ f.setPostLost(false);await region.getByRole('button',{name:'Verify emergency request',exact:true}).click();
+ await page.getByRole('button',{name:'Verify same request',exact:true}).click();
+ await expect(region).toContainText('Close requested; awaiting bridge');expect(f.posts).toHaveLength(2);expect(f.posts[1].requestId).toBe(id);
 });

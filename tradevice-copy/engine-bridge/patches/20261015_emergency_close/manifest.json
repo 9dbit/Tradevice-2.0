@@ -1,0 +1,40 @@
+{
+  "baseline_fingerprint_sha256": "73ee018fb6191e8d8b7894d4e3845e8a97dd99ff46fa03d30f7093d970f8a9b4",
+  "files": {
+    "goldtrap_arc/mt5_adapter.py": {
+      "before_sha256": "50f76dd48ea7817b09f51c96663b9a87db0ee7ee5edafb9e70c347773cb9284a",
+      "after_sha256": "8e9d09518492fc9d4c27ef425fba45f752895c7ab1e0b8982f8afc987046fcab",
+      "patch": "goldtrap_arc__mt5_adapter.py.patch"
+    },
+    "v51_batch_core.py": {
+      "before_sha256": "e13dcbfb303d496310d2b7383ce050d0f4cd338c07a019fd76c0bb26c0d6fbce",
+      "after_sha256": "dd4733580c65ee637fce8d0fd28de280c93d4518490f221ecdb13ae8700a4bf5",
+      "patch": "v51_batch_core.py.patch"
+    },
+    "v51_guarded_engine.py": {
+      "before_sha256": "3f8731f4c4072a6181db82e063e639050c59e0cc0bd33eb381ca5575ddcaf24d",
+      "after_sha256": "121664e991e94b0823ae93b36e65bf60c229a5f93f5b2993f2aed137752d312c",
+      "patch": "v51_guarded_engine.py.patch"
+    },
+    "bridge.py": {
+      "before_sha256": "43aac5fd1c2e15c37716d4fb0e37f9e3f51824184ecba7a455d5d57b16f47192",
+      "after_sha256": "024158d34bb53b83f170d9b59e4fba5c4b6ad3958bc60b65e8614198ac84608d",
+      "patch": "bridge.py.patch"
+    },
+    "v51_dashboard_runtime.py": {
+      "before_sha256": "1f717d2608bdd4e7d44a6d6e0f576392c122f4b4d960e88f865f10c2b675d138",
+      "after_sha256": "f8a717b647e5fc2ecbdb4692af267ca8697ea102121d029990efd21b19b92eba",
+      "patch": "v51_dashboard_runtime.py.patch"
+    },
+    "emergency_state.py": {
+      "before_sha256": null,
+      "after_sha256": "6d33b2325aaa5d79f55448ba50d7e52388bdab72364714b45269284c77306404",
+      "patch": "emergency_state.py.patch"
+    },
+    "v51_emergency_close.py": {
+      "before_sha256": null,
+      "after_sha256": "58dc48f32df5cd2e25e6c99e58db66493e43737b3af7b8201f99304bfc17b58c",
+      "patch": "v51_emergency_close.py.patch"
+    }
+  }
+}

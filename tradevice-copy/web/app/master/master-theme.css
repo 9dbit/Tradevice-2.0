@@ -36,3 +36,16 @@ html[data-master-theme=light] .mt .mt-mobile-nav button.current{color:#111}
 html[data-master-theme=light] .mt .mt-mobile-nav::before{background:#fff;box-shadow:0 1px 8px #0002}
 html[data-master-theme=light] .mt .mt-ai-label{background:#fff;color:#000}
 @media(max-width:380px){.mt .mt-top-actions{gap:2px}.mt .mt-top-actions>button{width:32px;min-width:32px;height:36px;padding:0}}
+
+.mt .mt-emergency{padding:12px 0 18px;border-bottom:1px solid var(--master-line);display:grid;gap:8px}
+.mt .mt-emergency .mt-compact-note{margin:0}
+.mt .mt-emergency-button,.mt .mt-emergency-dialog .mt-emergency-button{background:#b4232d;color:#fff;border:1px solid #ed6871;border-radius:999px;font:inherit;font-weight:700;padding:12px 18px;min-height:44px;cursor:pointer}
+.mt .mt-emergency-button:disabled{opacity:.65;cursor:default}
+.mt .mt-emergency-button:focus-visible{outline:3px solid var(--master-text);outline-offset:3px}
+.mt .mt-emergency-status{display:grid;gap:4px;font-size:13px;line-height:1.5;overflow-wrap:anywhere;font-variant-numeric:tabular-nums;color:var(--master-muted)}
+.mt .mt-emergency-status strong{color:var(--master-text);font-weight:500}
+.mt .mt-emergency-dialog h2{color:var(--master-danger)}
+.mt .mt-emergency-dialog .mt-stop-actions{grid-template-columns:1fr 1.6fr}
+@media(max-width:380px){.mt .mt-emergency-dialog .mt-stop-actions{grid-template-columns:1fr}.mt .mt-emergency-dialog button{font-size:14px}}
+html[data-master-theme] .mt .mt-emergency-dialog button.mt-emergency-button{background:#b4232d;color:#fff;font-size:14px;line-height:1.4}
+@media(max-width:480px){.mt .mt-emergency-dialog .mt-stop-actions{grid-template-columns:1fr}}

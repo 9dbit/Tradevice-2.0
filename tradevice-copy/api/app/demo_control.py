@@ -13,6 +13,7 @@ APPROVED_HASH='bcdefbaf270419f2dbe5968bd10e5a88dc3fe4efc7086fef5b2869fb40f81cee'
 CHECKS=('identity','brokerFlat','quote','spread','margin','commission','news','reconciled','engineHash')
 STATES={'OFF','READY','STARTING','RUNNING','PAUSING','PAUSED','STOPPING','STOPPED','BLOCKED','RECOVERY_REQUIRED'}
 BUSY={'STARTING','RUNNING','PAUSING','STOPPING','RECOVERY_REQUIRED'}
+EMERGENCY_PROTOCOL='V51_EMERGENCY_CLOSE_20261015'
 
 def uid(v):
     try:
@@ -78,14 +79,19 @@ def projection(conn,news_clear=False):
         activeSkillId=s.get('activeSkillId') if online else None,activeHash=s.get('activeHash') if online else None,
         revision=s.get('revision') if online else None,checks=s.get('checks',{}) if online else {},
         blockers=list(dict.fromkeys(blockers+s.get('blockers',[]))),canStart=not blockers,
+        emergencyCloseProtocol=s.get('emergencyCloseProtocol'),emergencyClose=s.get('emergencyClose'),
         commands=[dict(requestId=str(c['request_id']),action=c['action'],status=c['status'],errorCode=c['error_code']) for c in row['history']])
 
 def read(dsn,news_clear=False):
     with connection(dsn) as conn:return projection(conn,news_clear)
 
 def validate_command(p):
-    if not isinstance(p,dict) or set(p)-{'settings'}!={'actor_id','requestId','action','targetCycles','confirmDemo','expectedRevision'}:raise SkillError('SKILL_ENGINE_COMMAND_INVALID')
+    if not isinstance(p,dict) or set(p)-{'settings','confirmClose'}!={'actor_id','requestId','action','targetCycles','confirmDemo','expectedRevision'}:raise SkillError('SKILL_ENGINE_COMMAND_INVALID')
     uid(p['actor_id']);uid(p['requestId'])
+    if p['action']=='EMERGENCY_CLOSE':
+        if p.get('confirmClose') is not True or p['targetCycles'] is not None or p.get('settings') is not None or p['confirmDemo'] is not False or p['expectedRevision'] is not None:raise SkillError('SKILL_EMERGENCY_CONFIRMATION_REQUIRED')
+        return
+    if p.get('confirmClose') is not None:raise SkillError('SKILL_ENGINE_COMMAND_INVALID')
     if p['action'] not in {'START','PAUSE','STOP'}:raise SkillError('SKILL_ENGINE_COMMAND_INVALID')
     if type(p['expectedRevision']) is not int or not 0<=p['expectedRevision']<=2**53-1:raise SkillError('SKILL_REVISION_INVALID')
     if p['action']=='START':
@@ -101,9 +107,10 @@ def submit(dsn,p,news_clear):
         sel,row,now=locked(conn)
         old=conn.execute('SELECT * FROM master_demo.commands WHERE request_id=%s',(p['requestId'],)).fetchone()
         if old:
-            if (str(old['actor_id']),old['action'],old['target_cycles'],old['selection_revision'],old.get('settings'))!=(p['actor_id'],p['action'],p['targetCycles'],p['expectedRevision'],p['settings']):raise SkillError('SKILL_COMMAND_ID_CONFLICT',409)
+            revision=old['selection_revision'] if p['action']=='EMERGENCY_CLOSE' else p['expectedRevision']
+            if (str(old['actor_id']),old['action'],old['target_cycles'],old['selection_revision'],old.get('settings'))!=(p['actor_id'],p['action'],p['targetCycles'],revision,p['settings']):raise SkillError('SKILL_COMMAND_ID_CONFLICT',409)
             return dict(requestId=p['requestId'],status=old['status'])
-        if p['expectedRevision']!=sel['revision']:raise SkillError('SKILL_REVISION_CONFLICT',409)
+        if p['action']!='EMERGENCY_CLOSE' and p['expectedRevision']!=sel['revision']:raise SkillError('SKILL_REVISION_CONFLICT',409)
         if conn.execute("SELECT count(*) AS n FROM master_demo.commands WHERE created_at>now()-interval '1 minute'").fetchone()['n']>=20:raise SkillError('SKILL_RATE_LIMIT',429)
         s=row['snapshot']
         if p['action']=='START':
@@ -112,13 +119,26 @@ def submit(dsn,p,news_clear):
             if not safety or safety['kill_switch'] is not False:blockers.append('MANUAL_KILL_OR_SAFETY_UNAVAILABLE')
             if conn.execute("SELECT 1 FROM master_demo.commands WHERE status IN ('PENDING','DISPATCHED','UNCERTAIN') LIMIT 1").fetchone():blockers.append('COMMAND_UNCONFIRMED')
             if blockers:raise SkillError('SKILL_START_'+blockers[0],409)
+        elif p['action']=='EMERGENCY_CLOSE':
+            if s.get('emergencyCloseProtocol')!=EMERGENCY_PROTOCOL:raise SkillError('SKILL_EMERGENCY_UPGRADE_REQUIRED',409)
+            # Emergency reduction outranks every pending START and all entry gates.
+            conn.execute("UPDATE master_demo.commands SET status='REJECTED',error_code='EMERGENCY_SUPERSEDED',processed_at=now() WHERE action='START' AND status IN ('PENDING','DISPATCHED')")
         elif not fresh(s,now):raise SkillError('SKILL_ENGINE_OFFLINE',409)
         conn.execute('''INSERT INTO master_demo.commands(request_id,actor_id,action,skill_id,skill_hash,selection_revision,target_cycles,settings)
             VALUES(%s,%s,%s,%s,%s,%s,%s,%s)''',(p['requestId'],p['actor_id'],p['action'],sel['selected_skill_id'],APPROVED_HASH if sel['selected_skill_id'] else None,sel['revision'],p['targetCycles'],Jsonb(p['settings']) if p['settings'] is not None else None))
         return dict(requestId=p['requestId'],status='PENDING')
 
 def validate_snapshot(p,now):
-    if not isinstance(p,dict) or set(p)-{'news','settingsProtocol'}!={'observedMs','bootId','activeSkillId','activeHash','revision','state','checks','blockers','receipts'}:raise SkillError('SKILL_ENGINE_REPORT_INVALID')
+    if not isinstance(p,dict) or set(p)-{'news','settingsProtocol','emergencyCloseProtocol','emergencyClose'}!={'observedMs','bootId','activeSkillId','activeHash','revision','state','checks','blockers','receipts'}:raise SkillError('SKILL_ENGINE_REPORT_INVALID')
+    if 'emergencyCloseProtocol' in p and p['emergencyCloseProtocol']!=EMERGENCY_PROTOCOL:raise SkillError('SKILL_EMERGENCY_PROTOCOL_INVALID')
+    e=p.get('emergencyClose')
+    if e is not None:
+        if not isinstance(e,dict) or set(e)!={'protocol','requestId','expiresMs','phase','observedMs','positionsRemaining','ordersRemaining'}:raise SkillError('SKILL_EMERGENCY_REPORT_INVALID')
+        uid(e['requestId'])
+        if p.get('emergencyCloseProtocol')!=EMERGENCY_PROTOCOL or e['protocol']!=EMERGENCY_PROTOCOL or e['phase'] not in {'WAITING_ENGINE','CANCELLING_PENDING','CLOSING_POSITIONS','VERIFYING_FLAT','CONNECTION_UNAVAILABLE','RECONCILIATION_REQUIRED','COMPLETE'}:raise SkillError('SKILL_EMERGENCY_REPORT_INVALID')
+        if any(type(e[k]) is not int or e[k]<0 for k in ('expiresMs','observedMs')) or e['observedMs']>now+1000:raise SkillError('SKILL_EMERGENCY_REPORT_INVALID')
+        if any(e[k] is not None and (type(e[k]) is not int or not 0<=e[k]<=10000) for k in ('positionsRemaining','ordersRemaining')):raise SkillError('SKILL_EMERGENCY_REPORT_INVALID')
+        if e['phase']=='COMPLETE' and (e['positionsRemaining']!=0 or e['ordersRemaining']!=0):raise SkillError('SKILL_EMERGENCY_REPORT_INVALID')
     if 'settingsProtocol' in p and p['settingsProtocol'] not in (SETTINGS_PROTOCOL,'V51_CLOSE_DISTANCE_20261015','V51_ATR_PRICE_DISTANCE_20261015'):raise SkillError('SKILL_SETTINGS_PROTOCOL_INVALID')
     from .bridge_calendar import validate_evidence
     try:validate_evidence(p.get('news'),now)
@@ -146,8 +166,10 @@ def exchange(dsn,p):
         if fresh(prior,now) and prior.get('bootId')!=p['bootId']:raise SkillError('SKILL_ENGINE_LEASE_HELD',409)
         confirmed=[]
         for r in p['receipts']:
-            c=conn.execute('SELECT status FROM master_demo.commands WHERE request_id=%s FOR UPDATE',(r['requestId'],)).fetchone()
-            if c and c['status'] in ('DISPATCHED','UNCERTAIN'):
+            c=conn.execute('SELECT status,error_code FROM master_demo.commands WHERE request_id=%s FOR UPDATE',(r['requestId'],)).fetchone()
+            # A START can reach the PC just before an emergency supersedes its
+            # queue row. Preserve its actual receipt; the emergency still stops it.
+            if c and (c['status'] in ('DISPATCHED','UNCERTAIN') or (c['status']=='REJECTED' and c.get('error_code')=='EMERGENCY_SUPERSEDED')):
                 conn.execute('UPDATE master_demo.commands SET status=%s,error_code=%s,processed_at=now() WHERE request_id=%s',(r['status'],r['errorCode'],r['requestId']))
                 confirmed.append(r['requestId'])
             elif c and c['status']==r['status']:confirmed.append(r['requestId'])
@@ -156,7 +178,7 @@ def exchange(dsn,p):
         with conn.pipeline():
             conn.execute("UPDATE master_demo.commands SET status=CASE WHEN status='PENDING' THEN 'EXPIRED' ELSE 'UNCERTAIN' END,error_code='COMMAND_EXPIRED' WHERE status IN ('PENDING','DISPATCHED') AND expires_at<=now()")
             conn.execute('UPDATE master_demo.runtime SET snapshot=%s,observed_ms=%s,received_at=now() WHERE singleton',(Jsonb({k:v for k,v in p.items() if k!='receipts'}),p['observedMs']))
-            pending=conn.execute("SELECT * FROM master_demo.commands WHERE status IN ('PENDING','DISPATCHED') AND expires_at>now() ORDER BY created_at LIMIT 16 FOR UPDATE")
+            pending=conn.execute("SELECT * FROM master_demo.commands WHERE status IN ('PENDING','DISPATCHED') AND expires_at>now() ORDER BY (action='EMERGENCY_CLOSE') DESC,created_at LIMIT 16 FOR UPDATE")
             safety_query=conn.execute("SELECT kill_switch FROM master_control.worker_state WHERE master_id='tradevice-master-staging'")
             package_query=conn.execute('SELECT kind,sha256 FROM master_skills.packages WHERE id=%s',(sel['selected_skill_id'],)) if sel['selected_skill_id'] else None
         cmds=pending.fetchall()
@@ -165,7 +187,7 @@ def exchange(dsn,p):
         package=package_query.fetchone() if package_query else None
         selected_hash=package['sha256'] if package and package['kind']=='BUILTIN' and package['sha256']==APPROVED_HASH else None
         return dict(serverMs=now,calendarEvidencePolicy='SCHEDULE_6H_V1',killSwitch=not safety or safety['kill_switch'] is not False,selection=dict(skillId=str(sel['selected_skill_id']) if sel['selected_skill_id'] else None,revision=sel['revision'],sha256=selected_hash),confirmed=confirmed,
-            commands=[dict(requestId=str(c['request_id']),action=c['action'],targetCycles=c['target_cycles'],settings=c.get('settings'),skillId=str(c['skill_id']) if c['skill_id'] else None,sha256=c['skill_hash'],revision=c['selection_revision'],expiresMs=int(c['expires_at'].timestamp()*1000)) for c in cmds])
+            commands=[dict(requestId=str(c['request_id']),action=c['action'],confirmClose=c['action']=='EMERGENCY_CLOSE',targetCycles=c['target_cycles'],settings=c.get('settings'),skillId=str(c['skill_id']) if c['skill_id'] else None,sha256=c['skill_hash'],revision=c['selection_revision'],expiresMs=int(c['expires_at'].timestamp()*1000)) for c in cmds])
 
 def signature(secret,stamp,body):
     return hmac.new(bytes.fromhex(secret),b'tradevice-demo-v1\n'+stamp.encode()+b'\n'+body,hashlib.sha256).hexdigest()

@@ -1,0 +1,16 @@
+--- a/goldtrap_arc/mt5_adapter.py
++++ b/goldtrap_arc/mt5_adapter.py
+@@ -812,7 +812,12 @@
+             # activation can be deferred. No retry within this call, no catch
+             # of uncertain receipts or unrelated broker rejections.
+             if str(exc)=='MT5 order_send rejected retcode=10013':
+-                self._assert_pending_unchanged(order)
++                try:self._assert_pending_unchanged(order)
++                except ArcPendingTransitionWait:
++                    intent=next((r for r in reversed(self.ledger.rows) if r.get('event')=='BROKER_REQUEST_INTENT'),{})
++                    if (intent.get('operation'),intent.get('target_ticket'),intent.get('expected_comment'))!=('PENDING_MODIFY',order.ticket,order.comment):raise
++                    self.ledger.append('PENDING_TRANSITION_DEFERRED',request_id=intent['request_id'],cycle_id=self.cycle(order))
++                    raise
+             raise
+ 
+     def _pending_for_tp(self,before,entry):

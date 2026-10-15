@@ -7,7 +7,7 @@ import {batchStopNotice} from '../../lib/batch-stop.mjs';
 import {cycleProgress} from '../../lib/cycle-progress.mjs';
 import {ReportSection,ReportDrawer,ReportIcon as I} from './report-ui';
 const preflightChecks=[['identity','Demo identity'],['brokerFlat','Broker flat'],['quote','Fresh quote'],['spread','Spread'],['margin','Margin'],['commission','Commission'],['news','News'],['reconciled','Reconciliation'],['engineHash','Engine hash'],['engineReady','Engine ready']];
-export type DemoRuntime={settingsProtocol?:string|null;online:boolean;observedMs:number|null;state:string;activeSkillId:string|null;activeHash:string|null;revision:number|null;checks:Record<string,boolean>;blockers:string[];canStart:boolean;commands:Array<{requestId:string;action:string;status:string;errorCode:string|null}>};
+export type DemoRuntime={emergencyCloseProtocol?:string|null;emergencyClose?:{requestId:string;phase:string;observedMs:number;positionsRemaining:number|null;ordersRemaining:number|null}|null;settingsProtocol?:string|null;online:boolean;observedMs:number|null;state:string;activeSkillId:string|null;activeHash:string|null;revision:number|null;checks:Record<string,boolean>;blockers:string[];canStart:boolean;commands:Array<{requestId:string;action:string;status:string;errorCode:string|null}>};
 export function useDemoRuntime(token:string){
  const [runtime,setRuntime]=useState<DemoRuntime|null>(null),generation=useRef(0);
  const inFlight=useRef(false);

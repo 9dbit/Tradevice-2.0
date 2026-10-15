@@ -104,3 +104,39 @@ def test_legacy_atr_protocol_can_heartbeat_but_cannot_start():
  validate_snapshot(old,old['observedMs'])
  assert 'ENGINE_SETTINGS_UPGRADE_REQUIRED' in start_blockers(old,dict(selected_skill_id=old['activeSkillId'],revision=1),old['observedMs'],True)
  with pytest.raises(SkillError):validate_command(command()|{'settings':default_settings()|{'protocol':'V51_CLOSE_DISTANCE_20261015'}})
+
+def emergency_command():return command()|dict(action='EMERGENCY_CLOSE',targetCycles=None,confirmDemo=False,confirmClose=True,expectedRevision=None,settings=None)
+
+def test_emergency_requires_specific_confirmation_and_no_entry_parameters():
+ validate_command(emergency_command())
+ for patch in [dict(confirmClose=False),dict(targetCycles=1),dict(settings=default_settings()),dict(confirmDemo=True),dict(expectedRevision=1)]:
+  with pytest.raises(SkillError):validate_command(emergency_command()|patch)
+ with pytest.raises(SkillError):validate_command(command()|dict(confirmClose=True))
+
+def test_emergency_report_cannot_claim_complete_with_open_exposure():
+ s=snapshot()|dict(emergencyCloseProtocol=EMERGENCY_PROTOCOL)
+ e=dict(protocol=EMERGENCY_PROTOCOL,requestId=str(uuid.uuid4()),expiresMs=s['observedMs']+60000,observedMs=s['observedMs'],phase='COMPLETE',positionsRemaining=0,ordersRemaining=0)
+ validate_snapshot(s|dict(emergencyClose=e),s['observedMs'])
+ for patch in [dict(positionsRemaining=1),dict(ordersRemaining=None),dict(phase='READY'),dict(observedMs=s['observedMs']+2000)]:
+  with pytest.raises(SkillError):validate_snapshot(s|dict(emergencyClose=e|patch),s['observedMs'])
+
+@pytest.mark.parametrize('supported',[False,True])
+def test_emergency_queue_independent_of_stale_news_kill_revision(monkeypatch,supported):
+ import app.demo_control as m
+ from contextlib import contextmanager
+ calls=[]
+ class Conn:
+  def execute(self,q,args=()):calls.append((q,args));self.q=q;return self
+  def fetchone(self):return {'n':0} if 'count(*)' in self.q else None
+ conn=Conn()
+ @contextmanager
+ def connection(_):yield conn
+ monkeypatch.setattr(m,'connection',connection)
+ monkeypatch.setattr(m,'locked',lambda _:(dict(revision=42,selected_skill_id=None),dict(snapshot={'emergencyCloseProtocol':EMERGENCY_PROTOCOL} if supported else {}),int(time.time()*1000)))
+ if supported:
+  assert submit('fixture',emergency_command(),False)['status']=='PENDING'
+  assert any('EMERGENCY_SUPERSEDED' in q for q,_ in calls)
+  assert any('INSERT INTO' in q for q,_ in calls)
+ else:
+  with pytest.raises(SkillError,match='SKILL_EMERGENCY_UPGRADE_REQUIRED'):submit('fixture',emergency_command(),False)
+  assert not any('INSERT INTO' in q for q,_ in calls)
