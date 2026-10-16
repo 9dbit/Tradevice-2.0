@@ -9,7 +9,15 @@ export function preflightDeferred(runtime,fresh){
 function explicitFailure(runtime,key){
  const blockers=runtime?.blockers??[];
  return key==='news'&&blockers.includes('NEWS_NOT_CLEAR')||
+  key==='margin'&&blockers.some(b=>['MARGIN_ENVELOPE_INSUFFICIENT','MARGIN_ENVELOPE_UNVERIFIED'].includes(b))||
   key==='engineHash'&&blockers.includes('ENGINE_FINGERPRINT_MISMATCH');
+}
+export function marginPreflightMessage(runtime,fresh){
+ if(!fresh||!runtime)return null;
+ const blockers=runtime.blockers??[];
+ if(blockers.includes('MARGIN_ENVELOPE_INSUFFICIENT'))return 'Insufficient free margin for the full L1–L10 exposure allowance plus the basket-loss reserve. This is a pre-start capacity check, not a margin call. Reset does not remove this requirement.';
+ if(blockers.includes('MARGIN_ENVELOPE_UNVERIFIED'))return 'Margin capacity could not be verified. The engine needs valid broker margin calculations before a new batch can start.';
+ return null;
 }
 export function preflightVerified(runtime,fresh,key){
  if(!fresh||!runtime||explicitFailure(runtime,key)||preflightDeferred(runtime,fresh))return false;

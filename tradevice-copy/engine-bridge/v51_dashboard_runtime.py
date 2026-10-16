@@ -60,6 +60,7 @@ class Runtime:
   from goldtrap_arc.mt5_adapter import MT5ArcAdapter
   from goldtrap_arc.persistence import ArcLedger,ArcStateStore
   from v51_batch_research import margin_envelope
+  from goldtrap_arc.config import ArcSafetyError
   checks={k:False for k in KEYS};blockers=[]
   try:self.fingerprint();checks['engineHash']=True
   except Exception:blockers.append('ENGINE_FINGERPRINT_MISMATCH')
@@ -73,7 +74,11 @@ class Runtime:
    checks['quote']=a.quote_metrics(snap.tick)['fresh']
    checks['spread']=checks['quote'] and 0<=a.spread_points(snap)<=a.cfg.spread_limit_points
    try:margin_envelope(a);checks['margin']=True
-   except Exception:blockers.append('MARGIN_ENVELOPE_UNVERIFIED')
+   except Exception as exc:
+    # Preserve the failed check; distinguish a verified shortfall from missing
+    # broker evidence. Never publish arbitrary exception text or account data.
+    blockers.append('MARGIN_ENVELOPE_INSUFFICIENT' if isinstance(exc,ArcSafetyError) and
+     str(exc)=='RESEARCH_MARGIN_ENVELOPE_INSUFFICIENT' else 'MARGIN_ENVELOPE_UNVERIFIED')
    deals,_=a._raw_history()
    owned=[d for d in deals if getattr(d,'symbol','')=='XAUUSDm' and getattr(d,'magic',0)==a.cfg.magic and getattr(d,'type',-1) in (0,1)]
    checks['commission']=bool(owned) and all(getattr(d,'commission',None)==0 and getattr(d,'fee',None)==0 for d in owned)

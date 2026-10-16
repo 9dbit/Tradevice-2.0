@@ -1,6 +1,6 @@
 'use client';
 import {useCallback,useEffect,useRef,useState} from 'react';
-import {preflightVerified,preflightDeferred,preflightStatus,preflightBlockers} from '../../lib/preflight-status.mjs';
+import {preflightVerified,preflightDeferred,preflightStatus,preflightBlockers,marginPreflightMessage} from '../../lib/preflight-status.mjs';
 import {SETTINGS_PROTOCOL,baseLots,demoSettings} from '../../lib/demo-settings.mjs';
 import EmergencyClose from './emergency-close';
 import {NewsStatus} from './news-status';
@@ -121,6 +121,7 @@ export default function DemoControl({token,runtime,refresh,now,batchRaw,newsRaw}
   {runtime?.blockers.some(b=>/RECOVERY|RECONCILIATION/.test(b))&&<p className="mt-compact-note">Recovery required: reconcile broker positions, orders and command receipts. Reset only clears this form; it does not unlock the engine.</p>}
   {visibleBlockers.some(b=>['PREFLIGHT_NEWS','NEWS_NOT_CLEAR'].includes(b))&&<NewsStatus raw={newsRaw} now={evidenceNow} compact/>}
   {blocker&&(blocker!=='Preflight incomplete'||!visibleBlockers.some(b=>['PREFLIGHT_NEWS','NEWS_NOT_CLEAR'].includes(b)))&&<p className="mt-inline-blocker"><I name="alert" size={14}/><span>{blocker}</span></p>}
+  {marginPreflightMessage(runtime,fresh)&&<p className="mt-compact-note" role="status">{marginPreflightMessage(runtime,fresh)}</p>}
   <ReportDrawer title="Preflight" meta={deferred?'Deferred · batch active':!runtime?'Unavailable':!fresh?'Stale':`${verifiedCount} / ${preflightChecks.length}`}>
    {deferred&&<p className="mt-compact-note">These checks apply to a new Start command; they are not live basket health checks. See cycle progress and engine alerts for the current batch.</p>}
    <ul className="mt-preflight-grid" aria-label="Demo preflight checks">{preflightChecks.map(([key,label])=>{

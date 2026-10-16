@@ -68,6 +68,20 @@ async function setup(page:Page){
  return {posts,overviewPolls,setEmergency:(v:any)=>emergency=v,setReceipts:(v:any[])=>receipts=v,setPostLost:(v:boolean)=>postLost=v,setMarket:(v:Record<string,unknown>)=>{marketValues=v;marketStamp=Date.now();},setOverviewUnavailable:(v:boolean)=>overviewUnavailable=v,setOverviewDelay:(v:number)=>overviewDelay=v,setOverviewFail:(v:boolean)=>overviewFail=v,setOffline:(v:boolean)=>offline=v,setEngine:(v:any)=>{engineDiagnostics=v;marketStamp=Date.now();},expirePreflight:()=>{expiredPreflight=true;},setExtraBlockers:(v:string[])=>extraBlockers=v,restorePreflight:()=>{expiredPreflight=false;},setNews:(v:any)=>news=v,recovery:()=>{state='RECOVERY_REQUIRED';canStart=false;},ready:()=>{state='READY';canStart=true;},setGrowth:(v:any)=>growthHistory=v,setBatch:(v:any)=>demoBatch=v,setTerminal:(v:any)=>terminalMirror=v,block:()=>{canStart=false;blocked=true;},running:()=>{canStart=false;state='RUNNING';},setFail:(v:boolean)=>fail=v,freeze:()=>freeze=true,setDelay:(v:number)=>delay=v,max:()=>maxConcurrent};
 }
 
+test('margin shortfall is explained without unlocking Start or claiming unavailable evidence',async({page})=>{
+ const f=await setup(page);f.block();
+ f.setExtraBlockers(['PREFLIGHT_MARGIN','MARGIN_ENVELOPE_INSUFFICIENT']);
+ await expect(page.getByText(/Insufficient free margin for the full L1–L10/)).toBeVisible();
+ await expect(page.getByRole('button',{name:'Start Cycle',exact:true})).toBeDisabled();
+ await page.getByRole('button',{name:/^Preflight /}).click();
+ await expect(page.locator('.mt-preflight-grid li').filter({hasText:'Margin'})).toHaveAttribute('data-status','Blocked');
+ f.setExtraBlockers(['PREFLIGHT_MARGIN','MARGIN_ENVELOPE_UNVERIFIED']);
+ await expect(page.getByText(/Margin capacity could not be verified/)).toBeVisible();
+ await expect(page.getByText(/Insufficient free margin for the full L1–L10/)).toHaveCount(0);
+ await expect(page.getByRole('button',{name:'Start Cycle',exact:true})).toBeDisabled();
+ expect(f.posts).toHaveLength(0);
+});
+
 test('compact layout: five destinations, aligned status, numeric composer, System contains risk and paper',async({page})=>{
  const errors:string[]=[];page.on('pageerror',e=>errors.push(e.message));
  const f=await setup(page);

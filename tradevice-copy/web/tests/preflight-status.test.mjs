@@ -8,6 +8,25 @@ test('unknown blocker keeps engine unverified',()=>assert.equal(check({...ready,
 test('fresh ready evidence passes',()=>assert.equal(check(ready,true,'engineReady'),true));
 
 import {preflightDeferred,preflightStatus,preflightBlockers} from '../lib/preflight-status.mjs';
+import {marginPreflightMessage} from '../lib/preflight-status.mjs';
+test('verified margin shortfall differs from unavailable data without granting readiness',()=>{
+ const r={...ready,canStart:false,checks:{margin:false},blockers:['MARGIN_ENVELOPE_INSUFFICIENT','PREFLIGHT_MARGIN']};
+ assert.match(marginPreflightMessage(r,true),/Insufficient free margin/);
+ assert.equal(preflightStatus(r,true,'margin'),'Blocked');
+ assert.equal(check(r,true,'engineReady'),false);
+ assert.match(marginPreflightMessage({...r,blockers:['MARGIN_ENVELOPE_UNVERIFIED']},true),/could not be verified/);
+ assert.equal(marginPreflightMessage(r,false),null);
+ assert.equal(marginPreflightMessage(ready,true),null);
+ assert.equal(marginPreflightMessage(null,true),null);
+});
+test('explicit margin failures override cached positive checks and active-batch deferral',()=>{
+ for(const b of ['MARGIN_ENVELOPE_INSUFFICIENT','MARGIN_ENVELOPE_UNVERIFIED']){
+  const r={...ready,state:'RUNNING',checks:{margin:true},blockers:[b]};
+  assert.equal(preflightStatus(r,true,'margin'),'Blocked');
+  assert.equal(check(r,true,'margin'),false);
+  assert.deepEqual(preflightBlockers(r,true),[b]);
+ }
+});
 const running={...ready,state:'RUNNING',canStart:false,checks:{quote:false,reconciled:false},blockers:['ENGINE_NOT_READY','PREFLIGHT_QUOTE','PREFLIGHT_RECONCILED']};
 test('active batch defers new-start checks, including old positive cache, without authorization',()=>{
  for(const state of ['STARTING','RUNNING','PAUSING','STOPPING']){
