@@ -16,6 +16,18 @@ NEW=b'''        except (ArcM1BoundaryWait,ArcSafetyError,ValueError,TypeError):
             # callers defer ATR-dependent entries/updates until a valid sample.
 '''
 def digest(data):return hashlib.sha256(data).hexdigest()
+def replace(source,target):
+ # Some Windows readers deny replacement but permit writing the existing file.
+ # Keep its existing ACL; tasks are stopped, lock held and backup verified.
+ for attempt in range(20):
+  try:os.replace(source,target);return
+  except PermissionError:
+   if attempt<19:time.sleep(.25);continue
+   value=source.read_bytes()
+   with target.open('r+b') as stream:
+    stream.seek(0);stream.write(value);stream.truncate();stream.flush();os.fsync(stream.fileno())
+   if target.read_bytes()!=value:raise ValueError('INSTALL_WRITE_VERIFY_FAILED')
+   source.unlink();return
 def replacement(data):
  if digest(data)!=BEFORE or data.count(OLD)!=1:raise ValueError('SOURCE_CHANGED')
  value=data.replace(OLD,NEW)
@@ -58,8 +70,8 @@ def main(install=False):
   shutil.copyfile(target,backup/'execution.py');shutil.copyfile(fingerprint,backup/'demo_engine_fingerprint.json')
   manifest['files']['goldtrap_arc/execution.py']=AFTER
   try:
-   temp=target.with_suffix('.install-tmp');temp.write_bytes(after);os.replace(temp,target)
-   temp=fingerprint.with_suffix('.install-tmp');temp.write_text(json.dumps(manifest,indent=2),encoding='utf-8');os.replace(temp,fingerprint)
+   temp=target.with_suffix('.install-tmp');temp.write_bytes(after);replace(temp,target)
+   temp=fingerprint.with_suffix('.install-tmp');temp.write_text(json.dumps(manifest,indent=2),encoding='utf-8');replace(temp,fingerprint)
    if digest(target.read_bytes())!=AFTER or any(digest(p.read_bytes())!=h for p,h in journals.items()):raise ValueError('POST_INSTALL_VERIFICATION_FAILED')
   except BaseException:
    target.write_bytes(before);fingerprint.write_bytes(original);raise

@@ -48,7 +48,7 @@ and verified Close all returning to local Reset with Start still gated.
 
 ## Installation boundary
 
-The engine patch is prepared, not installed while this batch retains exposure.
+The engine patch was initially held while this batch retained exposure.
 `apply_m1_boundary_fix.py --check` requires reconciliation, no unsettled control
 receipts, exact source hashes, the expected fingerprint, demo identity and two
 empty broker-book observations. `--install` additionally requires stopped bridge
@@ -59,3 +59,29 @@ Execution source before: `22e67057fabacef43aaece36ba318868acd4c3594955bc0f9bfcce
 Execution source after: `899df4b098d6c41357b9d18ef1204f5012ca5624263e900d64cbbb58d8bb29ad`.
 After broker-flat reconciliation, install into the V5.1 research clone only.
 The stopped batch must not resume; a new batch requires an explicit Start.
+
+## Installed outcome
+
+An independently submitted account Close all request
+`024846d8-f5e9-4af5-89ca-8c171d29807c` became APPLIED/COMPLETE with zero positions
+and zero pending orders. The bridge reconciled and cleared active_run. Read-only
+installation checks then passed. No close/start request was sent by this audit.
+
+The first installation hit Windows replacement sharing restrictions and restored
+the original source/fingerprint. The installer was updated to use the existing
+file's permitted write handle after bounded replacement retries, with tasks
+stopped, runner lock held, verified backup and unchanged ACLs.
+
+Installation succeeded; both tasks restarted. All 149 original journal/state
+files retained their hashes. Installed fingerprint:
+`bf1446ab1045710eb1a04ed3f6dc468b10b3a383491cf4e4d0a4b92b07b782ee`.
+The same 23 mocked-broker tests also passed on Windows against the installed
+source (overlapping the 23 local tests, not 23 additional independent cases).
+At 13:45 WIB the book was 0/0, active_run NULL, unsettled receipts 0, with no new
+START. At 13:46 WIB the backend heartbeat reported READY, all preflight checks
+true, revision 1 and no blockers. These observations expire normally and do not
+establish profitability or guarantee future execution.
+
+The web fix deployed as `3bc5c5d` with Railway SUCCESS; public /master referenced
+the tested JS asset with SHA-256
+`39c70032ca0dc1dea7003081de7c1e426eda6a66d6225c86e63a64648adbdae1`.
