@@ -17,10 +17,10 @@ from .master_control import allowed_operator_dsn,submit_command,validate_command
 from .news_calendar import NewsCalendar
 from .bridge_calendar import BridgeCalendar
 from .master_skills import registry, SkillError, MAX_BODY, json_object
-from . import demo_control,terminal_mirror,growth_history
+from . import demo_control,terminal_mirror,growth_history,preflight_diagnostics
 
 import httpx
-from fastapi import Depends, FastAPI, HTTPException, Query, Request
+from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel, ConfigDict
@@ -339,6 +339,34 @@ def create_app(settings: Settings | None = None, transport: httpx.AsyncBaseTrans
             return await run_in_threadpool(demo_control.submit,dsn,json_object(body),clear)
         except SkillError as exc:raise problem(exc.status,exc.code) from None
         except (psycopg.Error,RuntimeError):raise problem(503,'MASTER_DEMO_UNAVAILABLE') from None
+
+    @application.api_route('/internal/master/diagnostics', methods=['GET','POST'])
+    async def internal_diagnostics(request: Request, background: BackgroundTasks):
+        if settings.environment!='staging' or settings.project_ref!='scqzlcivherovlwqypeu':raise problem(503,'MASTER_STAGING_ONLY')
+        secret=os.getenv('MASTER_TELEMETRY_SHARED_SECRET','')
+        if not re.fullmatch('[a-f0-9]{64}',secret) or not hmac.compare_digest(request.headers.get('x-tradevice-master-secret',''),secret):raise problem(401,'MASTER_INTERNAL_AUTH_REQUIRED')
+        dsn=os.getenv('MASTER_OPERATOR_DATABASE_URL','')
+        try:
+            if request.method=='GET':
+                actor=request.query_params.get('actor_id','')
+                try:UUID(actor)
+                except ValueError:raise SkillError('DIAGNOSTIC_REQUEST_INVALID',422) from None
+                result=await run_in_threadpool(preflight_diagnostics.history,dsn,actor,request.query_params.get('factor',''),request.query_params.get('before'))
+            else:
+                if request.headers.get('content-type','').split(';')[0].strip()!='application/json':raise SkillError('DIAGNOSTIC_JSON_REQUIRED',415)
+                body=bytearray()
+                async for chunk in request.stream():
+                    body.extend(chunk)
+                    if len(body)>12288:raise SkillError('DIAGNOSTIC_REQUEST_TOO_LARGE',413)
+                p=json_object(body)
+                clear=application.state.news_calendar.projection().get('status')=='CLEAR'
+                item,run=await run_in_threadpool(preflight_diagnostics.submit,dsn,p,clear)
+                if run:background.add_task(preflight_diagnostics.run,dsn,p['actor_id'],p['requestId'])
+                result={'item':item}
+            from fastapi.responses import JSONResponse
+            return JSONResponse(result,headers={'Cache-Control':'private, no-store'})
+        except SkillError as exc:raise problem(exc.status,exc.code) from None
+        except (psycopg.Error,RuntimeError):raise problem(503,'DIAGNOSTIC_STORAGE_UNAVAILABLE') from None
 
     @application.post('/internal/master/demo/exchange')
     async def internal_demo_exchange(request: Request):

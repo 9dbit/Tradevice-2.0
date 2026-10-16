@@ -3,7 +3,8 @@ import {useCallback,useEffect,useRef,useState} from 'react';
 import {preflightVerified,preflightDeferred,preflightStatus,preflightBlockers,marginPreflightMessage} from '../../lib/preflight-status.mjs';
 import {SETTINGS_PROTOCOL,baseLots,demoSettings} from '../../lib/demo-settings.mjs';
 import PreflightRequirements,{type PreflightEvidence} from './preflight-requirements';
-import {selectedPreflightChecked,settingsLabel} from '../../lib/preflight-requirements.mjs';
+import {selectedPreflightChecked,settingsLabel,activeSettings,retainPreflightEvidence} from '../../lib/preflight-requirements.mjs';
+import PreflightInspector from './preflight-inspector';
 import EmergencyClose from './emergency-close';
 import {NewsStatus} from './news-status';
 import {batchStopNotice} from '../../lib/batch-stop.mjs';
@@ -22,7 +23,7 @@ export function useDemoRuntime(token:string){
   const d=await r.json();if(g!==generation.current)return;
   if(r.status===401||r.status===403){setRuntime(null);return;}
   if(!r.ok||typeof d.online!=='boolean'||!Array.isArray(d.commands)||!Array.isArray(d.blockers))throw Error();
-  setRuntime(current=>current&&current.observedMs!==null&&d.observedMs<current.observedMs?current:d);
+  setRuntime(current=>retainPreflightEvidence(current,d));
  }catch{/* Last valid evidence expires at its original timestamp; never renew on failure. */}finally{inFlight.current=false;}},[token]);
  useEffect(()=>{generation.current++;setRuntime(null);void refresh();const t=setInterval(()=>void refresh(),1000);return()=>{generation.current++;clearInterval(t);};},[refresh]);
  return {runtime,refresh};
@@ -33,6 +34,16 @@ export default function DemoControl({token,runtime,refresh,now,batchRaw,newsRaw,
  const startAllowed=automatic?runtime?.canArmAutomatic===true:runtime?.canStart===true;
  const [count,setCount]=useState('1'),[pending,setPending]=useState(false),[resetBatch,setResetBatch]=useState<string|null>(null);
  const [baseLot,setBaseLot]=useState('0.01'),[tpMode,setTpMode]=useState('FIXED_3_5'),[customTp,setCustomTp]=useState('3.50'),[tpPoints,setTpPoints]=useState('3500');
+ const [inspectedFactor,setInspectedFactor]=useState<string|null>(null);
+ const reportedSettings=activeSettings(runtime);
+ useEffect(()=>{
+  if(!reportedSettings)return;
+  const valid=demoSettings(Number(reportedSettings.baseLot),String(reportedSettings.tpMode),String(reportedSettings.customTpUsd??'3.50'),String(reportedSettings.tpPoints??'3500'));
+  if(!valid)return;
+  setBaseLot(Number(valid.baseLot).toFixed(2));setTpMode(valid.tpMode);
+  if(valid.customTpUsd!==null)setCustomTp(String(valid.customTpUsd));
+  if('tpPoints' in valid)setTpPoints(String(valid.tpPoints));
+ },[reportedSettings?.baseLot,reportedSettings?.tpMode,reportedSettings?.customTpUsd,reportedSettings?.tpPoints]);
  const settings=demoSettings(baseLot,tpMode,customTp,tpPoints);
  const settingsReady=runtime?.settingsProtocol===SETTINGS_PROTOCOL;
  const stopDialog=useRef<HTMLDialogElement>(null);
@@ -100,14 +111,14 @@ export default function DemoControl({token,runtime,refresh,now,batchRaw,newsRaw,
  const automaticArmed=runtime?.automatic?.enabled===true;
  const status=engineStatus(runtime,fresh,selectedChecked);
  const blocker=!fresh?'Engine heartbeat unavailable':runtime?.canStart?'':visibleBlockers.filter(b=>!['PREFLIGHT_NEWS','NEWS_NOT_CLEAR'].includes(b)&&!(runtime?.state==='AUTO_WAITING'&&b==='ENGINE_NOT_READY')).join(' · ')||(['AUTO_WAITING','STARTING','RUNNING','PAUSING','PAUSED','STOPPING'].includes(runtime?.state||'')?'':'Preflight incomplete');
- return <ReportSection notice={activeNotice&&<p className="mt-compact-note mt-batch-notice" role="status">{activeNotice.state==='AUTO_WAITING'?'Automatic is armed and waiting for entry checks. Waiting does not mean a position is open.':`Engine ${activeNotice.state.toLowerCase()}. Existing basket supervision continues until reconciliation.`} {fresh?'':'Last reported state only; the heartbeat is stale.'}</p>} title="Trading Cycle" className="mt-u-panel mt-demo-control" aria-labelledby="demo-control-title" header={<div className="mt-u-panel-head mt-demo-heading"><h2 id="demo-control-title"><I name="repeat"/> Trading Cycle</h2><strong aria-label="Engine connection" data-state={status}>{status}</strong></div>} overlay={<dialog ref={stopDialog} className="mt-stop-dialog" aria-labelledby="batch-stop-title" aria-describedby="batch-stop-reason" onCancel={e=>{e.preventDefault();dismissStop();}}>
+ return <ReportSection notice={activeNotice&&<p className="mt-compact-note mt-batch-notice" role="status">{activeNotice.state==='AUTO_WAITING'?'Automatic is armed and waiting for entry checks. Waiting does not mean a position is open.':`Engine ${activeNotice.state.toLowerCase()}. Existing basket supervision continues until reconciliation.`} {fresh?'':'Last reported state only; the heartbeat is stale.'}</p>} title="Trading Cycle" className="mt-u-panel mt-demo-control" aria-labelledby="demo-control-title" header={<div className="mt-u-panel-head mt-demo-heading"><h2 id="demo-control-title"><I name="repeat"/> Trading Cycle</h2><strong aria-label="Engine connection" data-state={status}>{status}</strong></div>} overlay={<><PreflightInspector token={token} factor={inspectedFactor} onClose={()=>setInspectedFactor(null)} runtime={runtime} settings={settings} now={evidenceNow}/><dialog ref={stopDialog} className="mt-stop-dialog" aria-labelledby="batch-stop-title" aria-describedby="batch-stop-reason" onCancel={e=>{e.preventDefault();dismissStop();}}>
    <h2 id="batch-stop-title">{stopNotice?.title}</h2>
    <strong>{progress?.completed??0} / {progress?.total??0} cycles completed</strong>
    <p id="batch-stop-reason">{stopNotice?.reason}</p>
    {progress?.lastNet!=null?<p>Last cycle: {progress.lastNet.toFixed(2)} USD</p>:<p>Last cycle result: awaiting reconciliation</p>}
    <p className="mt-compact-note">{resetSafe?'Reset prepares a new cycle count. Start still requires verified preflight.':'Broker reconciliation is still required. Reset is unavailable.'}</p>
    <div className="mt-stop-actions"><button type="button" autoFocus onClick={dismissStop}>Close</button><button type="button" disabled={!resetSafe||busy} onClick={()=>{resetComposer();dismissStop();}}>Reset</button></div>
-  </dialog>}>
+  </dialog></>}>
 
 
   <p className="mt-bridge-status" role="status">{fresh?'Bridge connected':'Bridge reconnecting · controls unavailable'}</p>
@@ -146,7 +157,7 @@ export default function DemoControl({token,runtime,refresh,now,batchRaw,newsRaw,
    {deferred&&<p className="mt-compact-note">These checks apply to a new Start command; they are not live basket health checks. See cycle progress and engine alerts for the current batch.</p>}
    <ul className="mt-preflight-grid" aria-label="Preflight checks">{preflightChecks.map(([key,label])=>{
     const state=fresh&&!deferred&&!selectedChecked&&['margin','engineReady'].includes(key)?'Not checked':preflightStatus(runtime,fresh,key),checked=state==='Verified';
-    return <li key={key} data-verified={checked} data-status={state}><span role="img" aria-label={state} title={state}><I name={checked?'check':state==='Blocked'?'alert':state==='Stale'?'clock':'minus'} size={17}/></span><span>{label}<small className="mt-preflight-state">{state}</small></span></li>;
+    return <li key={key} data-verified={checked} data-status={state}><button type="button" className="mt-preflight-check" aria-label={`${label}: ${state}. Inspect check`} aria-haspopup="dialog" title={`Inspect ${label}`} onClick={()=>setInspectedFactor(key)}><span role="img" aria-label={state} title={state}><I name={checked?'check':state==='Blocked'?'alert':state==='Stale'?'clock':'minus'} size={17}/></span><span>{label}<small className="mt-preflight-state">{state}</small></span><span className="mt-check-info" aria-hidden="true">i</span></button></li>;
    })}</ul><p className="mt-compact-note">{deferred?'Entry checks are evaluated before every new cycle; current basket supervision continues.':!fresh?'Fresh engine evidence is required. Last-known checks do not authorize Start.':runtime?.automatic?.enabled?'Automatic is waiting for every check before the next cycle.':'Blocked checks must clear before entry. Enable Automatic can wait for them.'}</p>
   </ReportDrawer>
   {request&&<div role="status" aria-live="polite" className="mt-demo-command"><strong>{request.action} · {request.phase}</strong><p>{commandMessage(request,runtime,fresh)}</p>{request.error&&<PreflightRequirements code={request.error} evidence={runtime?.commands.find(c=>c.requestId===request.id)?.diagnostics} historical/>}</div>}

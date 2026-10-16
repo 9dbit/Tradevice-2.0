@@ -1,6 +1,7 @@
 /** Display-only diagnostics. No field here grants permission to trade. */
 export function settingsMatch(a,b){
- return !!a&&!!b&&['protocol','baseLot','tpMode','customTpUsd','tpPoints'].every(k=>a[k]===b[k]);
+ return !!a&&!!b&&['protocol','baseLot','tpMode'].every(k=>a[k]===b[k])&&
+  (a.customTpUsd??null)===(b.customTpUsd??null)&&(a.tpPoints??null)===(b.tpPoints??null);
 }
 export function settingsLabel(s){
  if(!s)return 'Configuration unavailable';
@@ -10,7 +11,7 @@ export function selectedPreflightChecked(runtime,settings,now){
  const e=runtime?.preflightEvidence;
  return !!e&&Number.isFinite(e.observedMs)&&now-e.observedMs>=0&&now-e.observedMs<=8000&&settingsMatch(e.settings,settings);
 }
-const money=(n,minimum=false)=>new Intl.NumberFormat('en-US',{style:'currency',currency:'USD'}).format(minimum?Math.ceil((n-1e-9)*100)/100:n);
+const money=(n,minimum=false)=>new Intl.NumberFormat('en-US',{style:'currency',currency:'USD'}).format(minimum?Math.max(0,Math.ceil((n-1e-9)*100)/100):n);
 export function marginRequirements(e){
  const m=e?.margin;
  const fields=['freeMargin','usedMargin','exposureMargin','reserve','requiredFreeMargin','minimumEquity','shortfall'];
@@ -47,4 +48,17 @@ export function marketRequirements(e){
  if(m?.policy!=='V51_RANGE_PREFLIGHT_20261016'||!['atrM1','atrPoints','minAtr','maxAtr','adxM1','adxM5','adxM1Max3','adxM5Max3','adxLimit'].every(k=>typeof m[k]==='number'&&Number.isFinite(m[k])))return [];
  const n=v=>v.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:3});
  return [['ATR14 M1 · price / points',`${n(m.atrM1)} / ${n(m.atrPoints)} points`],['Allowed ATR · prior 1,440 M1 candles',`${n(m.minAtr)}–${n(m.maxAtr)} · P20–P60`],['ADX14 M1 · current / last 3 maximum',`${n(m.adxM1)} / ${n(m.adxM1Max3)}`],['ADX14 M5 · current / last 3 maximum',`${n(m.adxM5)} / ${n(m.adxM5Max3)}`],['Required ADX · both timeframes',`< ${n(m.adxLimit)} for 3 completed candles`]];
+}
+
+/** Read-only form hydration. Never overwrites an idle operator edit. */
+export function activeSettings(runtime){
+ const s=runtime?.preflightEvidence?.settings;
+ if(!runtime?.online||!['AUTO_WAITING','STARTING','RUNNING','PAUSING','PAUSED','STOPPING'].includes(runtime.state)||!s)return null;
+ if(s.protocol!=='V51_DYNAMIC_ATR_USD_20261015'||!Number.isFinite(s.baseLot)||s.baseLot<.01||s.baseLot>.1||!['FIXED_3_5','ATR_1','ATR_2','CUSTOM','POINTS'].includes(s.tpMode))return null;
+ return s;
+}
+/** Preserve a complete observation through a partial refresh, never its freshness. */
+export function retainPreflightEvidence(current,incoming){
+ if(!current||current.observedMs!==null&&incoming.observedMs<current.observedMs)return current??incoming;
+ return {...incoming,preflightEvidence:incoming.preflightEvidence??current.preflightEvidence??null};
 }

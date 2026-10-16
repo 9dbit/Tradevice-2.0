@@ -27,6 +27,11 @@ class MarginPreflight(unittest.TestCase):
    runtime=Runtime.__new__(Runtime);runtime.root=Path(tmp)
    runtime.fingerprint=Mock();runtime.reconcile_prior=Mock()
    runtime.calendar=NS(decision=lambda:{'status':'CLEAR','entries_allowed':True})
+   prior={'observedMs':1000,'settings':{'baseLot':.01}}
+   runtime._preflight_evidence=prior
+   # The bridge can read while MT5 preflight is running: no transient null,
+   # and no timestamp renewal on the previous observation.
+   factory.side_effect=lambda *args,**kwargs:(self.assertEqual(runtime.preflight_evidence(),prior) or adapter)
    checks,blockers=runtime.preflight()
    self.assertEqual(factory.call_args.kwargs,{'allow_execution':False})
    self.assertTrue(checks['brokerFlat']);self.assertTrue(checks['reconciled'])

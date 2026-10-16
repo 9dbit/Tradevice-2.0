@@ -46,3 +46,31 @@ test('points amount is part of the checked configuration identity',()=>{
  assert.equal(settingsMatch(a,{...a}),true);
  assert.match(settingsLabel(a),/4,200 points/);
 });
+
+test('active settings hydrate from evidence, idle edits remain operator-owned',async()=>{
+ const {activeSettings}=await import('../lib/preflight-requirements.mjs');
+ const s={...settings,baseLot:.1,tpMode:'POINTS',tpPoints:400};
+ const r={online:true,state:'AUTO_WAITING',preflightEvidence:{settings:s}};
+ assert.deepEqual(activeSettings(r),s);
+ assert.equal(activeSettings({...r,state:'READY'}),null);
+ assert.equal(activeSettings({...r,online:false}),null);
+ assert.equal(settingsMatch(settings,{...settings,tpPoints:null}),true);
+});
+test('partial refresh retains original evidence timestamp and expires without fake renewal',async()=>{
+ const {retainPreflightEvidence}=await import('../lib/preflight-requirements.mjs');
+ const old={observedMs:10000,preflightEvidence:{observedMs:10000,settings}};
+ const next=retainPreflightEvidence(old,{observedMs:13000,preflightEvidence:null});
+ assert.equal(next.preflightEvidence.observedMs,10000);
+ assert.equal(selectedPreflightChecked(next,settings,14000),true);
+ assert.equal(selectedPreflightChecked(next,settings,18001),false);
+ assert.deepEqual(retainPreflightEvidence(next,{observedMs:9000,preflightEvidence:null}),next);
+});
+test('each preflight factor has distinct popup information; mismatch never means insufficient',async()=>{
+ const {checkInfo,factorDetails}=await import('../lib/preflight-details.mjs');
+ assert.equal(Object.keys(checkInfo).length,12);
+ for(const key of Object.keys(checkInfo)){const d=factorDetails(key,null,settings,10000);assert.ok(d.description.length>20);assert.ok(d.requirement.length>20);assert.equal(d.state,'Unavailable');}
+ const r={online:true,observedMs:10000,state:'READY',checks:{margin:true},blockers:[],preflightEvidence:{observedMs:10000,settings}};
+ assert.equal(factorDetails('margin',r,{...settings,baseLot:.1},11000).state,'Not checked');
+ assert.match(factorDetails('margin',r,{...settings,baseLot:.1},11000).note,/does not mean insufficient/);
+ assert.equal(factorDetails('margin',r,settings,19000).state,'Stale');
+});

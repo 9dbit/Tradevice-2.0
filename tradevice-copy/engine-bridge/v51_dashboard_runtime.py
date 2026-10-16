@@ -66,7 +66,8 @@ class Runtime:
   from v51_batch_research import margin_envelope
   from goldtrap_arc.config import ArcSafetyError
   settings=validate_settings(settings or default_settings())
-  self._preflight_evidence=None
+  # Publish a complete evidence object only after the check finishes.
+  # The previous object retains its original timestamp and expires normally.
   checks={k:False for k in KEYS};blockers=[];margin={};market=None
   try:self.fingerprint();checks['engineHash']=True
   except Exception:blockers.append('ENGINE_FINGERPRINT_MISMATCH')

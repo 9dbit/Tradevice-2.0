@@ -62,6 +62,9 @@ def test_authenticated_exchange_updates_health_and_unauthorized_cannot(monkeypat
     from app.demo_control import signature,validate_snapshot
     from test_demo_control import snapshot
     main=importlib.import_module('app.main');secret='b'*64
+    # Fixture calendar has fixed coverage. Freeze the endpoint clock to that
+    # fixture instead of letting the real date silently age out its coverage.
+    monkeypatch.setattr(time,'time',lambda:NOW/1000)
     monkeypatch.setenv('MASTER_DEMO_BRIDGE_SECRET',secret)
     p=snapshot();p['news']=evidence(p['observedMs'])
     def exchange(dsn,payload):

@@ -782,3 +782,59 @@ for(const width of [320,390,430])test(`cycle controls fit ${width}px with one pr
  await page.getByRole('button',{name:'Reset',exact:true}).click();await expect(slider).toHaveCount(0);
  await expect(page.getByRole('button',{name:'Start Cycle',exact:true})).toBeVisible();expect(f.posts).toHaveLength(0);
 });
+
+test('preflight inspector hydrates active settings and keeps checking history across close and reload',async({page})=>{
+ await page.setViewportSize({width:390,height:844});
+ const f=await setup(page);
+ const evidence={observedMs:Date.now(),settings:{protocol:'V51_DYNAMIC_ATR_USD_20261015',baseLot:.1,tpMode:'POINTS',tpPoints:400,customTpUsd:null},checks:{margin:true},blockers:[],margin:{currency:'USD',freeMargin:19766.35,usedMargin:0,requiredFreeMargin:6285.59,exposureMargin:6020.59,reserve:265,minimumEquity:6285.59,shortfall:0}};
+ f.setPreflightEvidence(evidence);f.setAutomatic({protocol:'V51_AUTOMATIC_20261017',enabled:true,completedCycles:0,cycleRequestId:null});
+ let items:any[]=[],diagnosticPosts=0;
+ await page.route('**/api/master/diagnostics**',async route=>{
+  if(route.request().method()==='POST'){
+   diagnosticPosts++;const b=route.request().postDataJSON();
+   const item={requestId:b.requestId,factor:b.factor,prompt:b.prompt,status:'CHECKING',evidence:{capturedMs:Date.now(),observedMs:Date.now()},assessment:{status:'NORMAL',summary:'Free margin $19,766.35; required $6,285.59; shortfall $0.00.'},answer:null,model:'fixture-model',errorCode:null,createdAt:new Date().toISOString(),finishedAt:null};
+   items.unshift(item);return route.fulfill({json:{item}});
+  }
+  const key=new URL(route.request().url()).searchParams.get('factor');return route.fulfill({json:{items:items.filter(x=>x.factor===key),nextCursor:null,aiConfigured:true}});
+ });
+ await expect(page.getByRole('button',{name:/Batch settings 0.10 lot/})).toBeVisible();
+ await page.getByRole('button',{name:/^Preflight /}).click();
+ const margin=page.getByRole('button',{name:'Margin: Verified. Inspect check'});await expect(margin).toBeVisible();
+ await margin.click();const dialog=page.getByRole('dialog',{name:'Margin',exact:true});await expect(dialog).toBeVisible();
+ await expect(dialog.getByText('$19,766.35',{exact:true})).toBeVisible();
+ await dialog.getByLabel('Your question').fill('Why is margin not checked despite my equity?');await dialog.getByRole('button',{name:'Check this factor'}).click();
+ await expect(dialog.getByText('AI · Checking…')).toBeVisible();
+ await dialog.getByRole('button',{name:'Close preflight inspector'}).click();
+ items[0]={...items[0],status:'COMPLETED',answer:{status:'NORMAL',summary:'The checked configuration has sufficient margin.',evidence:['Margin check passed.'],requirements:['ADX still needs clearance.']},finishedAt:new Date().toISOString()};
+ await margin.click();await expect(dialog.getByText('The checked configuration has sufficient margin.')).toBeVisible();
+ await expect(dialog.getByText('Why is margin not checked despite my equity?')).toBeVisible();
+ expect(await dialog.evaluate(el=>el.scrollWidth-el.clientWidth)).toBeLessThanOrEqual(1);
+ await page.screenshot({path:'/tmp/tradevice-preflight-inspector.png'});
+ await dialog.getByRole('button',{name:'Close preflight inspector'}).click();
+ await page.reload();await page.getByRole('button',{name:/^Preflight /}).click();
+ // Evidence keeps its original timestamp; a later reopen must not renew it.
+ await page.getByRole('button',{name:/^Margin: .*Inspect check/}).click();
+ await expect(dialog.getByText('The checked configuration has sufficient margin.')).toBeVisible();
+ expect(diagnosticPosts).toBe(1);expect(f.posts).toHaveLength(0);
+});
+
+test('all twelve preflight popups open and unavailable AI is recorded honestly',async({page})=>{
+ await page.setViewportSize({width:320,height:740});const f=await setup(page);let items:any[]=[];
+ await page.route('**/api/master/diagnostics**',r=>{
+  if(r.request().method()==='POST'){const b=r.request().postDataJSON();const item={requestId:b.requestId,factor:b.factor,prompt:b.prompt,status:'UNAVAILABLE',evidence:{capturedMs:Date.now()},assessment:{status:'INCONCLUSIVE',summary:'Numeric breakdown not supplied.'},answer:null,model:null,errorCode:'AI_NOT_CONFIGURED',createdAt:new Date().toISOString(),finishedAt:new Date().toISOString()};items=[item];return r.fulfill({json:{item}});}
+  return r.fulfill({json:{items,nextCursor:null,aiConfigured:false}});
+ });
+ await page.getByRole('button',{name:/^Preflight /}).click();
+ const checks=page.locator('.mt-preflight-check');await expect(checks).toHaveCount(12);
+ for(let i=0;i<12;i++){
+  await checks.nth(i).click();const popup=page.locator('.mt-preflight-dialog');await expect(popup).toBeVisible();
+  await expect(popup.getByRole('heading',{name:'Requirements',exact:true})).toBeVisible();
+  expect(await popup.evaluate(el=>el.scrollWidth-el.clientWidth),await popup.evaluate(el=>JSON.stringify([...el.querySelectorAll('header,header div,h2,header button')].map(x=>({tag:x.tagName,rect:x.getBoundingClientRect().toJSON(),min:getComputedStyle(x).minWidth,wrap:getComputedStyle(x).whiteSpace,overflow:getComputedStyle(x).overflowWrap}))))).toBeLessThanOrEqual(1);
+  await popup.getByRole('button',{name:'Close preflight inspector'}).click();
+ }
+ await checks.nth(4).click();const popup=page.locator('.mt-preflight-dialog');
+ await popup.getByRole('button',{name:'Check this factor'}).click();
+ await expect(popup.getByText('AI unavailable',{exact:true})).toBeVisible();
+ await expect(popup.getByText(/administrator must configure OPENAI_API_KEY/)).toBeVisible();
+ expect(f.posts).toHaveLength(0);
+});
