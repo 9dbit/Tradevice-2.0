@@ -1,0 +1,22 @@
+--- v51_batch_research.py
++++ v51_batch_research.py
+@@ -17,7 +17,7 @@
+  return [dict(atr_multiple=m,**risk_assessment(current_pl,volume,bid,ask,atr,lot,
+   replace(cfg,adaptive_stress_atr=m))) for m in (1.,1.5,2.)]
+
+-def margin_envelope(adapter):
++def margin_envelope(adapter,evidence=None):
+  account,_,symbol=adapter.identity();snap=adapter.snapshot()
+  if str(getattr(symbol,'name',''))!='XAUUSDm' or account.currency!='USD':raise ArcSafetyError('RESEARCH_COST_IDENTITY')
+  lots=[adapter.cfg.base_lot]
+@@ -32,6 +32,10 @@
+  worst=max(sum(margins[0])+sum(margins[1][:5]),sum(margins[1])+sum(margins[0][:5]))
+  reserve=abs(adapter.cfg.hard_basket_loss_usd)+adapter.cfg.adaptive_risk_reserve_usd
+  free=finite(account.margin_free)
++ if evidence is not None:
++  used=finite(account.margin)
++  evidence.update(currency='USD',freeMargin=free,usedMargin=used,exposureMargin=worst,reserve=reserve,
++   requiredFreeMargin=worst+reserve,minimumEquity=used+worst+reserve,shortfall=max(0.,worst+reserve-free))
+  if free<worst+reserve:raise ArcSafetyError('RESEARCH_MARGIN_ENVELOPE_INSUFFICIENT')
+  return dict(free_margin=free,standalone_envelope=worst,reserve=reserve,
+   basis='STANDALONE_NO_HEDGE_CREDIT_PLUS_BROKER_ORDER_CHECK',lots=lots,

@@ -150,3 +150,17 @@ def test_settings_are_bound_to_single_command(tmp_path):
  assert r.settings==settings
  assert c.snapshot()['settingsProtocol']==b.SETTINGS_PROTOCOL
  finish(c,r)
+
+def test_rejected_settings_evidence_survives_restart_and_default_refresh(tmp_path):
+ c,r,s=setup(tmp_path);x=cmd(s);x['settings']['baseLot']=.1
+ evidence=dict(observedMs=int(time.time()*1000),settings=x['settings'],checks={k:k!='margin' for k in b.CHECKS},blockers=['MARGIN_ENVELOPE_INSUFFICIENT'],margin={'requiredFreeMargin':6306.39})
+ r.preflight=lambda settings=None:(evidence['checks'],evidence['blockers'])
+ r.preflight_evidence=lambda:evidence
+ invoke(c,x)
+ assert r.started==0
+ assert receipt(c,x['requestId'])==('REJECTED','MARGIN_ENVELOPE_INSUFFICIENT')
+ r.preflight_evidence=lambda:None
+ assert c.snapshot()['receipts'][0]['diagnostics']==evidence
+ other=b.Controller(tmp_path/'state.db',Runtime())
+ assert other.snapshot()['receipts'][0]['diagnostics']==evidence
+ assert other.db.execute('SELECT request_id FROM active_run').fetchone()[0] is None

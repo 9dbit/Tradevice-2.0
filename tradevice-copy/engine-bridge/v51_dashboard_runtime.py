@@ -55,13 +55,18 @@ class Runtime:
  def checks(self):
   # Do not promote an old preflight into fresh readiness while a run owns MT5.
   return dict(self._checks) if time.time()-self.checked_at<=5 else {k:False for k in KEYS}
+ def preflight_evidence(self):
+  value=getattr(self,'_preflight_evidence',None)
+  return json.loads(json.dumps(value)) if value else None
  def preflight(self,settings=None):
   import MetaTrader5 as mt5
   from goldtrap_arc.mt5_adapter import MT5ArcAdapter
   from goldtrap_arc.persistence import ArcLedger,ArcStateStore
   from v51_batch_research import margin_envelope
   from goldtrap_arc.config import ArcSafetyError
-  checks={k:False for k in KEYS};blockers=[]
+  settings=validate_settings(settings or default_settings())
+  self._preflight_evidence=None
+  checks={k:False for k in KEYS};blockers=[];margin={}
   try:self.fingerprint();checks['engineHash']=True
   except Exception:blockers.append('ENGINE_FINGERPRINT_MISMATCH')
   a=MT5ArcAdapter(mt5,allow_execution=False)
@@ -73,7 +78,7 @@ class Runtime:
    snap=a.snapshot(require_fresh_tick=False)
    checks['quote']=a.quote_metrics(snap.tick)['fresh']
    checks['spread']=checks['quote'] and 0<=a.spread_points(snap)<=a.cfg.spread_limit_points
-   try:margin_envelope(a);checks['margin']=True
+   try:margin_envelope(a,evidence=margin);checks['margin']=True
    except Exception as exc:
     # Preserve the failed check; distinguish a verified shortfall from missing
     # broker evidence. Never publish arbitrary exception text or account data.
@@ -93,6 +98,7 @@ class Runtime:
   except ValueError:checks['reconciled']=False;blockers.append('EMERGENCY_INTENT_INVALID')
   blockers.extend('PREFLIGHT_'+k.upper() for k,v in checks.items() if not v)
   self._checks=checks;self.checked_at=time.time()
+  self._preflight_evidence=dict(observedMs=int(self.checked_at*1000),settings=settings,checks=dict(checks),blockers=list(blockers),margin=margin or None)
   return checks,blockers
  def reconcile_completed_close(self,prior_run,close_id):
   from v51_close_reconciliation import reconcile_closed_run

@@ -32,7 +32,12 @@ class MarginPreflight(unittest.TestCase):
    self.assertTrue(checks['brokerFlat']);self.assertTrue(checks['reconciled'])
    self.assertEqual(runtime.checks(),checks)
    mt5.shutdown.assert_called_once()
-   margin.assert_called_once_with(adapter)
+   self.assertEqual(margin.call_args.args,(adapter,))
+   self.assertIn('evidence',margin.call_args.kwargs)
+   evidence=runtime.preflight_evidence()
+   self.assertEqual(evidence['checks'],checks)
+   self.assertEqual(evidence['blockers'],blockers)
+   self.assertEqual(evidence['settings']['baseLot'],.01)
    return checks,blockers
  def test_verified_shortfall_remains_blocked(self):
   checks,blockers=self.run_preflight(SafetyError('RESEARCH_MARGIN_ENVELOPE_INSUFFICIENT'))
@@ -49,3 +54,26 @@ class MarginPreflight(unittest.TestCase):
   self.assertTrue(checks['margin']);self.assertEqual(blockers,[])
 
 if __name__=='__main__':unittest.main()
+
+class MarginEvidenceCalculation(unittest.TestCase):
+ def test_exact_broker_numbers_survive_insufficient_exception(self):
+  from v51_batch_research import margin_envelope
+  from goldtrap_arc.config import CONFIG,ArcSafetyError
+  from dataclasses import replace
+  cfg=replace(CONFIG,base_lot=.1,hard_basket_loss_usd=-250,adaptive_risk_reserve_usd=15)
+  account=NS(currency='USD',margin_free=2000.,margin=100.)
+  adapter=NS(cfg=cfg,identity=lambda:(account,None,NS(name='XAUUSDm')),
+   snapshot=lambda:NS(tick=NS(ask=4000.,bid=3999.8)),
+   mt5=NS(ORDER_TYPE_BUY=0,ORDER_TYPE_SELL=1,order_calc_margin=Mock(return_value=400.)))
+  evidence={}
+  with self.assertRaisesRegex(ArcSafetyError,'RESEARCH_MARGIN_ENVELOPE_INSUFFICIENT'):margin_envelope(adapter,evidence=evidence)
+  self.assertEqual(evidence['requiredFreeMargin'],6265.)
+  self.assertEqual(evidence['minimumEquity'],6365.)
+  self.assertEqual(evidence['shortfall'],4265.)
+  self.assertEqual(adapter.mt5.order_calc_margin.call_count,20)
+  account.margin_free=6265.
+  self.assertEqual(margin_envelope(adapter,evidence=evidence)['reserve'],265.)
+  self.assertEqual(evidence['shortfall'],0.)
+  adapter.mt5.order_calc_margin.return_value=None;evidence={}
+  with self.assertRaises(ArcSafetyError):margin_envelope(adapter,evidence=evidence)
+  self.assertEqual(evidence,{})

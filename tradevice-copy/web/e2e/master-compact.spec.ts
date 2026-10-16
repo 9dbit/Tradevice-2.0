@@ -42,6 +42,7 @@ async function setup(page:Page){
  let canStart=true,state='READY',blocked=false,expiredPreflight=false;
  let emergency:any=null,receipts:any[]=[],postLost=false;
  let extraBlockers:string[]=[];
+ let preflightEvidence:any=undefined;
  let demoBatch:any=null,terminalMirror:any=null,growthHistory:any=null,news:any=null;
  let marketStamp=Date.now(),engineDiagnostics:any=null,overviewFail=false,overviewUnavailable=false,overviewDelay=0,marketValues:Record<string,unknown>={},offline=false;
  const overviewPolls:number[]=[];
@@ -60,12 +61,12 @@ async function setup(page:Page){
    if(delay)await new Promise(resolve=>setTimeout(resolve,delay));
    if(fail)return await r.fulfill({status:503,json:{}});
    if(!freeze)stamp=Date.now();
-   await r.fulfill({json:{emergencyCloseProtocol:'V51_EMERGENCY_CLOSE_20261016',emergencyClose:emergency,settingsProtocol:'V51_DYNAMIC_ATR_USD_20261015',online:!offline,observedMs:stamp,state:offline?'OFFLINE':state,activeSkillId:'fixture',activeHash:'fixture',revision:1,checks:Object.fromEntries(['identity','brokerFlat','quote','spread','margin','commission','news','reconciled','engineHash'].map(k=>[k,!expiredPreflight&&!(blocked&&k==='news')])),blockers:[...(state==='RECOVERY_REQUIRED'?['ENGINE_RECOVERY_REQUIRED']:blocked?['PREFLIGHT_NEWS','NEWS_NOT_CLEAR']:[]),...(expiredPreflight?['ENGINE_NOT_READY',...['identity','brokerFlat','quote','spread','margin','commission','news','reconciled','engineHash'].map(k=>'PREFLIGHT_'+k.toUpperCase())]:[]),...extraBlockers],canStart,commands:receipts}});
+   await r.fulfill({json:{emergencyCloseProtocol:'V51_EMERGENCY_CLOSE_20261016',emergencyClose:emergency,preflightEvidence:preflightEvidence===undefined?{observedMs:stamp,settings:{protocol:'V51_DYNAMIC_ATR_USD_20261015',baseLot:.01,tpMode:'FIXED_3_5',customTpUsd:null},checks:{},blockers:[],margin:null}:preflightEvidence,settingsProtocol:'V51_DYNAMIC_ATR_USD_20261015',online:!offline,observedMs:stamp,state:offline?'OFFLINE':state,activeSkillId:'fixture',activeHash:'fixture',revision:1,checks:Object.fromEntries(['identity','brokerFlat','quote','spread','margin','commission','news','reconciled','engineHash'].map(k=>[k,!expiredPreflight&&!(blocked&&k==='news')])),blockers:[...(state==='RECOVERY_REQUIRED'?['ENGINE_RECOVERY_REQUIRED']:blocked?['PREFLIGHT_NEWS','NEWS_NOT_CLEAR']:[]),...(expiredPreflight?['ENGINE_NOT_READY',...['identity','brokerFlat','quote','spread','margin','commission','news','reconciled','engineHash'].map(k=>'PREFLIGHT_'+k.toUpperCase())]:[]),...extraBlockers],canStart,commands:receipts}});
   }finally{concurrent--;}
  });
  await page.goto('/master');
  await expect(page.getByLabel('Engine connection')).toHaveText('Ready');
- return {posts,overviewPolls,setEmergency:(v:any)=>emergency=v,setReceipts:(v:any[])=>receipts=v,setPostLost:(v:boolean)=>postLost=v,setMarket:(v:Record<string,unknown>)=>{marketValues=v;marketStamp=Date.now();},setOverviewUnavailable:(v:boolean)=>overviewUnavailable=v,setOverviewDelay:(v:number)=>overviewDelay=v,setOverviewFail:(v:boolean)=>overviewFail=v,setOffline:(v:boolean)=>offline=v,setEngine:(v:any)=>{engineDiagnostics=v;marketStamp=Date.now();},expirePreflight:()=>{expiredPreflight=true;},setExtraBlockers:(v:string[])=>extraBlockers=v,restorePreflight:()=>{expiredPreflight=false;},setNews:(v:any)=>news=v,recovery:()=>{state='RECOVERY_REQUIRED';canStart=false;},ready:()=>{state='READY';canStart=true;},setGrowth:(v:any)=>growthHistory=v,setBatch:(v:any)=>demoBatch=v,setTerminal:(v:any)=>terminalMirror=v,block:()=>{canStart=false;blocked=true;},running:()=>{canStart=false;state='RUNNING';},setFail:(v:boolean)=>fail=v,freeze:()=>freeze=true,setDelay:(v:number)=>delay=v,max:()=>maxConcurrent};
+ return {posts,overviewPolls,setPreflightEvidence:(v:any)=>preflightEvidence=v,setEmergency:(v:any)=>emergency=v,setReceipts:(v:any[])=>receipts=v,setPostLost:(v:boolean)=>postLost=v,setMarket:(v:Record<string,unknown>)=>{marketValues=v;marketStamp=Date.now();},setOverviewUnavailable:(v:boolean)=>overviewUnavailable=v,setOverviewDelay:(v:number)=>overviewDelay=v,setOverviewFail:(v:boolean)=>overviewFail=v,setOffline:(v:boolean)=>offline=v,setEngine:(v:any)=>{engineDiagnostics=v;marketStamp=Date.now();},expirePreflight:()=>{expiredPreflight=true;},setExtraBlockers:(v:string[])=>extraBlockers=v,restorePreflight:()=>{expiredPreflight=false;},setNews:(v:any)=>news=v,recovery:()=>{state='RECOVERY_REQUIRED';canStart=false;},ready:()=>{state='READY';canStart=true;},setGrowth:(v:any)=>growthHistory=v,setBatch:(v:any)=>demoBatch=v,setTerminal:(v:any)=>terminalMirror=v,block:()=>{canStart=false;blocked=true;},running:()=>{canStart=false;state='RUNNING';},setFail:(v:boolean)=>fail=v,freeze:()=>freeze=true,setDelay:(v:number)=>delay=v,max:()=>maxConcurrent};
 }
 
 test('margin shortfall is explained without unlocking Start or claiming unavailable evidence',async({page})=>{
@@ -690,4 +691,25 @@ test('verified Close all replaces slider with local Reset then gated Start despi
  // A newer Start invalidates historical close proof even before runtime catches up.
  f.setReceipts([{requestId:'new-start',action:'START',status:'PENDING',errorCode:null},{requestId:id,action:'EMERGENCY_CLOSE',status:'APPLIED',errorCode:null}]);
  f.running();await expect(slider).toBeEnabled();await expect(start).toHaveCount(0);expect(f.posts).toHaveLength(1);
+});
+
+test('requirements bind rejection amounts to its settings and never reuse default 10 of 10',async({page})=>{
+ const f=await setup(page);
+ await page.getByRole('button',{name:/^Batch settings/}).click();
+ await page.getByLabel('Base lot',{exact:true}).selectOption('0.10');
+ await expect(page.getByText(/Selected settings not checked: 0.10 lot/)).toBeVisible();
+ await page.getByRole('button',{name:/^Preflight 8/}).click();
+ await expect(page.locator('.mt-preflight-grid li').filter({hasText:'Margin'})).toHaveAttribute('data-status','Not checked');
+ const diagnostics={observedMs:Date.now()-50000,settings:{protocol:'V51_DYNAMIC_ATR_USD_20261015',baseLot:.1,tpMode:'FIXED_3_5',customTpUsd:null},checks:{margin:false},blockers:['MARGIN_ENVELOPE_INSUFFICIENT','PREFLIGHT_MARGIN'],margin:{currency:'USD',freeMargin:2000,usedMargin:0,exposureMargin:6041.39,reserve:265,requiredFreeMargin:6306.39,minimumEquity:6306.39,shortfall:4306.39}};
+ f.setReceipts([{requestId:'fixture-rejected',action:'START',status:'REJECTED',errorCode:'MARGIN_ENVELOPE_INSUFFICIENT',diagnostics}]);
+ await page.getByRole('button',{name:/^Command history/}).click();
+ await expect(page.getByText('At command rejection · 0.10 lot · $3.50')).toBeVisible();
+ await expect(page.getByText('$4,306.39',{exact:true})).toBeVisible();
+ await expect(page.getByText(/Reduce the selected base lot/)).toBeVisible();
+ await page.setViewportSize({width:390,height:844});
+ expect(await page.evaluate(()=>document.documentElement.scrollWidth-innerWidth)).toBeLessThanOrEqual(1);
+ f.setReceipts([{requestId:'legacy',action:'START',status:'REJECTED',errorCode:'PREFLIGHT_FAILED'}]);
+ await expect(page.getByText(/historical requirement is unavailable/)).toBeVisible();
+ await expect(page.getByText('$4,306.39',{exact:true})).toHaveCount(0);
+ expect(f.posts).toHaveLength(0);
 });

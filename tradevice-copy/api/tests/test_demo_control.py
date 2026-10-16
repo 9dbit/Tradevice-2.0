@@ -156,3 +156,32 @@ def test_account_scope_is_explicit_and_bound_to_retry(monkeypatch):
  monkeypatch.setattr(control,'connection',connection);monkeypatch.setattr(control,'locked',lambda conn:({}, {}, 0))
  assert control.submit('fixture',p,False)['status']=='PENDING'
  with pytest.raises(SkillError):control.submit('fixture',emergency_command(),False)
+
+def diagnostic():
+ return dict(observedMs=int(time.time()*1000),settings=default_settings()|{'baseLot':.1},checks={k:k!='margin' for k in CHECKS},blockers=['MARGIN_ENVELOPE_INSUFFICIENT','PREFLIGHT_MARGIN'],margin=dict(currency='USD',freeMargin=2000,usedMargin=0,exposureMargin=6041.39,reserve=265,requiredFreeMargin=6306.39,minimumEquity=6306.39,shortfall=4306.39))
+
+def test_strict_preflight_numeric_evidence_and_receipt_protocol():
+ e=diagnostic();now=e['observedMs'];validate_preflight_evidence(e,now)
+ for patch in [dict(observedMs=now+1001),dict(settings={}),dict(checks={}),dict(blockers=['private broker text']),dict(margin=e['margin']|{'freeMargin':float('nan')}),dict(margin=e['margin']|{'minimumEquity':6000}),dict(margin=e['margin']|{'shortfall':True}),dict(account='private')]:
+  with pytest.raises(SkillError):validate_preflight_evidence(e|patch,now)
+ s=snapshot();r=dict(requestId=str(uuid.uuid4()),status='REJECTED',errorCode='MARGIN_ENVELOPE_INSUFFICIENT',diagnostics=e)
+ validate_snapshot(s|dict(preflightEvidence=e,receipts=[r]),now)
+ with pytest.raises(SkillError):validate_snapshot(s|dict(receipts=[r|{'status':'APPLIED'}]),now)
+ validate_snapshot(s|dict(receipts=[{k:v for k,v in r.items() if k!='diagnostics'}]),now)
+
+def test_receipt_diagnostics_cannot_be_attached_to_other_command_settings(monkeypatch):
+ from contextlib import contextmanager
+ import app.demo_control as control
+ e=diagnostic();s=snapshot();s['receipts']=[dict(requestId=str(uuid.uuid4()),status='REJECTED',errorCode='MARGIN_ENVELOPE_INSUFFICIENT',diagnostics=e)]
+ writes=[]
+ class Conn:
+  def execute(self,q,args=()):
+   if q.startswith('UPDATE'):writes.append(q)
+   return self
+  def fetchone(self):return dict(action='START',status='DISPATCHED',error_code=None,settings=default_settings())
+ @contextmanager
+ def connection(_):yield Conn()
+ monkeypatch.setattr(control,'connection',connection)
+ monkeypatch.setattr(control,'locked',lambda _:({},dict(snapshot={},observed_ms=0),s['observedMs']))
+ with pytest.raises(SkillError,match='SKILL_PREFLIGHT_SETTINGS_MISMATCH'):exchange('fixture',s)
+ assert writes==[]

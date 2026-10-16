@@ -40,6 +40,7 @@ class Controller:
   self.db=sqlite3.connect(path,check_same_thread=False,isolation_level=None)
   self.db.execute('PRAGMA journal_mode=WAL');self.db.execute('PRAGMA synchronous=FULL')
   self.db.execute('CREATE TABLE IF NOT EXISTS receipts(id TEXT PRIMARY KEY,payload TEXT NOT NULL,status TEXT NOT NULL,error TEXT,confirmed INTEGER NOT NULL DEFAULT 0)')
+  if 'diagnostics' not in {r[1] for r in self.db.execute('PRAGMA table_info(receipts)')}:self.db.execute('ALTER TABLE receipts ADD COLUMN diagnostics TEXT')
   self.db.execute("UPDATE receipts SET status='UNCERTAIN',error='PROCESS_RESTART_RECONCILIATION_REQUIRED' WHERE status='PROCESSING'")
   self.db.execute('CREATE TABLE IF NOT EXISTS active_run(singleton INTEGER PRIMARY KEY CHECK(singleton=1),request_id TEXT)')
   self.db.execute('INSERT OR IGNORE INTO active_run VALUES(1,NULL)')
@@ -88,10 +89,11 @@ class Controller:
    if self.reason:blockers.append(self.reason)
    now=int(self.clock()*1000)
    self.last_stamp=max(now,self.last_stamp+1)
-   receipts=[dict(requestId=i,status=s,errorCode=e) for i,s,e in self.db.execute("SELECT id,status,error FROM receipts WHERE status!='PROCESSING' AND confirmed=0 LIMIT 16")]
+   receipts=[dict(requestId=i,status=s,errorCode=e,**({'diagnostics':json.loads(d)} if d else {})) for i,s,e,d in self.db.execute("SELECT id,status,error,diagnostics FROM receipts WHERE status!='PROCESSING' AND confirmed=0 LIMIT 16")]
    payload=dict(settingsProtocol=SETTINGS_PROTOCOL,observedMs=self.last_stamp,bootId=self.boot,activeSkillId=self.active,
     activeHash=APPROVED_HASH if self.active else None,revision=self.revision,state=self.state,
     checks=checks,blockers=list(dict.fromkeys(blockers))[:20],receipts=receipts)
+   if hasattr(self.runtime,'preflight_evidence'):payload['preflightEvidence']=self.runtime.preflight_evidence()
    if self.calendar_protocol:payload['news']=self.runtime.news_snapshot() if hasattr(self.runtime,'news_snapshot') else None
    if hasattr(self.runtime,'emergency_snapshot'):
     from emergency_state import PROTOCOL
@@ -100,8 +102,8 @@ class Controller:
  def trade_running(self):return self.thread is not None and self.thread.is_alive()
  def emergency_running(self):return self.emergency_thread is not None and self.emergency_thread.is_alive()
  def running(self):return self.trade_running() or self.emergency_running()
- def acknowledge(self,rid,status,error=None):
-  with self.lock:self.db.execute('UPDATE receipts SET status=?,error=?,confirmed=0 WHERE id=?',(status,error,rid))
+ def acknowledge(self,rid,status,error=None,diagnostics=None):
+  with self.lock:self.db.execute('UPDATE receipts SET status=?,error=?,diagnostics=?,confirmed=0 WHERE id=?',(status,error,json.dumps(diagnostics) if diagnostics else None,rid))
  def received(self,result):
   with self.lock:
    self.calendar_protocol=result.get('calendarEvidencePolicy')=='SCHEDULE_6H_V1'
@@ -198,7 +200,9 @@ class Controller:
    self.runtime.activate(APPROVED_HASH)
    settings=validate_settings(c.get('settings'))
    checks,blockers=self.runtime.preflight(settings)
-   if blockers or not all(checks.get(k) is True for k in CHECKS):raise ValueError('PREFLIGHT_FAILED')
+   if blockers or not all(checks.get(k) is True for k in CHECKS):
+    evidence=self.runtime.preflight_evidence() if hasattr(self.runtime,'preflight_evidence') else None
+    self.acknowledge(rid,'REJECTED',blockers[0] if blockers else 'PREFLIGHT_FAILED',evidence);return
   except Exception:self.acknowledge(rid,'REJECTED','PREFLIGHT_FAILED');return
   self.state='STARTING';self.mode=None;self.reason=None
   self.db.execute('UPDATE active_run SET request_id=? WHERE singleton=1',(rid,))

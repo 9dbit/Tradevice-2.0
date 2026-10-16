@@ -2,6 +2,8 @@
 import {useCallback,useEffect,useRef,useState} from 'react';
 import {preflightVerified,preflightDeferred,preflightStatus,preflightBlockers,marginPreflightMessage} from '../../lib/preflight-status.mjs';
 import {SETTINGS_PROTOCOL,baseLots,demoSettings} from '../../lib/demo-settings.mjs';
+import PreflightRequirements,{type PreflightEvidence} from './preflight-requirements';
+import {selectedPreflightChecked,settingsLabel} from '../../lib/preflight-requirements.mjs';
 import EmergencyClose from './emergency-close';
 import {NewsStatus} from './news-status';
 import {batchStopNotice} from '../../lib/batch-stop.mjs';
@@ -9,7 +11,7 @@ import {cycleProgress} from '../../lib/cycle-progress.mjs';
 import {closeCompleted} from '../../lib/close-completion.mjs';
 import {ReportSection,ReportDrawer,ReportIcon as I} from './report-ui';
 const preflightChecks=[['identity','Demo identity'],['brokerFlat','Broker flat'],['quote','Fresh quote'],['spread','Spread'],['margin','Margin'],['commission','Commission'],['news','News'],['reconciled','Reconciliation'],['engineHash','Engine hash'],['engineReady','Engine ready']];
-export type DemoRuntime={emergencyCloseProtocol?:string|null;emergencyClose?:{requestId:string;phase:string;observedMs:number;positionsRemaining:number|null;ordersRemaining:number|null}|null;settingsProtocol?:string|null;online:boolean;observedMs:number|null;state:string;activeSkillId:string|null;activeHash:string|null;revision:number|null;checks:Record<string,boolean>;blockers:string[];canStart:boolean;commands:Array<{requestId:string;action:string;status:string;errorCode:string|null}>};
+export type DemoRuntime={preflightEvidence?:PreflightEvidence|null;emergencyCloseProtocol?:string|null;emergencyClose?:{requestId:string;phase:string;observedMs:number;positionsRemaining:number|null;ordersRemaining:number|null}|null;settingsProtocol?:string|null;online:boolean;observedMs:number|null;state:string;activeSkillId:string|null;activeHash:string|null;revision:number|null;checks:Record<string,boolean>;blockers:string[];canStart:boolean;commands:Array<{requestId:string;action:string;status:string;errorCode:string|null;diagnostics?:PreflightEvidence|null}>};
 export function useDemoRuntime(token:string){
  const [runtime,setRuntime]=useState<DemoRuntime|null>(null),generation=useRef(0);
  const inFlight=useRef(false);
@@ -80,13 +82,14 @@ export default function DemoControl({token,runtime,refresh,now,batchRaw,newsRaw}
  const displayedProgress=resetBatch===progress?.batchId&&!runtimeRunning?null:progress;
  const deferred=preflightDeferred(runtime,fresh);
  const visibleBlockers=preflightBlockers(runtime,fresh);
- const checkedKey=(key:string)=>preflightVerified(runtime,fresh,key);
+ const selectedChecked=selectedPreflightChecked(runtime,settings,evidenceNow);
+ const checkedKey=(key:string)=>!(['margin','engineReady'].includes(key)&&!selectedChecked)&&preflightVerified(runtime,fresh,key);
  const verifiedCount=preflightChecks.filter(([key])=>checkedKey(key)).length;
  const recovery=runtime?.state==='RECOVERY_REQUIRED'||runtime?.blockers.some(b=>/RECOVERY|RECONCILIATION/.test(b))===true;
  const pauseEnabled=fresh&&!busy&&!closed&&(['STARTING','RUNNING'].includes(runtime?.state||'')||recovery);
  const stopEnabled=fresh&&!busy&&!closed&&(['STARTING','RUNNING','PAUSING','PAUSED'].includes(runtime?.state||'')||recovery);
  const showClose=!closed&&!!(runtimeRunning||activeNotice||recovery||progress?.unfinished||runtime?.checks.brokerFlat===false);
- const status=!fresh?'Stale':runtime?.canStart?'Ready':({STARTING:'Starting',RUNNING:'Running',PAUSING:'Pausing',PAUSED:'Paused',STOPPING:'Stopping'} as Record<string,string>)[runtime?.state||'']||'Blocked';
+ const status=!fresh?'Stale':runtime?.canStart?(selectedChecked?'Ready':'Check settings'):({STARTING:'Starting',RUNNING:'Running',PAUSING:'Pausing',PAUSED:'Paused',STOPPING:'Stopping'} as Record<string,string>)[runtime?.state||'']||'Blocked';
  const blocker=!fresh?'Engine heartbeat unavailable':runtime?.canStart?'':visibleBlockers.filter(b=>!['PREFLIGHT_NEWS','NEWS_NOT_CLEAR'].includes(b)).join(' · ')||(['STARTING','RUNNING','PAUSING','PAUSED','STOPPING'].includes(runtime?.state||'')?'':'Preflight incomplete');
  return <ReportSection notice={activeNotice&&<p className="mt-compact-note mt-batch-notice" role="status">Batch {activeNotice.state.toLowerCase()}. Last reported state; see bridge status below for freshness. New batches remain locked while this batch is active. Before each next cycle, the engine checks admission again after broker-flat reconciliation. Continuation is not guaranteed.</p>} title="Trading Cycle" className="mt-u-panel mt-demo-control" aria-labelledby="demo-control-title" header={<div className="mt-u-panel-head mt-demo-heading"><h2 id="demo-control-title"><I name="repeat"/> Trading Cycle</h2><strong aria-label="Engine connection" data-state={status}>{status}</strong></div>} overlay={<dialog ref={stopDialog} className="mt-stop-dialog" aria-labelledby="batch-stop-title" aria-describedby="batch-stop-reason" onCancel={e=>{e.preventDefault();dismissStop();}}>
    <h2 id="batch-stop-title">{stopNotice?.title}</h2>
@@ -121,15 +124,17 @@ export default function DemoControl({token,runtime,refresh,now,batchRaw,newsRaw}
   {runtime?.blockers.some(b=>/RECOVERY|RECONCILIATION/.test(b))&&<p className="mt-compact-note">Recovery required: reconcile broker positions, orders and command receipts. Reset only clears this form; it does not unlock the engine.</p>}
   {visibleBlockers.some(b=>['PREFLIGHT_NEWS','NEWS_NOT_CLEAR'].includes(b))&&<NewsStatus raw={newsRaw} now={evidenceNow} compact/>}
   {blocker&&(blocker!=='Preflight incomplete'||!visibleBlockers.some(b=>['PREFLIGHT_NEWS','NEWS_NOT_CLEAR'].includes(b)))&&<p className="mt-inline-blocker"><I name="alert" size={14}/><span>{blocker}</span></p>}
+  {fresh&&!deferred&&runtime?.preflightEvidence&&<ReportDrawer title="Requirements & solutions" meta={settingsLabel(runtime.preflightEvidence.settings)}><PreflightRequirements evidence={runtime.preflightEvidence} blockers={visibleBlockers}/></ReportDrawer>}
   {marginPreflightMessage(runtime,fresh)&&<p className="mt-compact-note" role="status">{marginPreflightMessage(runtime,fresh)}</p>}
+  {fresh&&!deferred&&!selectedChecked&&<p className="mt-compact-note">Selected settings not checked: {settingsLabel(settings)}. {runtime?.preflightEvidence?`The engine report above is for ${settingsLabel(runtime.preflightEvidence.settings)}.`:'Configuration-specific evidence is unavailable.'} Start requests a final engine check of your selected settings before any entry; the result may reject the request.</p>}
   <ReportDrawer title="Preflight" meta={deferred?'Deferred · batch active':!runtime?'Unavailable':!fresh?'Stale':`${verifiedCount} / ${preflightChecks.length}`}>
    {deferred&&<p className="mt-compact-note">These checks apply to a new Start command; they are not live basket health checks. See cycle progress and engine alerts for the current batch.</p>}
    <ul className="mt-preflight-grid" aria-label="Demo preflight checks">{preflightChecks.map(([key,label])=>{
-    const state=preflightStatus(runtime,fresh,key),checked=state==='Verified';
+    const state=fresh&&!deferred&&!selectedChecked&&['margin','engineReady'].includes(key)?'Not checked':preflightStatus(runtime,fresh,key),checked=state==='Verified';
     return <li key={key} data-verified={checked} data-status={state}><span role="img" aria-label={state} title={state}><I name={checked?'check':state==='Blocked'?'alert':state==='Stale'?'clock':'minus'} size={17}/></span><span>{label}<small className="mt-preflight-state">{state}</small></span></li>;
    })}</ul><p className="mt-compact-note">{deferred?'Preflight will be evaluated again when the batch ends.':!fresh?'Fresh engine evidence is required. Last-known checks do not authorize Start.':'Blocked checks must clear before Start. This panel does not trigger the next cycle.'}</p>
   </ReportDrawer>
-  {request&&<div role="status" aria-live="polite" className="mt-demo-command"><strong>{request.action} · {request.phase}</strong><p>{request.error||(['PENDING','DISPATCHED','SENDING'].includes(request.phase)?'Awaiting engine confirmation…':request.phase==='APPLIED'?'Command applied. Basket status is reported separately.':'Not confirmed. Check command history before retrying Start.')}</p></div>}
-  <ReportDrawer title="Command history" meta={runtime?runtime.commands.length:'—'}>{runtime?.commands.length?<ul className="mt-command-list">{runtime.commands.map(c=><li key={c.requestId}><strong>{c.action} · {c.status}</strong><small>{c.requestId.slice(0,8)}</small>{c.errorCode&&<span>{c.errorCode}</span>}</li>)}</ul>:<p className="mt-compact-note">No commands yet.</p>}</ReportDrawer>
+  {request&&<div role="status" aria-live="polite" className="mt-demo-command"><strong>{request.action} · {request.phase}</strong><p>{request.error||(['PENDING','DISPATCHED','SENDING'].includes(request.phase)?'Awaiting engine confirmation…':request.phase==='APPLIED'?'Command applied. Basket status is reported separately.':'Not confirmed. Check command history before retrying Start.')}</p>{request.error&&<PreflightRequirements code={request.error} evidence={runtime?.commands.find(c=>c.requestId===request.id)?.diagnostics} historical/>}</div>}
+  <ReportDrawer title="Command history" meta={runtime?runtime.commands.length:'—'}>{runtime?.commands.length?<ul className="mt-command-list">{runtime.commands.map(c=><li key={c.requestId}><strong>{c.action} · {c.status}</strong><small>{c.requestId.slice(0,8)}</small>{c.errorCode&&<><span>{c.errorCode}</span><PreflightRequirements code={c.errorCode} evidence={c.diagnostics} historical/></>}</li>)}</ul>:<p className="mt-compact-note">No commands yet.</p>}</ReportDrawer>
  </ReportSection>;
 }

@@ -1,5 +1,5 @@
 """Durable demo-only inbox. Uploaded packages are never executable code."""
-import hashlib,hmac,json,re,time
+import hashlib,hmac,json,re,time,math
 from uuid import UUID
 from psycopg.types.json import Jsonb
 from .master_skills import SkillError
@@ -51,7 +51,7 @@ SELECT r.snapshot, s.selected_skill_id, s.revision,
        EXISTS(SELECT 1 FROM master_demo.commands
               WHERE status IN ('PENDING','DISPATCHED','UNCERTAIN')) AS unconfirmed,
        COALESCE((SELECT jsonb_agg(to_jsonb(c) ORDER BY c.created_at DESC)
-                 FROM (SELECT request_id,action,status,error_code,created_at
+                 FROM (SELECT request_id,action,status,error_code,created_at,diagnostics
                        FROM master_demo.commands ORDER BY created_at DESC LIMIT 12) c),'[]'::jsonb) AS history
 FROM master_demo.runtime r CROSS JOIN master_skills.selection s
 WHERE r.singleton AND s.singleton
@@ -70,8 +70,9 @@ def projection(conn,news_clear=False):
         activeSkillId=s.get('activeSkillId') if online else None,activeHash=s.get('activeHash') if online else None,
         revision=s.get('revision') if online else None,checks=s.get('checks',{}) if online else {},
         blockers=list(dict.fromkeys(blockers+s.get('blockers',[]))),canStart=not blockers,
+        preflightEvidence=s.get('preflightEvidence'),
         emergencyCloseProtocol=s.get('emergencyCloseProtocol'),emergencyClose=s.get('emergencyClose'),
-        commands=[dict(requestId=str(c['request_id']),action=c['action'],status=c['status'],errorCode=c['error_code']) for c in row['history']])
+        commands=[dict(requestId=str(c['request_id']),action=c['action'],status=c['status'],errorCode=c['error_code'],diagnostics=c.get('diagnostics')) for c in row['history']])
 
 def read(dsn,news_clear=False):
     with connection(dsn) as conn:return projection(conn,news_clear)
@@ -121,8 +122,28 @@ def submit(dsn,p,news_clear):
             VALUES(%s,%s,%s,%s,%s,%s,%s,%s)''',(p['requestId'],p['actor_id'],p['action'],sel['selected_skill_id'],APPROVED_HASH if sel['selected_skill_id'] else None,sel['revision'],p['targetCycles'],Jsonb(p['settings']) if p['settings'] is not None else None))
         return dict(requestId=p['requestId'],status='PENDING')
 
+def validate_preflight_evidence(e,now):
+    if e is None:return
+    invalid=lambda:SkillError('SKILL_PREFLIGHT_EVIDENCE_INVALID')
+    if not isinstance(e,dict) or set(e)!={'observedMs','settings','checks','blockers','margin'}:raise invalid()
+    if type(e['observedMs']) is not int or not 0<e['observedMs']<=now+1000:raise invalid()
+    try:validate_settings(e['settings'])
+    except (ValueError,TypeError):raise invalid() from None
+    if not isinstance(e['checks'],dict) or set(e['checks'])!=set(CHECKS) or any(type(v) is not bool for v in e['checks'].values()):raise invalid()
+    if not isinstance(e['blockers'],list) or len(e['blockers'])>20 or any(not isinstance(v,str) or not re.fullmatch('[A-Z0-9_]{1,100}',v) for v in e['blockers']):raise invalid()
+    m=e['margin']
+    if m is None:return
+    fields={'freeMargin','usedMargin','exposureMargin','reserve','requiredFreeMargin','minimumEquity','shortfall'}
+    if not isinstance(m,dict) or set(m)!=fields|{'currency'} or m['currency']!='USD':raise invalid()
+    if any(type(m[k]) not in (int,float) or not math.isfinite(m[k]) or abs(m[k])>1e12 for k in fields):raise invalid()
+    if any(m[k]<0 for k in fields-{'freeMargin'}):raise invalid()
+    for key,expected in [('requiredFreeMargin',m['exposureMargin']+m['reserve']),('minimumEquity',m['usedMargin']+m['requiredFreeMargin']),('shortfall',max(0,m['requiredFreeMargin']-m['freeMargin']))]:
+        if not math.isclose(m[key],expected,rel_tol=1e-10,abs_tol=1e-7):raise invalid()
+    if e['checks']['margin'] and m['shortfall']>0:raise invalid()
+
 def validate_snapshot(p,now):
-    if not isinstance(p,dict) or set(p)-{'news','settingsProtocol','emergencyCloseProtocol','emergencyClose'}!={'observedMs','bootId','activeSkillId','activeHash','revision','state','checks','blockers','receipts'}:raise SkillError('SKILL_ENGINE_REPORT_INVALID')
+    if not isinstance(p,dict) or set(p)-{'news','settingsProtocol','emergencyCloseProtocol','emergencyClose','preflightEvidence'}!={'observedMs','bootId','activeSkillId','activeHash','revision','state','checks','blockers','receipts'}:raise SkillError('SKILL_ENGINE_REPORT_INVALID')
+    validate_preflight_evidence(p.get('preflightEvidence'),now)
     if 'emergencyCloseProtocol' in p and p['emergencyCloseProtocol'] not in EMERGENCY_PROTOCOLS:raise SkillError('SKILL_EMERGENCY_PROTOCOL_INVALID')
     e=p.get('emergencyClose')
     if e is not None:
@@ -146,8 +167,10 @@ def validate_snapshot(p,now):
     if not isinstance(p['blockers'],list) or len(p['blockers'])>20 or any(not isinstance(v,str) or not re.fullmatch('[A-Z0-9_]{1,100}',v) for v in p['blockers']):raise SkillError('SKILL_ENGINE_REPORT_INVALID')
     if not isinstance(p['receipts'],list) or len(p['receipts'])>16:raise SkillError('SKILL_ENGINE_RECEIPT_INVALID')
     for r in p['receipts']:
-        if not isinstance(r,dict) or set(r)!={'requestId','status','errorCode'} or r['status'] not in {'APPLIED','REJECTED','UNCERTAIN'}:raise SkillError('SKILL_ENGINE_RECEIPT_INVALID')
+        if not isinstance(r,dict) or set(r)-{'diagnostics'}!={'requestId','status','errorCode'} or r['status'] not in {'APPLIED','REJECTED','UNCERTAIN'}:raise SkillError('SKILL_ENGINE_RECEIPT_INVALID')
         uid(r['requestId'])
+        validate_preflight_evidence(r.get('diagnostics'),now)
+        if r.get('diagnostics') is not None and r['status']!='REJECTED':raise SkillError('SKILL_PREFLIGHT_EVIDENCE_INVALID')
         if r['errorCode'] is not None and (not isinstance(r['errorCode'],str) or not re.fullmatch('[A-Z0-9_]{1,100}',r['errorCode'])):raise SkillError('SKILL_ENGINE_RECEIPT_INVALID')
 
 def exchange(dsn,p):
@@ -159,11 +182,12 @@ def exchange(dsn,p):
         if fresh(prior,now) and prior.get('bootId')!=p['bootId']:raise SkillError('SKILL_ENGINE_LEASE_HELD',409)
         confirmed=[]
         for r in p['receipts']:
-            c=conn.execute('SELECT status,error_code FROM master_demo.commands WHERE request_id=%s FOR UPDATE',(r['requestId'],)).fetchone()
+            c=conn.execute('SELECT status,error_code,settings,action FROM master_demo.commands WHERE request_id=%s FOR UPDATE',(r['requestId'],)).fetchone()
+            if r.get('diagnostics') is not None and (not c or c['action']!='START' or c.get('settings')!=r['diagnostics']['settings']):raise SkillError('SKILL_PREFLIGHT_SETTINGS_MISMATCH')
             # A START can reach the PC just before an emergency supersedes its
             # queue row. Preserve its actual receipt; the emergency still stops it.
             if c and (c['status'] in ('DISPATCHED','UNCERTAIN') or (c['status']=='REJECTED' and c.get('error_code')=='EMERGENCY_SUPERSEDED')):
-                conn.execute('UPDATE master_demo.commands SET status=%s,error_code=%s,processed_at=now() WHERE request_id=%s',(r['status'],r['errorCode'],r['requestId']))
+                conn.execute('UPDATE master_demo.commands SET status=%s,error_code=%s,diagnostics=%s,processed_at=now() WHERE request_id=%s',(r['status'],r['errorCode'],Jsonb(r['diagnostics']) if r.get('diagnostics') is not None else None,r['requestId']))
                 confirmed.append(r['requestId'])
             elif c and c['status']==r['status']:confirmed.append(r['requestId'])
         # Queue independent statements in the same transaction; preserve the
