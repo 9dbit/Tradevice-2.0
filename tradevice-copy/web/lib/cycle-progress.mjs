@@ -4,7 +4,12 @@ export function cycleProgress(raw,runtime,now=Date.now(),requestId=null){
  const b=validateBatch(raw,now);
  if(!b)return null;
  const running=['STARTING','RUNNING','PAUSING','PAUSED','STOPPING'].includes(runtime?.state);
- const latest=runtime?.automatic?.cycleRequestId||requestId||(running?runtime?.commands?.find(c=>c.action==='START'&&['PENDING','DISPATCHED','APPLIED','UNCERTAIN'].includes(c.status))?.requestId:null);
+ // Waiting Automatic has no child batch yet. Never borrow an older batch.
+ if(runtime?.automatic?.enabled&&!runtime.automatic.cycleRequestId)return null;
+ const start=runtime?.commands?.find(c=>c.action==='START'&&['PENDING','DISPATCHED','APPLIED','UNCERTAIN'].includes(c.status));
+ if(requestId&&start?.requestId!==requestId)return null;
+ if(start&&start.status!=='APPLIED')return null;
+ const latest=runtime?.automatic?.cycleRequestId||requestId||start?.requestId;
  if(latest&&b.batch_id!=='v51_dashboard_'+latest.replaceAll('-',''))return null;
  const executed=b.cycles.some(c=>c.layers>0);
  const fresh=b.fresh&&runtime?.online===true&&Number.isSafeInteger(runtime.observedMs)&&now>=runtime.observedMs&&now-runtime.observedMs<=8000;

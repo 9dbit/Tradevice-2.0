@@ -10,3 +10,25 @@ test('stale heartbeat stops animation, does not renew observed cycle evidence',(
 test('new START cannot show previous batch; zero-fill reservation is not execution',()=>{assert.equal(cycleProgress(batch(2),runtime,now,'22222222-2222-4222-8222-222222222222'),null);const b=batch(1);b.cycles[0].layers=0;assert.equal(cycleProgress(b,runtime,now).executed,false);});
 
 test('stopped no-fill reservation is not an executed cycle',()=>{const b=batch(2);b.status='STOPPED';b.cycles[1].layers=0;const p=cycleProgress(b,{...runtime,state:'READY'},now);assert.equal(p.executedCount,1);assert.equal(p.current,2);});
+
+test('Automatic waiting with no child cannot adopt a completed historical batch',()=>{
+ const r={...runtime,state:'AUTO_WAITING',automatic:{enabled:true,cycleRequestId:null,completedCycles:0}};
+ assert.equal(cycleProgress(batch(10,10),r,now),null);
+});
+test('Stop and page reload keep the latest Start correlation and suppress the old 10/10 batch',()=>{
+ const arm='22222222-2222-4222-8222-222222222222';
+ const r={...runtime,state:'STOPPED',automatic:{enabled:false,completedCycles:0,cycleRequestId:null},commands:[{action:'STOP',status:'APPLIED',requestId:'stop'},{action:'START',status:'APPLIED',requestId:arm},...runtime.commands]};
+ assert.equal(cycleProgress(batch(10,10),r,now),null);
+ // The same evidence is still available in a separate, explicitly historical drawer.
+ assert.equal(cycleProgress(batch(10,10),null,now).completed,10);
+});
+test('Automatic child evidence remains correlated after stopping',()=>{
+ const r={...runtime,state:'STOPPED',automatic:{enabled:false,completedCycles:1,cycleRequestId:id},commands:[{action:'STOP',status:'APPLIED',requestId:'stop'}]};
+ assert.equal(cycleProgress(batch(10,10),r,now).completed,10);
+});
+test('a pending new Start cannot inherit the previous Automatic child',()=>{
+ const newId='22222222-2222-4222-8222-222222222222';
+ const r={...runtime,state:'STOPPED',automatic:{enabled:false,cycleRequestId:id},commands:[{action:'START',status:'PENDING',requestId:newId}]};
+ assert.equal(cycleProgress(batch(10,10),r,now,newId),null);
+ assert.equal(cycleProgress(batch(10,10),runtime,now,newId),null);
+});
