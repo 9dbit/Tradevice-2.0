@@ -7,6 +7,11 @@ import {ReportSection,ReportDrawer,ReportIcon} from './report-ui';
 type Skill={id:string;name:string;version:string;description:string;strategy:string;kind:string;sha256:string;documentation:string;active:boolean;executionStatus:string};
 type SaveProgress={phase:'SAVING'|'WAITING_ENGINE'|'CONFIRMED'|'FAILED'|'UNCERTAIN';percent:number;label:string};
 type Catalog={revision:number;selectedSkillId:string|null;skills:Skill[];executionAuthorized:false;selectionScope:string};
+const loadMessages:Record<string,string>={
+ MASTER_SKILLS_UNAVAILABLE:'Skill list refresh failed. Retrying automatically; the last reported selection is retained.',
+ MASTER_INVALID_SESSION:'Session expired. Sign in again to refresh skills.',
+ MASTER_SKILLS_INVALID_ACK:'Skill list response could not be verified. Retrying automatically.',
+};
 const messages:Record<string,string>={
  SKILL_ENGINE_OFFLINE:'Engine unavailable. Wait for Ready.',
  SKILL_REVISION_CONFLICT:'Selection changed in another tab. Review the refreshed list before retrying.',
@@ -17,6 +22,8 @@ const messages:Record<string,string>={
 };
 export default function SkillManager({token,engineRaw,now,activation}:{token:string|null;engineRaw:unknown;now:number;activation?:DemoRuntime|null}){
  const [catalog,setCatalog]=useState<Catalog|null>(null),[busy,setBusy]=useState(false),[error,setError]=useState(''),[notice,setNotice]=useState('');
+ const [loadError,setLoadError]=useState('');
+ const readRequest=useRef<AbortController|null>(null);
  const [awaiting,setAwaiting]=useState<{id:string|null;revision:number;hash:string|null;at:number}|null>(null);
  const evidenceNow=Math.max(now,Date.now());
  const activationFresh=activation?.online===true&&activation.observedMs!==null&&evidenceNow-activation.observedMs>=0&&evidenceNow-activation.observedMs<=8000;
@@ -37,19 +44,33 @@ export default function SkillManager({token,engineRaw,now,activation}:{token:str
  const engine=validateEngine(engineRaw,now),reported=engine.status==='ENGINE_REPORTED';
  const fresh=catalog!==null&&loadedAt>0&&now-loadedAt<30000;
  const refresh=useCallback(async()=>{
-  if(!token)return;const id=generation.current;
-  try{const r=await fetch('/api/master/skills',{headers:{Authorization:'Bearer '+token},cache:'no-store',signal:AbortSignal.timeout(15000)});
-   const data=await r.json();if(id!==generation.current)return;
+  if(!token||readRequest.current)return;const id=generation.current;
+  const controller=new AbortController();readRequest.current=controller;
+  const timeout=setTimeout(()=>controller.abort(),15000);
+  try{const r=await fetch('/api/master/skills',{headers:{Authorization:'Bearer '+token},cache:'no-store',signal:controller.signal});
+   const data=await r.json();if(id!==generation.current||readRequest.current!==controller)return;
    if(!r.ok)throw new Error(data?.detail?.code||'MASTER_SKILLS_UNAVAILABLE');
+   if(!Array.isArray(data.skills)||!Number.isSafeInteger(data.revision)||data.revision<0||
+      data.executionAuthorized!==false||data.selectionScope!=='STAGING_DEMO_ENGINE'||
+      !data.skills.every((s:Skill)=>s&&typeof s.id==='string'&&typeof s.sha256==='string'&&typeof s.active==='boolean')||
+      new Set(data.skills.map((s:Skill)=>s.id)).size!==data.skills.length)
+    throw new Error('MASTER_SKILLS_INVALID_ACK');
+   const selected=data.skills.filter((s:Skill)=>s.active);
+   if(data.selectedSkillId===null?selected.length!==0:selected.length!==1||selected[0].id!==data.selectedSkillId)
+    throw new Error('MASTER_SKILLS_INVALID_ACK');
    setCatalog(current=>current&&current.revision>data.revision?current:data);setLoadedAt(Date.now());
-   setError(current=>current.includes('UNAVAILABLE')?'':current);
-  }catch(e){if(id===generation.current){setLoadedAt(0);setError(e instanceof Error?e.message:'MASTER_SKILLS_UNAVAILABLE');}}
+   setLoadError('');
+  }catch(e){if(id===generation.current&&readRequest.current===controller){
+   setLoadedAt(0);const code=e instanceof Error?e.message:'';
+   setLoadError(Object.hasOwn(loadMessages,code)?code:'MASTER_SKILLS_UNAVAILABLE');
+  }}finally{clearTimeout(timeout);if(readRequest.current===controller)readRequest.current=null;}
  },[token]);
- useEffect(()=>{generation.current++;setCatalog(null);setLoadedAt(0);setError('');setBusy(false);setProgress(null);void refresh();
+ useEffect(()=>{generation.current++;setCatalog(null);setLoadedAt(0);setError('');setLoadError('');setBusy(false);setProgress(null);void refresh();
   const timer=setInterval(()=>{if(!pending.current)void refresh();},15000);
-  return()=>{generation.current++;clearInterval(timer);};},[refresh]);
+  return()=>{generation.current++;clearInterval(timer);readRequest.current?.abort();readRequest.current=null;};},[refresh]);
  async function mutate(body:Record<string,unknown>){
   if(!token||pending.current)return;const id=generation.current;pending.current=true;setBusy(true);setError('');setNotice('');
+  readRequest.current?.abort();readRequest.current=null;
   percentRef.current=0;setAnimatedPercent(0);
   setProgress({phase:'SAVING',percent:25,label:body.action==='SELECT'?'Sending selection…':'Uploading skill…'});
   let rejected=false,waiting=false;
@@ -67,7 +88,7 @@ export default function SkillManager({token,engineRaw,now,activation}:{token:str
       (data.selectedSkillId===null?selected.length!==0:selected.length!==1||selected[0].id!==data.selectedSkillId)||
       (body.action==='SELECT'&&(data.selectedSkillId!==body.skillId||data.revision<Number(body.expectedRevision))))
     throw new Error('MASTER_SKILLS_INVALID_ACK');
-   setCatalog(data);setLoadedAt(Date.now());
+   setCatalog(data);setLoadedAt(Date.now());setLoadError('');
    if(body.action==='SELECT'){
     waiting=true;setAwaiting({id:data.selectedSkillId,revision:data.revision,hash:selected[0]?.sha256||null,at:Date.now()});
     setProgress({phase:'WAITING_ENGINE',percent:75,label:'Selection saved · awaiting engine activation…'});
@@ -104,7 +125,8 @@ export default function SkillManager({token,engineRaw,now,activation}:{token:str
    <input ref={file} type="file" hidden accept=".zip,.json" onChange={e=>{const f=e.target.files?.[0];e.target.value='';if(f)void upload(f);}}/>
   </div>}>
 
-  <p className="mt-compact-note">{!fresh?'Selection last reported · refresh pending':selected?(activationFresh&&activation?.activeSkillId===selected.id&&activation?.activeHash===selected.sha256?'Engine loaded skill':'Selected · engine confirmation pending'):'All OFF'} · selection switch · max. 1 active</p>
+  <p className="mt-compact-note">{!fresh?'Selection last reported · refresh pending':selected?(activationFresh&&activation?.revision===catalog?.revision&&activation?.activeSkillId===selected.id&&activation?.activeHash===selected.sha256?'Engine loaded skill':'Selected · engine confirmation pending'):'All OFF'} · selection switch · max. 1 active</p>
+  {loadError&&<p role="status" className="mt-skill-error">{loadMessages[loadError]} <button type="button" disabled={busy} onClick={()=>void refresh()}>Retry skill list</button></p>}
   <div aria-live="polite">{notice&&<p className="mt-skill-notice">{notice}</p>}{error&&<p role="alert" className="mt-skill-error">{messages[error]||error}</p>}</div>
   {progress&&<div className="mt-skill-progress" data-phase={progress.phase} aria-busy={busy}>
    <div className="mt-skill-progress-heading"><span id="skill-save-help" role="status" aria-live="polite">{progress.label}</span><strong aria-hidden="true">{animatedPercent}%</strong></div>

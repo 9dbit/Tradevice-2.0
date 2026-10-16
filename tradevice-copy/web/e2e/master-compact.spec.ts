@@ -248,6 +248,47 @@ test('growth chart filters actual timestamped fixtures and remains usable on mob
  await expect(toggle).toHaveAttribute('aria-checked','true');await expect(toggle).toContainText('ON');expect(f.posts).toHaveLength(0);
  });
 
+ test('skill list automatically recovers from Safari Load failed without changing selection',async({page})=>{
+  test.setTimeout(45000);
+  await page.addInitScript(()=>{
+   const original=window.fetch.bind(window);let first=true;
+   window.fetch=async(input,init)=>{
+    if(String(input)==='/api/master/skills'&&(!init?.method||init.method==='GET')&&first){first=false;throw new TypeError('Load failed');}
+    return original(input,init);
+   };
+  });
+  const f=await setup(page),skills=page.locator('.mt-skills');
+  await expect(skills).toContainText('Skill list refresh failed. Retrying automatically');
+  await expect(skills).not.toContainText('Engine loaded skill');
+  // Background GET recovery must clear its error without a reload or selection POST.
+  const skillPosts:string[]=[];page.on('request',r=>{if(r.url().endsWith('/api/master/skills')&&r.method()==='POST')skillPosts.push(r.url());});
+  await expect(skills).toContainText('Engine loaded skill',{timeout:20000});
+  await expect(skills.getByRole('status')).toHaveCount(0);
+  await expect(skills).not.toContainText('Load failed');
+  await expect(skills.getByRole('switch')).toHaveAttribute('aria-checked','true');
+  expect(skillPosts).toHaveLength(0);expect(f.posts).toHaveLength(0);
+ });
+
+ test('skill list recovery preserves selection rejection and rejects invalid catalog evidence',async({page})=>{
+  const f=await setup(page),skills=page.locator('.mt-skills');
+  let invalid=true;
+  await page.route('**/api/master/skills',async r=>{
+   if(r.request().method()==='POST')return r.fulfill({status:409,json:{detail:{code:'SKILL_REVISION_CONFLICT'}}});
+   if(invalid)return r.fulfill({json:{revision:2,selectedSkillId:'missing',skills:[],executionAuthorized:false,selectionScope:'STAGING_DEMO_ENGINE'}});
+   return r.fallback();
+  });
+  await skills.getByRole('switch').click();
+  await expect(skills).toContainText('Selection changed in another tab.');
+  await expect(skills).toContainText('Skill list response could not be verified.');
+  await expect(skills.getByRole('switch')).toHaveAttribute('aria-checked','true');
+  await expect(skills.getByRole('switch')).toBeDisabled();
+  invalid=false;await skills.getByRole('button',{name:'Retry skill list'}).click();
+  await expect(skills).toContainText('Engine loaded skill');
+  await expect(skills).not.toContainText('Skill list response could not be verified.');
+  await expect(skills.getByRole('alert')).toContainText('Selection changed in another tab.');
+  expect(f.posts).toHaveLength(0);
+ });
+
  test('news blackout explains release times and notifications across mobile',async({page})=>{
  const f=await setup(page),now=Date.now(),at=now+1800000;
  f.setNews({provider:'Forex Factory',source:'OFFICIAL_HTTPS_WEEKLY_EXPORT',status:'BLACKOUT',policy:'AVOID',beforeMinutes:60,afterMinutes:60,orderDispatchAuthorized:false,superviseExistingBasket:true,observedAt:now,validUntil:now+300000,coverageStart:now-86400000,coverageEnd:now+86400000,highImpactEvents:[{title:'GDP m/m',currency:'GBP',at,blackoutStart:at-3600000,blackoutEnd:at+3600000}]});
