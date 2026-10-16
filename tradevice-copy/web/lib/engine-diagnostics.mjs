@@ -21,7 +21,7 @@ export function validateEngine(raw,now=Date.now()){
  if(tpBasis==='ATR_CURRENT_USD'){
   if(policy!=='CLOSE_DISTANCE_RISK_V51'||tpDistancePrice!==null||tpDistancePoints!==null||!finite(tpAtrValue)||tpAtrValue<=0||![1,2].includes(tpMultiplier)||raw.hardLossUsd!==(tpMultiplier===1?-250:-350)||!finite(raw.targetUsd)||Math.abs(raw.targetUsd-tpAtrValue*tpMultiplier)>1e-8||!Number.isSafeInteger(tpAtrCandleMs)||typeof raw.tpAtrFresh!=='boolean')return invalid;
   tpAtrFresh=raw.tpAtrFresh&&fresh(tpAtrCandleMs,now,120000);
- }else if(tpBasis==='ATR_PRICE_DISTANCE'){
+ }else if(['ATR_PRICE_DISTANCE','POINTS_PRICE_DISTANCE'].includes(tpBasis)){
   if(policy!=='CLOSE_DISTANCE_RISK_V51'||!finite(tpDistancePrice)||tpDistancePrice<=0||tpDistancePrice>1e6||!finite(tpDistancePoints)||tpDistancePoints<=0||tpDistancePoints>1e9||Math.abs(tpDistancePrice-tpDistancePoints*.001)>1e-8||
    (raw.targetUsd!==null&&(!finite(raw.targetUsd)||raw.targetUsd<0)))return invalid;
  }else if(tpBasis!=='PROFIT_USD'||tpDistancePrice!==null||tpDistancePoints!==null||!finite(raw.targetUsd)||raw.targetUsd<.01||raw.targetUsd>250)return invalid;

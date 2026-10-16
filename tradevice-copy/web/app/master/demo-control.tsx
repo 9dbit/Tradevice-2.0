@@ -27,8 +27,8 @@ export function useDemoRuntime(token:string){
 }
 export default function DemoControl({token,runtime,refresh,now,batchRaw,newsRaw}:{token:string;runtime:DemoRuntime|null;refresh:()=>void;now:number;batchRaw?:unknown;newsRaw?:unknown}){
  const [count,setCount]=useState('1'),[pending,setPending]=useState(false),[resetBatch,setResetBatch]=useState<string|null>(null);
- const [baseLot,setBaseLot]=useState('0.01'),[tpMode,setTpMode]=useState('FIXED_3_5'),[customTp,setCustomTp]=useState('3.50');
- const settings=demoSettings(baseLot,tpMode,customTp);
+ const [baseLot,setBaseLot]=useState('0.01'),[tpMode,setTpMode]=useState('FIXED_3_5'),[customTp,setCustomTp]=useState('3.50'),[tpPoints,setTpPoints]=useState('3500');
+ const settings=demoSettings(baseLot,tpMode,customTp,tpPoints);
  const settingsReady=runtime?.settingsProtocol===SETTINGS_PROTOCOL;
  const stopDialog=useRef<HTMLDialogElement>(null);
  const [dismissedStop,setDismissedStop]=useState<string|null>(null);
@@ -102,14 +102,16 @@ export default function DemoControl({token,runtime,refresh,now,batchRaw,newsRaw}
 
 
   <p className="mt-bridge-status" role="status">{fresh?'Bridge connected':'Bridge reconnecting · controls unavailable'}</p>
-  <ReportDrawer title="Batch settings" meta={`${baseLot} lot · ${tpMode==='FIXED_3_5'?'$3.50':tpMode==='CUSTOM'?'Custom TP':tpMode==='ATR_1'?'1× ATR':'2× ATR'}`}>
+  <ReportDrawer title="Batch settings" meta={`${baseLot} lot · ${tpMode==='FIXED_3_5'?'$3.50':tpMode==='POINTS'?`${tpPoints} points`:tpMode==='CUSTOM'?'Custom TP':tpMode==='ATR_1'?'1× ATR':'2× ATR'}`}>
    <div className="mt-batch-settings">
     <label>Base lot<select aria-label="Base lot" value={baseLot} disabled={busy||!!activeNotice} onChange={e=>setBaseLot(e.target.value)}>{baseLots.map(lot=><option key={lot} value={lot.toFixed(2)}>{lot.toFixed(2)} lot</option>)}</select></label>
-    <label>Basket TP<select aria-label="Basket TP" value={tpMode} disabled={busy||!!activeNotice} onChange={e=>setTpMode(e.target.value)}><option value="FIXED_3_5">$3.50</option><option value="ATR_1">1× current ATR · USD</option><option value="ATR_2">2× current ATR · USD</option><option value="CUSTOM">Custom USD</option></select></label>
+    <label>Basket TP<select aria-label="Basket TP" value={tpMode} disabled={busy||!!activeNotice} onChange={e=>setTpMode(e.target.value)}><option value="FIXED_3_5">$3.50</option><option value="ATR_1">1× current ATR · USD</option><option value="ATR_2">2× current ATR · USD</option><option value="CUSTOM">Custom USD</option><option value="POINTS">Points · price distance</option></select></label>
+    {tpMode==='POINTS'&&<label>Basket TP · points<input aria-label="Basket TP points" type="text" inputMode="numeric" pattern="[0-9]*" value={tpPoints} disabled={busy||!!activeNotice} onChange={e=>setTpPoints(e.target.value)}/></label>}
     {tpMode==='CUSTOM'&&<label>Custom TP · USD<input aria-label="Custom basket TP" type="text" inputMode="decimal" value={customTp} disabled={busy||!!activeNotice} onChange={e=>setCustomTp(e.target.value)}/></label>}
    </div>
-   <p className="mt-compact-note">Hard basket loss: 1× ATR −$250; 2× ATR −$350; fixed/custom −$250. ATR14 from the latest completed M1 candle sets basket profit USD and updates during the cycle: ATR 4.00 → $4.00; ATR 3.10 → $3.10. L6–L10: closed M1 adverse distance &gt;1,700 points; projected stress and extra reserve do not veto entry. Broker checks and the basket loss limit still apply.</p>
-   {!settings&&<p className="mt-inline-blocker">Custom TP must be $0.01–$250.00, with at most two decimals.</p>}
+   <p className="mt-compact-note">Hard basket loss: 1× ATR −$250; 2× ATR −$350; fixed/custom/points −$250. ATR14 from the latest completed M1 candle sets basket profit USD and updates during the cycle: ATR 4.00 → $4.00; ATR 3.10 → $3.10. L6–L10: closed M1 adverse distance &gt;1,700 points; projected stress and extra reserve do not veto entry. Broker checks and the basket loss limit still apply.</p>
+   {tpMode==='POINTS'&&<p className="mt-compact-note">TP is a price distance from the basket’s volume-weighted entry: BUY above it, SELL below it. XAUUSDm: 1,000 points = 1.000 price move. Profit USD varies with total lot size, fees and execution; this is not a fixed USD profit target. The distance stays fixed as basket entries change.</p>}
+   {!settings&&<p className="mt-inline-blocker">{tpMode==='POINTS'?'TP points must be a whole number from 1 to 100,000. Broker price and stop-distance checks still apply.':'Custom TP must be $0.01–$250.00, with at most two decimals.'}</p>}
    {!settingsReady&&<p className="mt-compact-note">Waiting for the engine settings protocol. Start remains blocked.</p>}
   </ReportDrawer>
   <div className="mt-demo-inputs"><label htmlFor={showCycle?undefined:'demo-cycle-count'}>{showCycle?(ended?'Executed cycles':'Current cycle'):'Cycle count'}<small>Demo · XAUUSDm{showCycle?` · ${ended?'Last side':'Side'}: ${progress?.side||'Unverified'}`:''}{showCycle?(progress?.fresh?'':' · Last reported'):' · 1–10'}</small></label>

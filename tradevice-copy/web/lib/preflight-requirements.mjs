@@ -1,10 +1,10 @@
 /** Display-only diagnostics. No field here grants permission to trade. */
 export function settingsMatch(a,b){
- return !!a&&!!b&&['protocol','baseLot','tpMode','customTpUsd'].every(k=>a[k]===b[k]);
+ return !!a&&!!b&&['protocol','baseLot','tpMode','customTpUsd','tpPoints'].every(k=>a[k]===b[k]);
 }
 export function settingsLabel(s){
  if(!s)return 'Configuration unavailable';
- return `${Number(s.baseLot).toFixed(2)} lot · ${s.tpMode==='FIXED_3_5'?'$3.50':s.tpMode==='ATR_1'?'1× ATR':s.tpMode==='ATR_2'?'2× ATR':`Custom $${Number(s.customTpUsd).toFixed(2)}`}`;
+ return `${Number(s.baseLot).toFixed(2)} lot · ${s.tpMode==='FIXED_3_5'?'$3.50':s.tpMode==='ATR_1'?'1× ATR':s.tpMode==='ATR_2'?'2× ATR':s.tpMode==='POINTS'?`${s.tpPoints.toLocaleString('en-US')} points`:`Custom $${Number(s.customTpUsd).toFixed(2)}`}`;
 }
 export function selectedPreflightChecked(runtime,settings,now){
  const e=runtime?.preflightEvidence;

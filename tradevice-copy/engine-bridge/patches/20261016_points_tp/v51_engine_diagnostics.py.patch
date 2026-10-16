@@ -1,0 +1,11 @@
+--- v51_engine_diagnostics.py
++++ v51_engine_diagnostics.py
+@@ -76,7 +76,7 @@
+         read_only=True,order_dispatch_authorized=False,observed_ms=now,
+         cycle_id=cycle,state=str(state.get('state','UNKNOWN'))[:48],
+         policy=execution_policy(engine.cfg),hard_loss_usd=engine.cfg.hard_basket_loss_usd,target_usd=target_usd,
+-        tp_basis='ATR_CURRENT_USD' if dynamic else 'ATR_PRICE_DISTANCE' if distance is not None else 'PROFIT_USD',
++        tp_basis='ATR_CURRENT_USD' if dynamic else 'POINTS_PRICE_DISTANCE' if distance is not None else 'PROFIT_USD',
+         tp_atr_value=current['atr'] if current else None,tp_multiplier=current['multiplier'] if current else None,
+         tp_atr_candle_ms=int((current['candle_time']+60)*1000) if current else None,
+         tp_atr_fresh=bool(current and not state.get('atr_tp_unavailable') and 0<=now-(current['candle_time']+60)*1000<=120000),

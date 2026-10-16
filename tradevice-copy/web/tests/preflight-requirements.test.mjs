@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {settingsMatch,selectedPreflightChecked,marginRequirements,failureRequirement} from '../lib/preflight-requirements.mjs';
+import {settingsLabel,settingsMatch,selectedPreflightChecked,marginRequirements,failureRequirement} from '../lib/preflight-requirements.mjs';
 const settings={protocol:'V51_DYNAMIC_ATR_USD_20261015',baseLot:.01,tpMode:'FIXED_3_5',customTpUsd:null};
 test('selected configuration and timestamp must both match',()=>{
  const runtime={preflightEvidence:{settings,observedMs:10000}};
@@ -38,4 +38,11 @@ test('ATR/ADX requirements show numeric limits without confusing ATR with USD TP
  assert.match(failureRequirement('ATR_OUTSIDE_RANGE'),/not the basket TP/);
  assert.match(failureRequirement('ADX_TREND_NOT_RANGING'),/three completed candles/);
  assert.match(failureRequirement('MARKET_DATA_STALE'),/Reset cannot bypass/);
+});
+
+test('points amount is part of the checked configuration identity',()=>{
+ const a={...settings,tpMode:'POINTS',tpPoints:4200};
+ assert.equal(settingsMatch(a,{...a,tpPoints:1000}),false);
+ assert.equal(settingsMatch(a,{...a}),true);
+ assert.match(settingsLabel(a),/4,200 points/);
 });

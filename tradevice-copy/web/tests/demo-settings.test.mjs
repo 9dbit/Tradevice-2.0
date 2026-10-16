@@ -10,3 +10,8 @@ test('invalid lots and custom targets cannot produce a START payload',()=>{
  for(const target of ['', '0','-1','250.01','1.001','Infinity','NaN'])assert.equal(demoSettings('.01','CUSTOM',target),null);
  assert.equal(demoSettings('.01','UNKNOWN','3.5'),null);
 });
+
+test('points is explicit price distance and rejects fractional or ambiguous input',()=>{
+ assert.deepEqual(demoSettings('.01','POINTS','3.50','4200'),{protocol:SETTINGS_PROTOCOL,baseLot:.01,tpMode:'POINTS',customTpUsd:null,tpPoints:4200});
+ for(const n of ['',null,undefined,'4.2','4,200','1e3','-1','0','100001','Infinity'])assert.equal(demoSettings('.01','POINTS','3.5',n),null);
+});

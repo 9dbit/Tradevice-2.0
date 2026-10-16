@@ -45,7 +45,7 @@ def project_engine(raw,now):
             atr_candle=stamp(raw.get('tp_atr_candle_ms'));atr_fresh=raw.get('tp_atr_fresh')
             if type(atr_fresh) is not bool:raise ValueError()
             atr_fresh=atr_fresh and 0<=now-atr_candle<=120000
-        elif basis=='ATR_PRICE_DISTANCE':
+        elif basis in ('ATR_PRICE_DISTANCE','POINTS_PRICE_DISTANCE'):
             if policy!='CLOSE_DISTANCE_RISK_V51':raise ValueError()
             distance=number(distance,1e-9,1e6);points=number(points,1e-6,1e9)
             if not math.isclose(distance,points*.001,rel_tol=1e-10,abs_tol=1e-10):raise ValueError()

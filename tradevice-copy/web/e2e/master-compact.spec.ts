@@ -713,3 +713,16 @@ test('requirements bind rejection amounts to its settings and never reuse defaul
  await expect(page.getByText('$4,306.39',{exact:true})).toHaveCount(0);
  expect(f.posts).toHaveLength(0);
 });
+
+test('points TP sends explicit points and blocks invalid inputs',async({page})=>{
+ const f=await setup(page);
+ await page.getByRole('button',{name:/Batch settings/}).click();
+ await page.getByLabel('Basket TP',{exact:true}).selectOption('POINTS');
+ await page.getByLabel('Basket TP points').fill('4.2');
+ await expect(page.getByRole('button',{name:'Start Cycle',exact:true})).toBeDisabled();
+ await page.getByLabel('Basket TP points').fill('4200');
+ await page.getByRole('button',{name:'Start Cycle',exact:true}).click();
+ expect(f.posts).toHaveLength(1);
+ expect(f.posts[0].settings).toEqual({protocol:'V51_DYNAMIC_ATR_USD_20261015',baseLot:.01,tpMode:'POINTS',customTpUsd:null,tpPoints:4200});
+ f.running();await expect(page.getByLabel('Basket TP points')).toBeDisabled();
+});

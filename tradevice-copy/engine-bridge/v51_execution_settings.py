@@ -15,6 +15,9 @@ def configure_adapter(adapter,settings):
   if not atr or atr<=0:raise ArcSafetyError('SETTINGS_ATR_UNAVAILABLE')
   candle=bars[-1].time
   target=float(Decimal(str(atr))*(1 if mode=='ATR_1' else 2))
+ elif mode=='POINTS':
+  distance=float(Decimal(settings['tpPoints'])*Decimal(str(adapter.cfg.point)))
+  target=None
  else:target=3.5 if mode=='FIXED_3_5' else settings['customTpUsd']
  adapter.cfg=execution_config(settings['baseLot'],target,settings=settings,atr=atr,candle_time=candle,atr_distance=distance)
  return adapter.cfg

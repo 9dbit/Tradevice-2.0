@@ -91,3 +91,19 @@ def test_historical_configuration_retains_timestamp_but_never_authority():
  assert out['pnl'] is None and out['decision'] is None and out['authorization']=='UNKNOWN'
  assert out['brokerFlatReconciled'] is False and out['orderDispatchAuthorized'] is False
  assert project_engine(raw,N+604800001)['targetUsd'] is None
+
+def test_points_distance_projection_preserves_units():
+ r=report()|dict(policy='CLOSE_DISTANCE_RISK_V51',hard_loss_usd=-250,tp_basis='POINTS_PRICE_DISTANCE',tp_distance_points=4200,tp_distance_price=4.2,target_usd=42)
+ x=project_engine(r,N)
+ assert x['status']=='ENGINE_REPORTED' and x['tpBasis']=='POINTS_PRICE_DISTANCE'
+ assert x['tpDistancePoints']==4200 and x['targetUsd']==42
+ assert project_engine(r|dict(tp_distance_price=.42),N)['status']=='ENGINE_REPORT_INVALID'
+
+def test_points_settings_api_and_engine_contract():
+ from app.demo_settings import default_settings,validate_settings
+ import pytest
+ s=default_settings()|dict(tpMode='POINTS',tpPoints=4200)
+ assert validate_settings(s)==s
+ for n in [0,-1,1.2,True,'4200',None,100001]:
+  with pytest.raises(ValueError):validate_settings(s|dict(tpPoints=n))
+ with pytest.raises(ValueError):validate_settings(s|dict(customTpUsd=4.2))
