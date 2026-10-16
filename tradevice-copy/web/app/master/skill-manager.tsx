@@ -105,7 +105,7 @@ export default function SkillManager({token,engineRaw,now,activation}:{token:str
   if(!awaiting)return;
   if(activationFresh&&activation?.revision===awaiting.revision&&activation.activeSkillId===awaiting.id&&activation.activeHash===awaiting.hash){
    setProgress({phase:'CONFIRMED',percent:100,label:awaiting.id?'Skill active · engine fingerprint confirmed':'Skill OFF · engine confirmed'});
-   setNotice(awaiting.id?'Engine loaded the skill. Start Cycle requires verified preflight and explicit demo authorization.':'Skill deactivated.');
+   setNotice(awaiting.id?'Engine loaded the skill. Start Cycle requires verified preflight and explicit authorization.':'Skill deactivated.');
    setAwaiting(null);pending.current=false;setBusy(false);
   }else if(now-awaiting.at>30000){
    setProgress({phase:'UNCERTAIN',percent:75,label:'Engine confirmation pending'});setAwaiting(null);pending.current=false;setBusy(false);

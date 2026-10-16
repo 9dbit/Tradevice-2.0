@@ -12,10 +12,10 @@ export default function FinancialOverview({data}:{data:Snapshot|null}){
  const b=validateBatch(data?.demoBatch??m?.demoBatch,now);
  const money=(value:number|null|undefined)=>typeof value==='number'&&Number.isFinite(value)?(m?.accountCurrency==='USD'?'$':'')+value.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})+(m?.accountCurrency&&m.accountCurrency!=='USD'?' '+m.accountCurrency:''):'—';
  const metrics=[
-  ['Demo Equity · Current',money(fresh?m?.equity:null),'Latest demo account snapshot'],
-  ['Demo Net · Completed',b?b.net_completed_usd.toFixed(2)+' USD':'—','Profit + commission + swap + fee'],
+  ['Equity · Current',money(fresh?m?.equity:null),'Latest account snapshot'],
+  ['Net · Completed',b?b.net_completed_usd.toFixed(2)+' USD':'—','Profit + commission + swap + fee'],
   ['Wins / Losses',b?`${b.wins} / ${b.losses}`:'—','Completed cycles with broker fills only'],
-  ['Free Margin',money(fresh?m?.freeMargin:null),'Available demo account margin'],
+  ['Free Margin',money(fresh?m?.freeMargin:null),'Available account margin'],
  ];
  return <ReportSection title="Financial Overview" className="mt-panel" aria-label="Financial overview" header={<div className="mt-section-head"><div><small>ACCOUNT & RESULTS</small><h2>Financial Overview</h2></div></div>}>
 

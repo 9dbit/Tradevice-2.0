@@ -31,12 +31,12 @@ export function failureRequirement(code){
  if(/NEWS/.test(c))return 'Wait until the news blackout and cooldown end. A valid, fresh calendar and engine preflight are required.';
  if(/SPREAD/.test(c))return 'Wait for broker spread to return within the configured limit and a fresh quote check to pass.';
  if(/QUOTE/.test(c))return 'A fresh broker quote is required. Check the MT5 connection and market availability, then refresh.';
- if(/IDENTITY/.test(c))return 'The bridge must verify the approved demo account, server and XAUUSDm symbol. Check the MT5 connection.';
+ if(/IDENTITY/.test(c))return 'The bridge must verify the approved account, server and XAUUSDm symbol. Check the MT5 connection.';
  if(/COMMISSION/.test(c))return 'The engine requires matching broker-deal history to verify commission and fees. Inspect that evidence before retrying.';
  if(/EXPIRED|UNCERTAIN|UNCONFIRMED|CONNECTION_LOST/.test(c))return 'Check command history and broker state before retrying. A missing acknowledgement does not prove that the command was not executed.';
  if(/OFFLINE|STALE|CONNECTION|UNAVAILABLE/.test(c))return 'Restore the bridge, API and MT5 connection and wait for fresh evidence. Do not retry an unconfirmed command.';
  if(/KILL|SAFETY/.test(c))return 'An operator or safety stop is active. Inspect and resolve its cause before requesting a new batch.';
- if(/SETTINGS|BOUNDED|AUTHORIZATION/.test(c))return 'Check the selected lot, TP mode and cycle count against the supported demo settings.';
+ if(/SETTINGS|BOUNDED|AUTHORIZATION/.test(c))return 'Check the selected lot, TP mode and cycle count against the supported settings.';
  if(/ENGINE_NOT_READY/.test(c))return 'The engine is not ready for a new batch. Resolve the listed failed checks and wait for fresh engine acknowledgement.';
  if(/PREFLIGHT_FAILED/.test(c))return 'This rejection did not record its individual failed checks. Its historical requirement is unavailable; the current preflight is a separate observation.';
  return 'No detailed requirement was recorded for this error. Inspect the command receipt and engine journal before retrying.';

@@ -49,7 +49,7 @@ export default function EmergencyClose({token,runtime,refresh,now,enabled,visibl
  return <>
   <div className="mt-u-buttons">{visible?<CloseSlider disabled={!ready||!supported||!enabled||busy||pending} onConfirm={()=>void send()} label={busy?'Sending…':pending?'Closing…':unconfirmed?'Verify close':'Close all'}/>:primary}{secondary}</div>
   {!visible&&!closed&&<div className="mt-close-standby"><CloseSlider disabled={!ready||!supported||!enabled||busy||pending} onConfirm={()=>void send()} label={busy?'Sending…':pending?'Closing…':unconfirmed?'Verify close':'Close all'}/></div>}
-  {!closed&&<p id="close-all-help" className="mt-compact-note mt-close-help">Slide right to close ALL positions and cancel ALL pending orders on the connected demo account.</p>}
+  {!closed&&<p id="close-all-help" className="mt-compact-note mt-close-help">Slide right to close ALL positions and cancel ALL pending orders on the connected account.</p>}
   {request&&!previousBatchClose&&<div className="mt-emergency-status" role="status" aria-label="Close all status"><strong>{status}</strong>
    {evidence&&<span>{completedReceipt&&!verified?'Historical close report · ':''}{evidence.positionsRemaining!=null&&evidence.ordersRemaining!=null?`${evidence.positionsRemaining} positions · ${evidence.ordersRemaining} pending orders · `:''}Last report {new Date(evidence.observedMs).toLocaleTimeString('en-GB',{timeZone:'Asia/Jakarta'})} WIB{!fresh?' · connection stale':''}</span>}
    {request.error&&<span>{request.error.replaceAll('_',' ')}</span>}

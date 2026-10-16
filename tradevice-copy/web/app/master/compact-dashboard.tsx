@@ -101,7 +101,7 @@ export default function CompactDashboard({data,token,onNavigate}:{
     <button className="mt-u-detail" type="button" onClick={()=>onNavigate('overview')}>Detail <I name="arrow" size={14}/></button></div>}>
 
    <div className="mt-summary-grid">
-    <Datum icon="wallet" label="Demo Equity · Current" value={usd(displayMarket?.equity)} hint={market?undefined:marketLabel}/>
+    <Datum icon="wallet" label="Equity · Current" value={usd(displayMarket?.equity)} hint={market?undefined:marketLabel}/>
     <Datum icon="receipt" label="Net · Completed Cycles" value={usd(batch?.net_completed_usd)}/>
     <Datum icon="repeat" label="Total Executed Cycle" value={fmt(executedCycles)}/>
     <Datum icon="check" label="Completed / Requested" value={batch?`${batch.completed} / ${batch.requested}`:'—'}/>
@@ -124,7 +124,7 @@ export default function CompactDashboard({data,token,onNavigate}:{
     <Datum icon="wallet" label="Used margin" value={fmt(displayMarket?.margin)} hint={displayMarket?.accountCurrency||'—'}/>
     <Datum icon="shield" label="Free margin" value={fmt(displayMarket?.freeMargin)} hint={displayMarket?.accountCurrency||'—'}/>
    </div>
-   <p className="mt-compact-note">{displayMarket?.brokerName||'Broker unverified'} · {displayMarket?.symbol||'—'} · {displayMarket?.accountMode||'—'}</p>
+   <p className="mt-compact-note">{displayMarket?.brokerName||'Broker unverified'} · {displayMarket?.symbol||'—'}</p>
    <ReportDrawer title="Market details" meta={marketLabel}>
     <div className="mt-telemetry-grid">
      <Datum icon="spread" label="Bid / Ask" value={`${fmt(displayMarket?.bid)} / ${fmt(displayMarket?.ask)}`}/>
@@ -135,7 +135,7 @@ export default function CompactDashboard({data,token,onNavigate}:{
      <Datum icon="alert" label="Foreign exposure" value={displayMarket?.foreignExposure===true?'Present':displayMarket?.foreignExposure===false?'None':'—'}/>
     </div>
     <dl className="mt-detail-list">
-     <div><dt>MT5 observer</dt><dd>{market?'Demo · read-only':displayMarket?'Last known · read-only':'Unverified'}</dd></div>
+     <div><dt>MT5 observer</dt><dd>{market?'Read-only':displayMarket?'Last known · read-only':'Unverified'}</dd></div>
      <div><dt>Paper adapter</dt><dd>{displayMarket?.executionAdapter==='INTERNAL_PAPER_ONLY'?'Internal paper only':'Unverified'}</dd></div>
      <div><dt>Last snapshot</dt><dd>{time(displayMarket?.observedAt)}</dd></div>
     </dl>

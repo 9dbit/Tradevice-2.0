@@ -133,8 +133,8 @@ test('compact layout: five destinations, aligned status, numeric composer, Syste
 
 test('transient polling failure preserves evidence, true stale disables Start, explicit click sends bounded request',async({page})=>{
  const f=await setup(page);
- await page.getByLabel('Demo cycle count').fill('11');await expect(page.getByRole('button',{name:'Start Cycle',exact:true})).toBeDisabled();
- await page.getByLabel('Demo cycle count').fill('3');await expect(page.getByRole('button',{name:'Start Cycle',exact:true})).toBeEnabled();
+ await page.getByLabel('Cycle count').fill('11');await expect(page.getByRole('button',{name:'Start Cycle',exact:true})).toBeDisabled();
+ await page.getByLabel('Cycle count').fill('3');await expect(page.getByRole('button',{name:'Start Cycle',exact:true})).toBeEnabled();
  f.setFail(true);await page.waitForTimeout(2200);await expect(page.getByLabel('Engine connection')).toHaveText('Ready');
  await expect(page.getByLabel('Engine connection')).toHaveText('Stale',{timeout:9000});
  await expect(page.getByRole('button',{name:'Start Cycle',exact:true})).toBeDisabled();expect(f.posts).toHaveLength(0);
@@ -207,7 +207,7 @@ test('finished batch shows Reset; resetting is local and preserves history',asyn
  await expect(page.getByRole('progressbar',{name:'Completed cycles'})).toHaveAttribute('aria-valuenow','10');
  await page.getByRole('button',{name:'Reset',exact:true}).click();
  await expect(page.getByRole('button',{name:'Start Cycle',exact:true})).toBeVisible();
- await expect(page.getByLabel('Demo cycle count')).toHaveValue('10');
+ await expect(page.getByLabel('Cycle count')).toHaveValue('10');
  await expect(page.locator('.mt-summary')).toContainText('10 / 10');
  await page.waitForTimeout(5500);await expect(page.getByRole('button',{name:'Start Cycle',exact:true})).toBeVisible();
  expect(f.posts).toHaveLength(0);
@@ -229,7 +229,7 @@ test('growth chart filters actual timestamped fixtures and remains usable on mob
  test('recovery contradicting true raw checks shows blocked reconciliation without a spinner',async({page})=>{
  const f=await setup(page);f.recovery();await expect(page.getByLabel('Engine connection')).toHaveText('Blocked');
  await page.getByRole('button',{name:/Preflight/}).click();
- const checks=page.getByLabel('Demo preflight checks');
+ const checks=page.getByLabel('Preflight checks');
  await expect(checks.locator('li').filter({hasText:'Reconciliation'})).toHaveAttribute('data-verified','false');
  await expect(checks.locator('li').filter({hasText:'Engine ready'})).toHaveAttribute('data-verified','false');
  await expect(checks.getByRole('img',{name:'Blocked',exact:true})).toHaveCount(2);
@@ -245,7 +245,7 @@ test('growth chart filters actual timestamped fixtures and remains usable on mob
  await page.screenshot({path:'/tmp/tradevice-stop-popup.png'});
  await modal.getByRole('button',{name:'Close',exact:true}).click();await expect(modal).not.toBeVisible();await page.waitForTimeout(5500);await expect(modal).not.toBeVisible();
  await page.getByRole('button',{name:'Expand Trading Cycle',exact:true}).click();
- await page.getByRole('button',{name:'Reset',exact:true}).click();await expect(page.getByLabel('Demo cycle count')).toHaveValue('10');f.setBatch({...stoppedBatch,batch_id:'v51_dashboard_'+'b'.repeat(32)});await expect(modal).toBeVisible({timeout:15000});await modal.getByRole('button',{name:'Reset',exact:true}).click();await expect(modal).not.toBeVisible();await expect(page.getByLabel('Demo cycle count')).toHaveValue('10');expect(f.posts).toHaveLength(0);
+ await page.getByRole('button',{name:'Reset',exact:true}).click();await expect(page.getByLabel('Cycle count')).toHaveValue('10');f.setBatch({...stoppedBatch,batch_id:'v51_dashboard_'+'b'.repeat(32)});await expect(modal).toBeVisible({timeout:15000});await modal.getByRole('button',{name:'Reset',exact:true}).click();await expect(modal).not.toBeVisible();await expect(page.getByLabel('Cycle count')).toHaveValue('10');expect(f.posts).toHaveLength(0);
  });
  test('rejected TP update shows a real stop reason and never presents an unverified zero result',async({page})=>{
   await page.setViewportSize({width:390,height:844});const f=await setup(page);f.recovery();
@@ -319,7 +319,7 @@ test('growth chart filters actual timestamped fixtures and remains usable on mob
  await page.setViewportSize({width:390,height:844});
  await expect(page.getByLabel('Engine connection')).toHaveText('Running');
  await page.getByRole('button',{name:'Preflight Deferred · batch active',exact:true}).click();
- const checks=page.getByLabel('Demo preflight checks');
+ const checks=page.getByLabel('Preflight checks');
  await expect(checks.getByRole('img',{name:'Deferred',exact:true})).toHaveCount(10);
  await expect(checks.locator('.mt-check-pending')).toHaveCount(0);
  await expect(page.locator('.mt-demo-control .mt-inline-blocker')).toHaveCount(0);
@@ -529,7 +529,7 @@ test('master themes keep a solid canvas, preserve controls and persist after rel
  for(const v of Object.values(await canvas()))expect(v).toEqual({color:'rgb(255, 255, 255)',image:'none'});
  await expect(page.getByRole('button',{name:'Expand Telemetry',exact:true})).toHaveAttribute('aria-expanded','false');
  await expect(page.locator('meta[name="theme-color"]')).toHaveAttribute('content','#ffffff');
- await expect(page.getByLabel('Demo cycle count')).toHaveCSS('color','rgb(185, 77, 0)');
+ await expect(page.getByLabel('Cycle count')).toHaveCSS('color','rgb(185, 77, 0)');
  await expect(page.locator('.mt-skill-slider-label')).toHaveCSS('color','rgb(23, 23, 23)');
  for(const width of [320,390,1440]){
   await page.setViewportSize({width,height:900});
@@ -554,7 +554,7 @@ test('master themes keep a solid canvas, preserve controls and persist after rel
  await page.reload();await expect(page.getByRole('button',{name:'Switch to light mode',exact:true})).toBeVisible();
  for(const v of Object.values(await canvas()))expect(v).toEqual({color:'rgb(0, 0, 0)',image:'none'});
  await expect(page.locator('meta[name="theme-color"]')).toHaveAttribute('content','#000000');
- await expect(page.getByLabel('Demo cycle count')).toHaveCSS('color','rgb(255, 146, 61)');
+ await expect(page.getByLabel('Cycle count')).toHaveCSS('color','rgb(255, 146, 61)');
  await expect(page.locator('.mt-skill-slider-label')).toHaveCSS('color','rgb(23, 23, 23)');
  await page.evaluate(()=>scrollTo({top:0,behavior:'instant'}));
  await page.screenshot({path:'/tmp/tradevice-black-mobile.png',fullPage:true});
@@ -682,7 +682,7 @@ test('verified Close all replaces slider with local Reset then gated Start despi
  await expect(page.getByRole('button',{name:'Pause',exact:true})).toBeDisabled();await expect(page.getByRole('button',{name:'Stop',exact:true})).toBeDisabled();
  await page.reload();await expect(reset).toBeEnabled();await expect(slider).toHaveCount(0);
  await reset.click();const start=page.getByRole('button',{name:'Start Cycle',exact:true});await expect(start).toBeVisible();await expect(start).toBeDisabled();
- await expect(page.getByLabel('Demo cycle count')).toHaveValue('10');await expect(page.getByLabel('Engine connection')).toHaveText('Blocked');expect(f.posts).toHaveLength(1);
+ await expect(page.getByLabel('Cycle count')).toHaveValue('10');await expect(page.getByLabel('Engine connection')).toHaveText('Blocked');expect(f.posts).toHaveLength(1);
  await page.screenshot({path:'/tmp/tradevice-post-close-reset.png',fullPage:true});
  f.ready();await expect(start).toBeEnabled();expect(f.posts).toHaveLength(1);
  await expect(basket.locator('.mt-u-chip')).toHaveText('Reconciled');await expect(basket).not.toContainText('Entries suspended');

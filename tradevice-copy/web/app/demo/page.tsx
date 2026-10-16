@@ -38,7 +38,7 @@ function Stat({label,detail,icon,accent}:{label:string;detail:string;icon:string
 }
 function DemoNotice() {
   return <div className="demo-notice" role="status"><Icon name="shield"/><div>
-    <strong>BELUM ADA DATA TRADING DEMO</strong>
+    <strong>BELUM ADA DATA TRADING</strong>
     <span>Seluruh contoh saldo, trade, grafik, dan strategi telah dihapus. Hanya data paper trading terverifikasi yang boleh ditampilkan setelah integrasi.</span>
   </div></div>;
 }
@@ -66,7 +66,7 @@ function Trades({short=false}:{short?:boolean}) {
 function Locked({kind}:{kind:'funding'|'referral'}) {
   return <section className="demo-card demo-locked"><div className="demo-locked-badge"><Icon name="lock" size={27}/></div>
     <h2>{kind==='funding'?'Pendanaan terkunci':'Program referral terkunci'}</h2>
-    <p>{kind==='funding'?'Deposit dan withdrawal tidak tersedia pada akun demo. Tradevice tidak menyimpan atau menerima uang pelanggan.':'Komisi, atribusi IB, dan undangan member sungguhan belum diaktifkan pada staging.'}</p>
+    <p>{kind==='funding'?'Deposit dan withdrawal tidak tersedia pada akun ini. Tradevice tidak menyimpan atau menerima uang pelanggan.':'Komisi, atribusi IB, dan undangan member sungguhan belum diaktifkan pada staging.'}</p>
     <div className="demo-disabled-actions">{kind==='funding'?<><button disabled>Deposit dinonaktifkan</button><button disabled>Withdrawal dinonaktifkan</button></>:<button disabled>Bagikan link referral (nonaktif)</button>}</div>
     <small>PAPER ONLY · No live trading</small>
   </section>;
@@ -86,9 +86,9 @@ export default function DemoPage() {
   return <div className="demo-app">
     <a href="#demo-main" className="demo-skip">Lewati navigasi</a>
     <aside className="demo-sidebar">
-      <a href="/demo" className="demo-brand" aria-label="Tradevice Paper Demo"><Mark/><div><strong>tradevice<span>.</span></strong><small>COPY TRADING</small></div></a>
+      <a href="/demo" className="demo-brand" aria-label="Tradevice Preview"><Mark/><div><strong>tradevice<span>.</span></strong><small>COPY TRADING</small></div></a>
       <div className="demo-sidebar-note">WORKSPACE <span>/</span> PAPER STAGING</div>
-      <nav aria-label="Demo desktop navigation" className="demo-side-nav">{items.map(item=><button key={item.key} onClick={()=>visit(item.key)} className={page===item.key?'selected':''} aria-current={page===item.key?'page':undefined}><Icon name={item.icon}/><span>{item.label}</span></button>)}</nav>
+      <nav aria-label="Desktop navigation" className="demo-side-nav">{items.map(item=><button key={item.key} onClick={()=>visit(item.key)} className={page===item.key?'selected':''} aria-current={page===item.key?'page':undefined}><Icon name={item.icon}/><span>{item.label}</span></button>)}</nav>
       <div className="demo-sidebar-foot"><div className="demo-sidebar-info"><Icon name="shield" size={19}/><div><strong>Paper staging</strong><small>No live trading · No deposits</small></div></div>
         <a className="demo-logout" href="/master">Master login <Icon name="arrow" size={17}/></a>
       </div>
@@ -127,7 +127,7 @@ export default function DemoPage() {
       {page==='accounts'&&<>
         <div className="demo-section-head"><div><div className="demo-kicker">PAPER ACCOUNT</div><h2>Akun dan pengendalian risiko</h2></div><span className="demo-chip">NOT CONNECTED</span></div>
         <div className="demo-account-card"><div className="demo-account-head"><div className="demo-account-icon"><Icon name="wallet" size={28}/></div>
-          <div><small>PAPER ACCOUNT</small><h2>Belum terhubung</h2><p>Broker demo belum dikonfigurasi.</p></div>
+          <div><small>PAPER ACCOUNT</small><h2>Belum terhubung</h2><p>Broker belum dikonfigurasi.</p></div>
           <span className="demo-account-status">NO ACCOUNT</span></div>
           <div className="demo-account-balance"><span>Equity paper</span><strong>—</strong><p>Belum ada saldo akun terverifikasi.</p></div>
         </div>
@@ -154,7 +154,7 @@ export default function DemoPage() {
       {page==='referral'&&<Locked kind="referral"/>}
       <div className="demo-footer"><span>TRADEVICE COPY © 2026 · PAPER STAGING</span><span>NO SAMPLE DATA · No live trading · No real money</span></div>
     </main></div>
-    <nav className="demo-bottom-nav" aria-label="Demo mobile navigation">
+    <nav className="demo-bottom-nav" aria-label="Mobile navigation">
       {items.slice(0,4).map(item=><button type="button" key={item.key} className={page===item.key?'selected':''} aria-current={page===item.key?'page':undefined} onClick={()=>visit(item.key)}><Icon name={item.icon} size={20}/><span>{item.label==='Akun Paper'?'Akun':item.label}</span></button>)}
       <button type="button" className={page==='funding'||page==='referral'||more?'selected':''} aria-controls="demo-more-sheet" aria-expanded={more} onClick={()=>setMore(open=>!open)}><Icon name="more" size={20}/><span>Lainnya</span></button>
     </nav>

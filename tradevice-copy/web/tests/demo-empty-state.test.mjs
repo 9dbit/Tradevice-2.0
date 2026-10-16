@@ -14,7 +14,7 @@ test('synthetic demo fixtures are removed from the production bundle', () => {
 });
 
 test('paper dashboard starts empty, without an invented account or profit', () => {
-  assert.match(demo, /BELUM ADA DATA TRADING DEMO/);
+  assert.match(demo, /BELUM ADA DATA TRADING/);
   assert.match(demo, /Belum ada kurva equity/);
   assert.match(demo, /Belum ada transaksi paper yang terverifikasi/);
   assert.match(demo, /Belum ada strategi yang dijalankan/);
@@ -36,7 +36,7 @@ test('master preview redirects to authenticated real telemetry, with no fake fal
 });
 
 test('mobile demo navigation and safe areas remain available', () => {
-  assert.match(demo, /aria-label="Demo mobile navigation"/);
+  assert.match(demo, /aria-label="Mobile navigation"/);
   assert.match(demoCss, /safe-area-inset-bottom/);
   assert.match(demoCss, /grid-template-columns:repeat\(5/);
   assert.match(demoCss, /position:fixed/);
