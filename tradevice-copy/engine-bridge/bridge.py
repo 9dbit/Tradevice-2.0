@@ -47,8 +47,35 @@ class Controller:
   self.recovery=bool(interrupted) or bool(self.db.execute("SELECT 1 FROM receipts WHERE status='UNCERTAIN' LIMIT 1").fetchone())
   self.active=None;self.revision=0;self.state='RECOVERY_REQUIRED' if self.recovery else 'OFF';self.thread=None;self.emergency_thread=None
   self.kill=True;self.reason=None;self.mode=None;self.last_ok=0;self.last_stamp=0;self.calendar_protocol=False
+  self.last_reconcile=-float('inf')
+ def reconcile_completed_close(self):
+  if not self.recovery or self.running() or not hasattr(self.runtime,'reconcile_completed_close') or self.clock()-self.last_reconcile<30:return
+  self.last_reconcile=self.clock()
+  if self.db.execute("SELECT 1 FROM receipts WHERE status IN ('PROCESSING','UNCERTAIN') LIMIT 1").fetchone():return
+  prior=self.db.execute('SELECT request_id FROM active_run WHERE singleton=1').fetchone()[0]
+  if not prior:return
+  try:
+   evidence=self.runtime.emergency_snapshot()
+   if not evidence or evidence.get('phase')!='COMPLETE':return
+   rid=evidence['requestId'];row=self.db.execute('SELECT payload,status FROM receipts WHERE id=?',(rid,)).fetchone()
+   if not row or row[1]!='APPLIED' or json.loads(row[0]).get('action')!='EMERGENCY_CLOSE':return
+   proof=self.runtime.reconcile_completed_close(prior,rid)
+   if (proof.get('prior_run')!=prior or proof.get('close_request_id')!=rid or proof.get('broker_flat') is not True
+       or proof.get('orders_sent')!=0 or proof.get('new_cycle_started') is not False):raise ValueError('CLOSE_RECONCILIATION_INVALID')
+   self.db.execute('BEGIN IMMEDIATE')
+   try:
+    self.db.execute('CREATE TABLE IF NOT EXISTS recovery_audit(request_id TEXT PRIMARY KEY,proof TEXT NOT NULL,at_ms INTEGER NOT NULL)')
+    self.db.execute('INSERT INTO recovery_audit VALUES(?,?,?)',(prior,json.dumps(proof),int(self.clock()*1000)))
+    if self.db.execute('UPDATE active_run SET request_id=NULL WHERE singleton=1 AND request_id=?',(prior,)).rowcount!=1:raise ValueError('CLOSE_RECONCILIATION_RUN_CHANGED')
+    self.db.execute('COMMIT')
+   except BaseException:self.db.execute('ROLLBACK');raise
+   self.recovery=False;self.state='STOPPED';self.reason=None
+  except Exception:
+   # Never turn unavailable/ambiguous history into permission to start.
+   self.reason='PRIOR_CYCLE_RECONCILIATION_REQUIRED'
  def snapshot(self):
   with self.lock:
+   self.reconcile_completed_close()
    checks={k:False for k in CHECKS};blockers=[]
    if not self.running():
     try:checks,blockers=self.runtime.preflight()

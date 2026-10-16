@@ -1,0 +1,21 @@
+{
+  "previous_fingerprint": "b629ab7c2a5aad9bdae51fcdf7f621a51ba0cd6f97eeaf37dc9f73b31440052d",
+  "files": {
+    "bridge.py": {
+      "before": "efd1ec230c004d03ce13eee3565976b60d4a693fc995fde7c3b793bb7a0ae49e",
+      "sha256": "62b4e471a2881a4f64d2fe4db007c7e74a951181d3ffc28c0667ebff1bce25a2"
+    },
+    "v51_dashboard_runtime.py": {
+      "before": "612bc947e91ae7db6529c9f0c22d44986f763a140fc4eef36c553e7dfa92b639",
+      "sha256": "74c977aa6829da407297065f04538b5a2b8e7c8f43d6a7c0797aa84630256fb7"
+    },
+    "v51_account_close.py": {
+      "before": "5b38905411b0e9b7fec2888bb6ffc226505813769e7e5d3d27d3a99f2f31e5a7",
+      "sha256": "20818ab7d1a452efad3a1e48c0156ad7372fe4d99cad341d471829e2a7c144d3"
+    },
+    "v51_close_reconciliation.py": {
+      "before": null,
+      "sha256": "4ccf052edb10f9c2a4c56cbce44a9ff010725b04b6e8b1f853693526a7603531"
+    }
+  }
+}

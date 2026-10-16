@@ -57,7 +57,7 @@ def install(package):
   try:
    for name,item in spec['files'].items():
     temp=ROOT/(name+'.install-tmp');temp.write_bytes((package/name).read_bytes());changed.append(name);replace(temp,ROOT/name)
-    if name in original['files'] or name in ('v51_account_close.py','v51_recovery_display.py'):original['files'][name]=sha(ROOT/name)
+    if name in original['files'] or name in ('v51_account_close.py','v51_recovery_display.py','v51_close_reconciliation.py'):original['files'][name]=sha(ROOT/name)
    temp=fingerprint.with_suffix('.install-tmp');temp.write_text(json.dumps(original,indent=2),encoding='utf-8');replace(temp,fingerprint)
    if any(sha(ROOT/n)!=h for n,h in journal_hashes.items()):raise ValueError('JOURNAL_CHANGED_DURING_INSTALL')
   except Exception:

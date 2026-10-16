@@ -89,7 +89,10 @@ class Runtime:
   blockers.extend('PREFLIGHT_'+k.upper() for k,v in checks.items() if not v)
   self._checks=checks;self.checked_at=time.time()
   return checks,blockers
- def reconcile_prior(self,adapter,write=True):
+ def reconcile_completed_close(self,prior_run,close_id):
+  from v51_close_reconciliation import reconcile_closed_run
+  return reconcile_closed_run(self.root,prior_run,close_id,self.fingerprint,self.reconcile_prior)
+ def reconcile_prior(self,adapter,write=True,cancel_proofs=None):
   from goldtrap_arc.persistence import ArcLedger,ArcStateStore,atomic_json
   adapter.guard_identity()
   positions,orders=adapter.mt5.positions_get(),adapter.mt5.orders_get()
@@ -97,16 +100,18 @@ class Runtime:
   proved=set();evidence=[]
   for p in (self.root/'logs'/'arc_v1').rglob('arc_state.json'):
    before=p.read_bytes();state=ArcStateStore(p.parent).load();ledger=ArcLedger(p.parent)
+   from v51_close_reconciliation import matches_cancel_proof
+   candidate=cancel_proofs is not None and matches_cancel_proof(p,ledger,cancel_proofs)
    if ledger.unresolved_requests():
     from v51_account_close import proves_cancel_reconciliation
-    if not proves_cancel_reconciliation(self.root,p,ledger):raise ValueError('PRIOR_REQUEST_UNRESOLVED')
+    if not candidate and not proves_cancel_reconciliation(self.root,p,ledger):raise ValueError('PRIOR_REQUEST_UNRESOLVED')
    if not state.get('cycles_started') or str(state.get('state','')).startswith('COMPLETE'):continue
    if not state.get('cycle_id'):raise ValueError('PRIOR_CYCLE_ID_MISSING')
    life=adapter.cycle_lifecycle(state['cycle_id'])
    if life.get('all_closed') is not True or not life.get('entry_deals'):
     from v51_emergency_close import cancelled_only_proof
     from v51_account_close import proves_cancel_reconciliation
-    if not cancelled_only_proof(self.root,p,ledger,life) and not (not life.get('entry_deals') and not life.get('exit_deals') and proves_cancel_reconciliation(self.root,p,ledger)):
+    if not cancelled_only_proof(self.root,p,ledger,life) and not (not life.get('entry_deals') and not life.get('exit_deals') and (candidate or proves_cancel_reconciliation(self.root,p,ledger))):
      raise ValueError('PRIOR_HISTORY_NOT_CLOSED')
    if before!=p.read_bytes() or ledger.tail!=ArcLedger(p.parent).tail:raise ValueError('PRIOR_JOURNAL_CHANGED')
    proved.add(str(p.resolve()))

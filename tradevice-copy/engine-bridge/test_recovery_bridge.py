@@ -38,4 +38,25 @@ class RecoveryBridge(unittest.TestCase):
  def test_restart_preserves_unresolved_block(self):
   self.r.result=False;self.run_once();other=bridge.Controller(Path(self.tmp.name)/'state.db',Runtime());self.addCleanup(other.db.close)
   self.assertTrue(other.recovery);self.assertFalse(other.snapshot()['checks']['reconciled'])
+ def completed_close(self):
+  self.r.result=False;self.run_once();rid=str(uuid.uuid4())
+  self.c.db.execute('INSERT INTO receipts(id,payload,status) VALUES(?,?,?)',(rid,json.dumps(dict(action='EMERGENCY_CLOSE')),'APPLIED'))
+  self.r.emergency_snapshot=lambda:dict(requestId=rid,phase='COMPLETE')
+  self.r.reconcile_completed_close=lambda prior,close:dict(prior_run=prior,close_request_id=close,broker_flat=True,orders_sent=0,new_cycle_started=False)
+  self.c.last_reconcile=-float('inf');return rid
+ def test_completed_close_retires_only_proved_run_without_new_start(self):
+  self.completed_close();snap=self.c.snapshot()
+  self.assertFalse(self.c.recovery);self.assertEqual(snap['state'],'STOPPED');self.assertEqual(self.r.started,1)
+  self.assertIsNone(self.c.db.execute('select request_id from active_run').fetchone()[0])
+  self.assertEqual(self.c.db.execute('select count(*) from recovery_audit').fetchone()[0],1)
+ def test_failed_reconciliation_keeps_recovery_and_old_run(self):
+  self.completed_close()
+  def fail(*args):raise ValueError('history')
+  self.r.reconcile_completed_close=fail;self.c.snapshot();self.assertTrue(self.c.recovery)
+  self.assertEqual(self.c.db.execute('select request_id from active_run').fetchone()[0],self.cmd['requestId'])
+ def test_uncertain_command_blocks_automatic_reconciliation(self):
+  rid=self.completed_close();self.c.db.execute("UPDATE receipts SET status='UNCERTAIN' WHERE id=?",(rid,));self.c.snapshot();self.assertTrue(self.c.recovery)
+ def test_invalid_proof_cannot_clear_recovery(self):
+  self.completed_close();self.r.reconcile_completed_close=lambda *args:dict(broker_flat=True)
+  self.c.snapshot();self.assertTrue(self.c.recovery)
 if __name__=='__main__':unittest.main()

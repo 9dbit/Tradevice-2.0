@@ -151,6 +151,31 @@ def execute(root,request_id,expires_ms,verify_source,*,close_positions=True):
   try:mt5.shutdown()
   finally:lock.__exit__(None,None,None)
 
+def filled_order_ownership(adapter,cid,ledger,intent,order):
+ """A filled broker order may lose metadata; prove ownership via placement and deals."""
+ if order.state!=4 or order.magic!=0 or order.comment!='':return False
+ ticket=intent['target_ticket'];comment=intent['expected_comment'];volume=float(intent['expected_volume'])
+ placements=[r for r in ledger.rows if r.get('event')=='BROKER_REQUEST_INTENT' and r.get('operation') in ('FIXED_PENDING','TRAP_PENDING')
+  and r.get('cycle_id')==cid and r.get('expected_comment')==comment and r.get('side')==intent.get('side')
+  and math.isclose(float(r.get('expected_volume',0)),volume,rel_tol=0,abs_tol=1e-9)]
+ proved=[]
+ for placement in placements:
+  req=placement.get('request',{})
+  if req.get('symbol')!=adapter.cfg.symbol or req.get('magic')!=adapter.cfg.magic or req.get('comment')!=comment:continue
+  receipts=ledger.receipts(placement['request_id'])
+  if not any(r.get('classification')=='ACCEPTED' and r.get('retcode')==10009 and (r.get('raw_result') or {}).get('order')==ticket for r in receipts):continue
+  if not any(r.get('event')=='BROKER_REQUEST_RESOLVED' and r.get('request_id')==placement['request_id'] and r.get('resolution')=='EFFECT_PROVEN'
+    and (r.get('proof') or {}).get('ticket')==ticket for r in ledger.rows):continue
+  proved.append(placement)
+ if len(proved)!=1:return False
+ life=adapter.cycle_lifecycle(cid)
+ deals=[d for d in life.get('entry_deals',()) if getattr(d,'order',None)==ticket]
+ side={'BUY':0,'SELL':1}.get(intent.get('side'))
+ return (life.get('all_closed') is True and bool(deals) and side is not None
+  and all(d.symbol==adapter.cfg.symbol and d.magic==adapter.cfg.magic and d.comment==comment and d.entry==0 and d.type==side
+          and d.position_id>0 and math.isfinite(d.volume) and d.volume>0 for d in deals)
+  and math.isclose(sum(d.volume for d in deals),volume,rel_tol=0,abs_tol=1e-9))
+
 def original_cancel_proofs(root,adapter):
  """Read-only proof for rejected cancellations overtaken by broker fills.
  A terminal historical order is not described as a successful cancel. Only the
@@ -172,9 +197,10 @@ def original_cancel_proofs(root,adapter):
    if not history or len(history)!=1:
     valid=False;break
    order=history[0]
-   if (order.ticket!=intent['target_ticket'] or order.symbol!=adapter.cfg.symbol or order.magic!=adapter.cfg.magic
-       or order.comment!=intent['expected_comment'] or order.state not in (2,4,5,6)
+   if (order.ticket!=intent['target_ticket'] or order.symbol!=adapter.cfg.symbol or order.state not in (2,4,5,6)
        or not math.isclose(order.volume_initial,float(intent['expected_volume']),abs_tol=1e-9)):
+    valid=False;break
+   if not (order.magic==adapter.cfg.magic and order.comment==intent['expected_comment']) and not filled_order_ownership(adapter,cid,ledger,intent,order):
     valid=False;break
   if not valid:continue
   try:life=history_proof(adapter,cid)
@@ -194,6 +220,8 @@ def proves_cancel_reconciliation(root,state_path,ledger):
  import hashlib
  state=json.loads(state_path.read_text());cid=state.get('cycle_id');ids=sorted(i['request_id'] for i in ledger.unresolved_requests())
  journal_path=Path(root)/'read_only/account_reduction_journal'
+ from v51_close_reconciliation import stored_cancel_proof
+ if stored_cancel_proof(root,state_path,ledger):return True
  if not journal_path.exists():return False
  journal=ArcLedger(journal_path)
  completed={r['request_id'] for r in journal.rows if r['event']=='ACCOUNT_REDUCTION_COMPLETE' and r.get('broker_flat') is True}
