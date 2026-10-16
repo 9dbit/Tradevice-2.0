@@ -22,7 +22,7 @@ export function marginPreflightMessage(runtime,fresh){
 }
 export function preflightVerified(runtime,fresh,key){
  if(!fresh||!runtime||explicitFailure(runtime,key)||preflightDeferred(runtime,fresh))return false;
- if(key==='engineReady')return runtime.canStart===true&&runtime.blockers.length===0&&runtime.state!=='RECOVERY_REQUIRED';
+ if(key==='engineReady')return runtime.state==='AUTO_WAITING'?startChecks.every(k=>runtime.checks?.[k]===true)&&runtime.blockers.every(b=>b==='ENGINE_NOT_READY'):runtime.canStart===true&&runtime.blockers.length===0&&runtime.state!=='RECOVERY_REQUIRED';
  if(key==='reconciled'&&(runtime.state==='RECOVERY_REQUIRED'||runtime.blockers.some(b=>/RECOVERY|RECONCILIATION|UNRESOLVED/.test(b))))return false;
  return runtime.checks?.[key]===true;
 }

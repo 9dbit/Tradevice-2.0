@@ -24,3 +24,19 @@ TRADEVICEPC task `TRADEVICE-V51-DemoBridge` uses the virtual environment's `pyth
 ATR TP correction: `ATR_PRICE_DISTANCE_20261015.md` replaces numeric-USD ATR targets with a frozen price distance from the basket weighted entry. Requires settings protocol `V51_ATR_PRICE_DISTANCE_20261015`.
 
 Latest execution policy: [Current ATR basket profit USD](DYNAMIC_ATR_USD_20261015.md). Supersedes the frozen ATR distance policy.
+
+Automatic mode (2026-10-17): an explicit **Enable Automatic** request may arm
+while market preflight is blocked. The supported, fresh bridge and approved
+skill binding are still mandatory. The PC waits for all checks, executes one
+reviewed cycle, proves flat reconciliation, and checks again. There is no total
+cycle-count limit. Selected lot/TP settings are bound to the arming request.
+Pause, Stop, emergency close, kill, stale control connection, selection change,
+risk stop, uncertainty, or process restart disarms it. An open basket retains
+existing local supervision. Startup never re-arms it.
+
+The private command settings JSON stores `cycleMode: AUTOMATIC` and a one-cycle
+child target; wire exchange separates mode from execution settings. No schema
+migration is required. Old bridges cannot arm Automatic. Install the two reviewed
+adapter files with `install_automatic.py --check`, then `--install` only while
+idle/flat with the bridge and observer tasks stopped. The installer validates
+exact prior hashes, preserves journals/backups, and never starts a cycle.

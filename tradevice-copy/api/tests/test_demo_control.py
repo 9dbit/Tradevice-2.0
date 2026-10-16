@@ -9,6 +9,48 @@ from app.demo_settings import default_settings
 def snapshot():return dict(settingsProtocol=SETTINGS_PROTOCOL,observedMs=int(time.time()*1000),bootId=str(uuid.uuid4()),activeSkillId=str(uuid.uuid4()),activeHash=APPROVED_HASH,revision=1,state='READY',checks={k:True for k in CHECKS},blockers=[],receipts=[])
 def command():return dict(actor_id=str(uuid.uuid4()),requestId=str(uuid.uuid4()),action='START',targetCycles=1,confirmDemo=True,expectedRevision=1,settings=default_settings())
 
+def auto_evidence():return dict(protocol=AUTOMATIC_PROTOCOL,enabled=False,completedCycles=0,cycleRequestId=None)
+
+def test_automatic_requires_explicit_mode_confirmation_and_no_count():
+ p=command()|dict(cycleMode='AUTOMATIC',targetCycles=None)
+ validate_command(p)
+ for patch in [dict(targetCycles=1),dict(confirmDemo=False),dict(cycleMode='FOREVER'),dict(settings=p['settings']|{'cycleMode':'AUTOMATIC'})]:
+  with pytest.raises(SkillError):validate_command(p|patch)
+ for action in ['STOP','PAUSE','EMERGENCY_CLOSE']:
+  with pytest.raises(SkillError):validate_command(p|dict(action=action,confirmDemo=False,settings=None))
+
+def test_arming_can_wait_for_market_but_requires_fresh_bound_supported_engine():
+ s=snapshot()|dict(automatic=auto_evidence(),checks={k:False for k in CHECKS})
+ sel=dict(selected_skill_id=s['activeSkillId'],revision=1);now=s['observedMs']
+ assert arm_blockers(s,sel,now)==[]
+ assert 'AUTOMATIC_UPGRADE_REQUIRED' in arm_blockers(s|{'automatic':None},sel,now)
+ assert 'ENGINE_OFFLINE_OR_STALE' in arm_blockers(s,sel,now+8001)
+ assert 'SKILL_ENGINE_ACK_MISMATCH' in arm_blockers(s,sel|{'revision':2},now)
+ assert 'ENGINE_NOT_READY' in arm_blockers(s|{'state':'RECOVERY_REQUIRED'},sel,now)
+ assert 'AUTOMATIC_ALREADY_ENABLED' in arm_blockers(s|{'automatic':auto_evidence()|{'enabled':True}},sel,now)
+
+def test_automatic_snapshot_validation():
+ s=snapshot()|dict(automatic=auto_evidence()|{'enabled':True},state='AUTO_WAITING')
+ validate_snapshot(s,s['observedMs'])
+ for patch in [dict(enabled=False),dict(completedCycles=True),dict(completedCycles=-1),dict(cycleRequestId='bad'),dict(protocol='old')]:
+  with pytest.raises(SkillError):validate_snapshot(s|dict(automatic=s['automatic']|patch),s['observedMs'])
+
+def test_automatic_mode_is_persisted_and_bound_to_command_retry(monkeypatch):
+ from contextlib import contextmanager
+ import app.demo_control as control
+ p=command()|dict(cycleMode='AUTOMATIC',targetCycles=None)
+ stored=p['settings']|{'cycleMode':'AUTOMATIC'}
+ old=dict(actor_id=p['actor_id'],action='START',target_cycles=1,selection_revision=1,settings=stored,status='APPLIED')
+ class Conn:
+  def execute(self,*args):return self
+  def fetchone(self):return old
+ @contextmanager
+ def connection(_):yield Conn()
+ monkeypatch.setattr(control,'connection',connection);monkeypatch.setattr(control,'locked',lambda _:({}, {}, 0))
+ assert submit('fixture',p,False)['status']=='APPLIED'
+ with pytest.raises(SkillError):submit('fixture',p|dict(cycleMode='CUSTOM',targetCycles=1),False)
+ assert automatic_settings(stored) and execution_settings(stored)==p['settings']
+
 def test_all_start_gates_and_skill_binding():
  s=snapshot();sel=dict(selected_skill_id=s['activeSkillId'],revision=1);now=s['observedMs']
  assert start_blockers(s,sel,now,True)==[]

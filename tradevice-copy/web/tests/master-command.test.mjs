@@ -68,12 +68,12 @@ test('telemetry accepts only verified operator event metadata and no fake fills'
 });
 
 
-test('demo start is finite and authorized by explicit Start click',()=>{
+test('custom start is finite and Automatic requires an explicit enable click',()=>{
  assert.match(demo,/target<1\|\|target>10/);
  assert.match(demo,/confirmDemo:action==='START'/);
  assert.doesNotMatch(demo,/Saya mengizinkan|type="checkbox"/);
  assert.match(demo,/onClick=\{\(\)=>showReset\?resetComposer\(\):void send\('START'\)\}/);
- assert.match(demo,/!runtime\?\.canStart/);
+ assert.match(demo,/const startAllowed=automatic\?runtime\?\.canArmAutomatic===true:runtime\?\.canStart===true/);
  assert.match(dashboard,/mt-u-diagnostic/);
 });
 test('broker quality panel exists and never fabricates broker metrics or starts trading',()=>{
@@ -82,7 +82,7 @@ test('broker quality panel exists and never fabricates broker metrics or starts 
     assert.ok(dashboard.includes(field),field);
  }
  assert.match(dashboard,/Broker unverified/);
- assert.match(demo,/!runtime\?\.canStart/);
+ assert.match(demo,/const startAllowed=automatic\?runtime\?\.canArmAutomatic===true:runtime\?\.canStart===true/);
  assert.doesNotMatch(dashboard,/FAKE_BROKER|spreadPoints:\s*10|atr14:\s*5|commissionUsdPerLot:\s*5/);
 });
 
@@ -118,7 +118,7 @@ test('demo progress correlates exact engine receipts and never assumes HTTP acce
 });
 test('demo start requires fresh independent engine evidence, not paper or observer flags',()=>{
  assert.match(demo,/evidenceNow-runtime.observedMs<=8000/);
- assert.match(demo,/!runtime\?\.canStart/);
+ assert.match(demo,/const startAllowed=automatic\?runtime\?\.canArmAutomatic===true:runtime\?\.canStart===true/);
  for(const gate of ['identity','brokerFlat','quote','spread','margin','commission','news','reconciled','engineHash'])assert.ok(demo.includes(gate));
  assert.doesNotMatch(demo,/brokerReady:\s*true|newsCalendarReady:\s*true/);
 });

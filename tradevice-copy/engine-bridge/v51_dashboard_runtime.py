@@ -135,7 +135,7 @@ class Runtime:
    atomic_json(self.root/'read_only'/'dashboard_prior_reconciliation.json',dict(observed_ms=int(time.time()*1000),read_only=True,
     broker_flat=True,evidence=evidence,original_journals_modified=False,counted_in_new_run=False))
   return proved
- def prepare(self,settings):self.settings=validate_settings(settings);self.reason=None;self.entry_blocker=None
+ def prepare(self,settings):self.settings=validate_settings(settings);self.reason=None;self.entry_blocker=None;self.last_cycle_completed=False
  def suspend(self,reason):self.reason=reason
  def run(self,request_id,target,ready,expires_ms):
   import MetaTrader5 as mt5
@@ -193,6 +193,7 @@ class Runtime:
    result=run(root,False,mt5,fixed_arming='PREARM_BOTH',engine_class=session.engine,
     adapter_class=ResearchBatchAdapter,admission=session.admission,reporter=session.emit,cycle_limit=target,stop_requested=lambda:bool(outer.reason),prior_reconciliation=self.reconcile_prior)
    # run() only returns after cycle history + broker-flat reconciliation.
+   self.last_cycle_completed=any(s.get('result',{}).get('broker_flat_confirmed') is True and s.get('result',{}).get('layers',0)>0 for s in (session.manifest or {}).get('slots',[]))
    return result==0
   except ArcSafetyError as exc:
    from v51_terminal_reconciliation import RISK_STOP_MESSAGE,RISK_STOP_FLAT,prove_risk_stop

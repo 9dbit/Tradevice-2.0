@@ -11,7 +11,7 @@ import {cycleProgress} from '../../lib/cycle-progress.mjs';
 import {closeCompleted} from '../../lib/close-completion.mjs';
 import {ReportSection,ReportDrawer,ReportIcon as I} from './report-ui';
 const preflightChecks=[['identity','Account identity'],['brokerFlat','Broker flat'],['quote','Fresh quote'],['spread','Spread'],['margin','Margin'],['commission','Commission'],['news','News'],['reconciled','Reconciliation'],['engineHash','Engine hash'],['atr','ATR range'],['adx','ADX range'],['engineReady','Engine ready']];
-export type DemoRuntime={preflightEvidence?:PreflightEvidence|null;emergencyCloseProtocol?:string|null;emergencyClose?:{requestId:string;phase:string;observedMs:number;positionsRemaining:number|null;ordersRemaining:number|null}|null;settingsProtocol?:string|null;online:boolean;observedMs:number|null;state:string;activeSkillId:string|null;activeHash:string|null;revision:number|null;checks:Record<string,boolean>;blockers:string[];canStart:boolean;commands:Array<{requestId:string;action:string;status:string;errorCode:string|null;diagnostics?:PreflightEvidence|null}>};
+export type DemoRuntime={automatic?:{protocol:string;enabled:boolean;completedCycles:number;cycleRequestId:string|null}|null;canArmAutomatic?:boolean;preflightEvidence?:PreflightEvidence|null;emergencyCloseProtocol?:string|null;emergencyClose?:{requestId:string;phase:string;observedMs:number;positionsRemaining:number|null;ordersRemaining:number|null}|null;settingsProtocol?:string|null;online:boolean;observedMs:number|null;state:string;activeSkillId:string|null;activeHash:string|null;revision:number|null;checks:Record<string,boolean>;blockers:string[];canStart:boolean;commands:Array<{requestId:string;action:string;status:string;errorCode:string|null;diagnostics?:PreflightEvidence|null}>};
 export function useDemoRuntime(token:string){
  const [runtime,setRuntime]=useState<DemoRuntime|null>(null),generation=useRef(0);
  const inFlight=useRef(false);
@@ -26,6 +26,9 @@ export function useDemoRuntime(token:string){
  return {runtime,refresh};
 }
 export default function DemoControl({token,runtime,refresh,now,batchRaw,newsRaw}:{token:string;runtime:DemoRuntime|null;refresh:()=>void;now:number;batchRaw?:unknown;newsRaw?:unknown}){
+ const [cycleMode,setCycleMode]=useState<'CUSTOM'|'AUTOMATIC'>('CUSTOM');
+ const automatic=runtime?.automatic?.enabled===true||cycleMode==='AUTOMATIC';
+ const startAllowed=automatic?runtime?.canArmAutomatic===true:runtime?.canStart===true;
  const [count,setCount]=useState('1'),[pending,setPending]=useState(false),[resetBatch,setResetBatch]=useState<string|null>(null);
  const [baseLot,setBaseLot]=useState('0.01'),[tpMode,setTpMode]=useState('FIXED_3_5'),[customTp,setCustomTp]=useState('3.50'),[tpPoints,setTpPoints]=useState('3500');
  const settings=demoSettings(baseLot,tpMode,customTp,tpPoints);
@@ -46,11 +49,11 @@ export default function DemoControl({token,runtime,refresh,now,batchRaw,newsRaw}
  async function send(action:'START'|'PAUSE'|'STOP'){
   if(pending||!fresh)return;
   const target=Number(count);
-  if(action==='START'&&(!settingsReady||!settings||!runtime?.canStart||busy||!Number.isInteger(target)||target<1||target>10))return;
+  if(action==='START'&&(!settingsReady||!settings||!startAllowed||busy||(!automatic&&(!Number.isInteger(target)||target<1||target>10))))return;
   const id=crypto.randomUUID();if(action==='START')setResetBatch(null);setPending(true);setRequest({id,action,phase:'SENDING'});
   try{
    const r=await fetch('/api/master/demo',{method:'POST',headers:{Authorization:'Bearer '+token,'content-type':'application/json'},
-    body:JSON.stringify({requestId:id,action,targetCycles:action==='START'?target:null,confirmDemo:action==='START',expectedRevision:runtime?.revision,settings:action==='START'?settings:null}),signal:AbortSignal.timeout(12000)});
+    body:JSON.stringify({requestId:id,action,...(action==='START'?{cycleMode:automatic?'AUTOMATIC':'CUSTOM'}:{}),targetCycles:action==='START'&&!automatic?target:null,confirmDemo:action==='START',expectedRevision:runtime?.revision,settings:action==='START'?settings:null}),signal:AbortSignal.timeout(12000)});
    const d=await r.json();
    if(!r.ok){setRequest({id,action,phase:r.status>=500?'UNCERTAIN':'REJECTED',error:d?.detail?.code||'COMMAND_UNAVAILABLE'});return;}
    if(d.requestId!==id||!['PENDING','DISPATCHED','APPLIED','REJECTED','EXPIRED','UNCERTAIN'].includes(d.status))throw Error();
@@ -59,14 +62,14 @@ export default function DemoControl({token,runtime,refresh,now,batchRaw,newsRaw}
   finally{setPending(false);}
  }
  const progress=cycleProgress(batchRaw,runtime,evidenceNow,request?.action==='START'&&!['REJECTED','EXPIRED'].includes(request.phase)?request.id:null);
- const showCycle=progress?.executed&&(resetBatch!==progress.batchId||['STARTING','RUNNING','PAUSING','PAUSED','STOPPING'].includes(runtime?.state||''));
- const runtimeRunning=['STARTING','RUNNING','PAUSING','PAUSED','STOPPING'].includes(runtime?.state||'');
+ const showCycle=progress?.executed&&(resetBatch!==progress.batchId||['AUTO_WAITING','STARTING','RUNNING','PAUSING','PAUSED','STOPPING'].includes(runtime?.state||''));
+ const runtimeRunning=['AUTO_WAITING','STARTING','RUNNING','PAUSING','PAUSED','STOPPING'].includes(runtime?.state||'');
  // Keep the last active message through heartbeat gaps; never reuse it for controls.
  const [lastActive,setLastActive]=useState<DemoRuntime|null>(null);
  useEffect(()=>{if(fresh)setLastActive(runtimeRunning?runtime:null);},[runtime,fresh,runtimeRunning]);
  const activeNotice=fresh?(runtimeRunning?runtime:null):lastActive;
  const ended=!!progress&&['COMPLETED','STOPPED','SAFETY_STOP','BLOCKED'].includes(progress.status)&&!runtimeRunning;
- const closed=closeCompleted(runtime,evidenceNow)&&!(request?.action==='START'&&['SENDING','PENDING','DISPATCHED','UNCERTAIN'].includes(request.phase));
+ const closed=!runtimeRunning&&closeCompleted(runtime,evidenceNow)&&!(request?.action==='START'&&['SENDING','PENDING','DISPATCHED','UNCERTAIN'].includes(request.phase));
  const resetSafe=ended&&(progress!.unfinished===0||closed);
  const showReset=!!showCycle&&ended;
  const stopNotice=batchStopNotice(progress,runtimeRunning);
@@ -86,11 +89,11 @@ export default function DemoControl({token,runtime,refresh,now,batchRaw,newsRaw}
  const checkedKey=(key:string)=>!(['margin','engineReady'].includes(key)&&!selectedChecked)&&preflightVerified(runtime,fresh,key);
  const verifiedCount=preflightChecks.filter(([key])=>checkedKey(key)).length;
  const recovery=runtime?.state==='RECOVERY_REQUIRED'||runtime?.blockers.some(b=>/RECOVERY|RECONCILIATION/.test(b))===true;
- const pauseEnabled=fresh&&!busy&&!closed&&(['STARTING','RUNNING'].includes(runtime?.state||'')||recovery);
- const stopEnabled=fresh&&!busy&&!closed&&(['STARTING','RUNNING','PAUSING','PAUSED'].includes(runtime?.state||'')||recovery);
+ const pauseEnabled=fresh&&!busy&&!closed&&(['AUTO_WAITING','STARTING','RUNNING'].includes(runtime?.state||'')||recovery);
+ const stopEnabled=fresh&&!busy&&!closed&&(['AUTO_WAITING','STARTING','RUNNING','PAUSING','PAUSED'].includes(runtime?.state||'')||recovery);
  const showClose=!closed&&!!(runtimeRunning||activeNotice||recovery||progress?.unfinished||runtime?.checks.brokerFlat===false);
- const status=!fresh?'Stale':runtime?.canStart?(selectedChecked?'Ready':'Check settings'):({STARTING:'Starting',RUNNING:'Running',PAUSING:'Pausing',PAUSED:'Paused',STOPPING:'Stopping'} as Record<string,string>)[runtime?.state||'']||'Blocked';
- const blocker=!fresh?'Engine heartbeat unavailable':runtime?.canStart?'':visibleBlockers.filter(b=>!['PREFLIGHT_NEWS','NEWS_NOT_CLEAR'].includes(b)).join(' · ')||(['STARTING','RUNNING','PAUSING','PAUSED','STOPPING'].includes(runtime?.state||'')?'':'Preflight incomplete');
+ const status=!fresh?'Stale':runtime?.canStart?(selectedChecked?'Ready':'Check settings'):({AUTO_WAITING:'Automatic · waiting',STARTING:'Starting',RUNNING:'Running',PAUSING:'Pausing',PAUSED:'Paused',STOPPING:'Stopping'} as Record<string,string>)[runtime?.state||'']||'Blocked';
+ const blocker=!fresh?'Engine heartbeat unavailable':runtime?.canStart?'':visibleBlockers.filter(b=>!['PREFLIGHT_NEWS','NEWS_NOT_CLEAR'].includes(b)).join(' · ')||(['AUTO_WAITING','STARTING','RUNNING','PAUSING','PAUSED','STOPPING'].includes(runtime?.state||'')?'':'Preflight incomplete');
  return <ReportSection notice={activeNotice&&<p className="mt-compact-note mt-batch-notice" role="status">Batch {activeNotice.state.toLowerCase()}. Last reported state; see bridge status below for freshness. New batches remain locked while this batch is active. Before each next cycle, the engine checks admission again after broker-flat reconciliation. Continuation is not guaranteed.</p>} title="Trading Cycle" className="mt-u-panel mt-demo-control" aria-labelledby="demo-control-title" header={<div className="mt-u-panel-head mt-demo-heading"><h2 id="demo-control-title"><I name="repeat"/> Trading Cycle</h2><strong aria-label="Engine connection" data-state={status}>{status}</strong></div>} overlay={<dialog ref={stopDialog} className="mt-stop-dialog" aria-labelledby="batch-stop-title" aria-describedby="batch-stop-reason" onCancel={e=>{e.preventDefault();dismissStop();}}>
    <h2 id="batch-stop-title">{stopNotice?.title}</h2>
    <strong>{progress?.completed??0} / {progress?.total??0} cycles completed</strong>
@@ -114,10 +117,12 @@ export default function DemoControl({token,runtime,refresh,now,batchRaw,newsRaw}
    {!settings&&<p className="mt-inline-blocker">{tpMode==='POINTS'?'TP points must be a whole number from 1 to 100,000. Broker price and stop-distance checks still apply.':'Custom TP must be $0.01–$250.00, with at most two decimals.'}</p>}
    {!settingsReady&&<p className="mt-compact-note">Waiting for the engine settings protocol. Start remains blocked.</p>}
   </ReportDrawer>
-  <div className="mt-demo-inputs"><label htmlFor={showCycle?undefined:'demo-cycle-count'}>{showCycle?(ended?'Executed cycles':'Current cycle'):'Cycle count'}<small>XAUUSDm{showCycle?` · ${ended?'Last side':'Side'}: ${progress?.side||'Unverified'}`:''}{showCycle?(progress?.fresh?'':' · Last reported'):' · 1–10'}</small></label>
+  <div className="mt-batch-settings"><label>Cycle mode<select aria-label="Cycle mode" value={automatic?'AUTOMATIC':'CUSTOM'} disabled={busy||runtimeRunning} onChange={e=>setCycleMode(e.target.value as 'CUSTOM'|'AUTOMATIC')}><option value="CUSTOM">Custom cycle count</option><option value="AUTOMATIC">Automatic · until stopped</option></select></label></div>
+  {automatic&&<p className="mt-compact-note" role="status">{runtime?.automatic?.enabled?`Automatic enabled · ${runtime.automatic.completedCycles} cycles completed. ${runtime.state==='AUTO_WAITING'?'Waiting for every preflight check to pass.':'Current cycle remains supervised.'}`:'Enable once to wait for all preflight checks, then repeat one cycle at a time without a cycle-count limit. Pause, Stop, risk stop, connection loss or engine restart disables Automatic.'}</p>}
+  {!automatic&&<div className="mt-demo-inputs"><label htmlFor={showCycle?undefined:'demo-cycle-count'}>{showCycle?(ended?'Executed cycles':'Current cycle'):'Cycle count'}<small>XAUUSDm{showCycle?` · ${ended?'Last side':'Side'}: ${progress?.side||'Unverified'}`:''}{showCycle?(progress?.fresh?'':' · Last reported'):' · 1–10'}</small></label>
    {showCycle?<output className="mt-current-cycle" aria-label="Current cycle">{ended?progress!.executedCount:progress!.current}/{progress!.total}</output>:<input id="demo-cycle-count" aria-label="Cycle count" type="text" inputMode="numeric" pattern="[0-9]*" maxLength={2} value={count} disabled={busy||runtimeRunning} onChange={e=>setCount(e.target.value.replace(/\D/g,''))}/>}
-  </div>
-  <EmergencyClose token={token} runtime={runtime} refresh={refresh} now={evidenceNow} enabled={fresh&&!pending} visible={showClose} closed={closed} primary={<button className="mt-u-primary" type="button" disabled={showReset?busy||!resetSafe:!settingsReady||!settings||!!showCycle||!fresh||!runtime?.canStart||busy||!/^([1-9]|10)$/.test(count)} onClick={()=>showReset?resetComposer():void send('START')}><I name={showReset?"repeat":"play"} size={15}/>{showReset?'Reset':'Start Cycle'}</button>} secondary={<>   <button className="mt-u-secondary mt-cycle-icon" type="button" aria-label="Pause" title="Pause" disabled={!pauseEnabled} onClick={()=>void send('PAUSE')}><I name="pause" size={19}/></button>
+  </div>}
+  <EmergencyClose token={token} runtime={runtime} refresh={refresh} now={evidenceNow} enabled={fresh&&!pending} visible={showClose} closed={closed} primary={<button className="mt-u-primary" type="button" disabled={showReset?busy||!resetSafe:!settingsReady||!settings||(!automatic&&!!showCycle)||!fresh||!startAllowed||busy||(!automatic&&!/^([1-9]|10)$/.test(count))} onClick={()=>showReset?resetComposer():void send('START')}><I name={showReset?"repeat":"play"} size={15}/>{showReset?'Reset':automatic?'Enable Automatic':'Start Cycle'}</button>} secondary={<>   <button className="mt-u-secondary mt-cycle-icon" type="button" aria-label="Pause" title="Pause" disabled={!pauseEnabled} onClick={()=>void send('PAUSE')}><I name="pause" size={19}/></button>
    <button className="mt-u-secondary mt-cycle-icon" type="button" aria-label="Stop" title="Stop" disabled={!stopEnabled} onClick={()=>void send('STOP')}><I name="stop" size={19}/></button></>}/>
   <div className="mt-cycle-progress" data-running={displayedProgress?.active===true} data-stale={displayedProgress?!displayedProgress.fresh:false}>
    <div className="mt-cycle-track" role="progressbar" aria-label="Completed cycles" aria-valuemin={0} aria-valuemax={displayedProgress?.total??10} {...(displayedProgress?{'aria-valuenow':displayedProgress.completed}:{})} aria-valuetext={displayedProgress?`${displayedProgress.completed} of ${displayedProgress.total} completed${displayedProgress.fresh?'':' · last reported'}`:'Awaiting batch evidence'}><span style={{width:(displayedProgress?.percent??0)+'%'}}/>{displayedProgress?.active&&<i aria-hidden="true" style={{left:(Math.min(displayedProgress.percent,97))+'%'}}/>}</div>
@@ -134,9 +139,9 @@ export default function DemoControl({token,runtime,refresh,now,batchRaw,newsRaw}
    <ul className="mt-preflight-grid" aria-label="Preflight checks">{preflightChecks.map(([key,label])=>{
     const state=fresh&&!deferred&&!selectedChecked&&['margin','engineReady'].includes(key)?'Not checked':preflightStatus(runtime,fresh,key),checked=state==='Verified';
     return <li key={key} data-verified={checked} data-status={state}><span role="img" aria-label={state} title={state}><I name={checked?'check':state==='Blocked'?'alert':state==='Stale'?'clock':'minus'} size={17}/></span><span>{label}<small className="mt-preflight-state">{state}</small></span></li>;
-   })}</ul><p className="mt-compact-note">{deferred?'Entry checks are evaluated before every new cycle; current basket supervision continues.':!fresh?'Fresh engine evidence is required. Last-known checks do not authorize Start.':'Blocked checks must clear before Start. This panel does not trigger the next cycle.'}</p>
+   })}</ul><p className="mt-compact-note">{deferred?'Entry checks are evaluated before every new cycle; current basket supervision continues.':!fresh?'Fresh engine evidence is required. Last-known checks do not authorize Start.':runtime?.automatic?.enabled?'Automatic is waiting for every check before the next cycle.':'Blocked checks must clear before entry. Enable Automatic can wait for them.'}</p>
   </ReportDrawer>
-  {request&&<div role="status" aria-live="polite" className="mt-demo-command"><strong>{request.action} · {request.phase}</strong><p>{request.error||(['PENDING','DISPATCHED','SENDING'].includes(request.phase)?'Awaiting engine confirmation…':request.phase==='APPLIED'?'Command applied. Basket status is reported separately.':'Not confirmed. Check command history before retrying Start.')}</p>{request.error&&<PreflightRequirements code={request.error} evidence={runtime?.commands.find(c=>c.requestId===request.id)?.diagnostics} historical/>}</div>}
+  {request&&<div role="status" aria-live="polite" className="mt-demo-command"><strong>{request.action} · {request.phase}</strong><p>{request.error||(['PENDING','DISPATCHED','SENDING'].includes(request.phase)?'Awaiting engine confirmation…':request.phase==='APPLIED'?(automatic?'Automatic command applied. It waits for preflight; this does not mean a position opened.':'Command applied. Basket status is reported separately.'):'Not confirmed. Check command history before retrying Start.')}</p>{request.error&&<PreflightRequirements code={request.error} evidence={runtime?.commands.find(c=>c.requestId===request.id)?.diagnostics} historical/>}</div>}
   <ReportDrawer title="Command history" meta={runtime?runtime.commands.length:'—'}>{runtime?.commands.length?<ul className="mt-command-list">{runtime.commands.map(c=><li key={c.requestId}><strong>{c.action} · {c.status}</strong><small>{c.requestId.slice(0,8)}</small>{c.errorCode&&<><span>{c.errorCode}</span><PreflightRequirements code={c.errorCode} evidence={c.diagnostics} historical/></>}</li>)}</ul>:<p className="mt-compact-note">No commands yet.</p>}</ReportDrawer>
  </ReportSection>;
 }
