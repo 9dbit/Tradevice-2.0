@@ -31,7 +31,7 @@ export type Snapshot = {
   diagnostic?: {code:string;component?:string};
   news?: NewsSnapshot;
   demoBatch?:DemoBatch|null;
-  market?: {demoBatch?:DemoBatch|null;engineDiagnostics?:EngineDiagnostics;ownedPositionPnl?:OwnedPnl|null;status:'NOT_CONNECTED'|'STALE'|'VERIFIED'|'OBSERVED_READ_ONLY';source:string;
+  market?: {marketRegime?:unknown;collectedAt?:string|null;demoBatch?:DemoBatch|null;engineDiagnostics?:EngineDiagnostics;ownedPositionPnl?:OwnedPnl|null;status:'NOT_CONNECTED'|'STALE'|'VERIFIED'|'OBSERVED_READ_ONLY';source:string;
     brokerName:string|null;accountMode:'DEMO'|'REAL'|null;symbol:string|null;
     observedAt:string|null;bid:number|null;ask:number|null;pointSize:number|null;
     spreadPoints:number|null;commissionUsdPerLot:number|null;slippagePoints:number|null;
@@ -200,7 +200,7 @@ export default function MasterConsole() {
     // Explicit 401/403 responses above still immediately revoke dashboard access.
     setAuth(current=>current==='authorized'?current:'checking');
     void load();
-    const id=window.setInterval(()=>{void load();},1000);
+    const id=window.setInterval(()=>{void load();},250);
     return()=>{active=false;window.clearInterval(id);};
   },[token,refreshIndex]);
   async function signIn(event:FormEvent<HTMLFormElement>){
@@ -229,7 +229,7 @@ export default function MasterConsole() {
       <div className="mt-eyebrow">PRIVATE OPERATOR CONSOLE / STAGING</div>
       <h1>Master Trader<br/><span>Control Center.</span></h1>
       <p>Private operations console for approved master administrators.</p>
-      {auth==='checking'||auth==='loading'?<div className="mt-login-wait"><span className="mt-spinner"/>Verifying administrator session…</div>:
+      {auth==='checking'||auth==='loading'?<div className="mt-login-wait"><span className="mt-spinner"/><span><strong>Starting up the engine…</strong><br/><small>Verifying administrator session · connecting to engine monitoring</small></span></div>:
       <form onSubmit={signIn} className="mt-login-form">
         <label htmlFor="mt-email">Administrator email</label>
         <input id="mt-email" type="email" autoComplete="username" placeholder="admin@company.com" value={email} required onChange={e=>setEmail(e.target.value)}/>

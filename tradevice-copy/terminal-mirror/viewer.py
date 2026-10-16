@@ -8,6 +8,7 @@ from urllib.request import Request,build_opener,HTTPRedirectHandler
 from urllib.error import HTTPError
 
 ROOT=Path(r'D:\GoldTrapCore\GoldTrapCore_v0.2_v51_research_20261013')
+_client=None
 ENDPOINT='https://copy-api-staging-4c33.up.railway.app/internal/master/terminal'
 EVENTS=set('ARC_NAMESPACE BATCH_STARTED BATCH_CYCLE_RESULT CYCLE_STARTED FIXED_INITIAL_LADDERS_VERIFIED BROKER_REQUEST_INTENT BROKER_REQUEST_RECEIPT BROKER_REQUEST_RESOLVED FLAT_LIFECYCLE_RECONCILED TERMINAL_EXIT_COMMITTED TP_GENERATION_BEGIN TP_GENERATION_SYNCED NEWS_ENTRY_SUSPENDED NEWS_PENDING_RETIRED ADAPTIVE_ARMED ADAPTIVE_AUTHORIZED ADAPTIVE_DEFERRED ADAPTIVE_FILLED RISK_EXIT_COMMITTED'.split())
 BATCH=r'(?:v51_dashboard_[a-f0-9]{32}|v51_demo10_[0-9]{8}_[0-9]{6})'
@@ -72,18 +73,19 @@ def publish(packet,secret):
  raw=json.dumps(packet,separators=(',',':')).encode();stamp=str(packet['observedMs'])
  sig=hmac.new(bytes.fromhex(secret),b'tradevice-terminal-v1\n'+stamp.encode()+b'\n'+raw,hashlib.sha256).hexdigest()
  req=Request(ENDPOINT,raw,{'content-type':'application/json','x-tradevice-terminal-time':stamp,'x-tradevice-terminal-signature':sig})
- with build_opener(NoRedirect()).open(req,timeout=8) as response:
+ with (_client or build_opener(NoRedirect())).open(req,timeout=8) as response:
   ack=json.loads(response.read(1024))
   if response.status!=202 or ack.get('status')!='ACCEPTED_READ_ONLY' or ack.get('observedMs')!=packet['observedMs']:raise ValueError('ACK_INVALID')
 
 def main():
+ global _client
  p=argparse.ArgumentParser();p.add_argument('--publish',action='store_true');p.add_argument('--once',action='store_true');a=p.parse_args()
  if not ROOT.is_dir():raise RuntimeError('ISOLATED_CLONE_REQUIRED')
  secret=None
  if a.publish:
   # Reuse the restricted DPAPI loader, never capture or forward raw console data.
-  sys.path.insert(0,str(ROOT));from v51_staging_readonly_forwarder import load_dpapi_secret
-  secret=load_dpapi_secret()
+  sys.path.insert(0,str(ROOT));from v51_staging_readonly_forwarder import load_dpapi_secret,PersistentClient
+  secret=load_dpapi_secret();_client=PersistentClient(endpoint=ENDPOINT)
  # Independent OS lock: no access to the engine's bridge/run locks.
  with (Path(__file__).parent/'viewer.lock').open('a+b') as lock:
   lock.seek(0);lock.write(b'0');lock.flush();lock.seek(0)
@@ -92,6 +94,7 @@ def main():
    msvcrt.locking(lock.fileno(),msvcrt.LK_NBLCK,1)
   last=None;failures=0
   while True:
+   started=time.monotonic()
    packet=capture(ROOT,int(time.time()*1000));screen=render(packet)
    if screen!=last:
     print('TRADEVICEPC | PowerShell engine journal | READ ONLY',flush=True)
@@ -101,5 +104,5 @@ def main():
     except HTTPError as e:failures+=1;print('VIEWER_SYNC_HTTP_'+str(e.code),flush=True)
     except Exception:failures+=1;print('VIEWER_SYNC_UNAVAILABLE',flush=True)
    if a.once:return
-   time.sleep(min(30,3*2**min(failures,3)))
+   time.sleep(min(30,3*2**min(failures,3)) if failures else max(.05,1-(time.monotonic()-started)))
 if __name__=='__main__':main()

@@ -120,3 +120,17 @@ class HardeningTests(unittest.TestCase):
   bars[-1][0]+=60000
   with self.assertRaisesRegex(ObserverRejected,'ATR_PROOF_INVALID'):
    parse_observer(fixture(**args),NOW)
+
+class FastFeedTests(unittest.TestCase):
+ def test_half_second_readonly_feed_and_replay_protection(self):
+  b=ObserverBuffer();b.receive(fixture(),NOW)
+  b.receive(fixture(collected_utc_ms=NOW+500),NOW+500)
+  with self.assertRaisesRegex(ObserverRejected,'OUT_OF_ORDER'):
+   b.receive(fixture(),NOW+1000)
+ def test_regime_display_is_optional_and_does_not_authorize_entry(self):
+  m=dict(policy='V51_RANGE_PREFLIGHT_20261016',observedMs=NOW,atrMethod='SMA_TR_14',adxMethod='WILDER_14',atrM1=1.3,atrPoints=1300,minAtr=1.2,maxAtr=1.6,adxM1=35.56,adxM5=24.65,adxM1Max3=36,adxM5Max3=25,adxLimit=20,stableBars=3,lookbackBars=1440,m1ClosedMs=NOW//60000*60000,m5ClosedMs=NOW//300000*300000,atrPassed=True,adxPassed=False)
+  x=parse_observer(fixture(market_regime=m),NOW+100)
+  self.assertEqual(x['marketRegime']['adxM1'],35.56)
+  self.assertFalse(x['trustedForTradeAdmission'])
+  x=parse_observer(fixture(market_regime={**m,'adxPassed':True}),NOW+100)
+  self.assertIsNone(x['marketRegime']);self.assertEqual(x['bid'],4199.5)

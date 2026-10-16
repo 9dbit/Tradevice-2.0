@@ -29,7 +29,7 @@ class GrowthBuffer:
   p=validate(json.loads(body),now)
   with self.lock:
    if self.packet and p['observedMs']<=self.packet['observedMs']:raise ValueError('REPLAY')
-   if self.received is not None and now-self.received<5000:raise OverflowError('RATE')
+   if self.received is not None and now-self.received<500:raise OverflowError('RATE')
    self.packet=p;self.received=now
   return p['observedMs']
  def projection(self,now):

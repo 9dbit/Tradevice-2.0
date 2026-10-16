@@ -2,6 +2,7 @@
 import {useEffect,useMemo,useRef,useState} from 'react';
 import type {Snapshot} from './master-console';
 import {validateEngine,validateOwned} from '../../lib/engine-diagnostics.mjs';
+import MarketRegimePanel from './market-regime-panel';
 import {basketEstimate} from '../../lib/basket-estimate.mjs';
 import {closeCompleted} from '../../lib/close-completion.mjs';
 import type {BasketEstimate} from '../../lib/basket-estimate.mjs';
@@ -28,7 +29,7 @@ export default function CompactDashboard({data,token,onNavigate}:{
 }){
  const {runtime:demoRuntime,refresh:refreshDemo}=useDemoRuntime(token);
  const [now,setNow]=useState(Date.now());
- useEffect(()=>{const timer=setInterval(()=>setNow(Date.now()),1000);return ()=>clearInterval(timer);},[]);
+ useEffect(()=>{const timer=setInterval(()=>setNow(Date.now()),250);return ()=>clearInterval(timer);},[]);
  const calendar=validateNews(data?.news,now);
  const observed=data?.market?.observedAt;
  const marketFresh=['OBSERVED_READ_ONLY','VERIFIED'].includes(data?.market?.status||'')&&observed!=null&&now-Date.parse(observed)>=0&&now-Date.parse(observed)<=8000;
@@ -50,6 +51,7 @@ export default function CompactDashboard({data,token,onNavigate}:{
  const estimate=basketEstimate(lastEstimate,data?.market?.engineDiagnostics,now,marketFresh);
  useEffect(()=>{setLastEstimate(estimate);},[data?.market?.engineDiagnostics,now,marketFresh]);
  const batch=validateBatch(data?.demoBatch??data?.market?.demoBatch,now);
+ const basketClosed=marketFresh&&engine.state?.startsWith('COMPLETE')===true&&(engine.brokerFlatReconciled===true||owned?.positions===0&&owned.pending===0);
  const executedCycles=batch?batch.cycles.filter(c=>c.layers>0).length:null;
  const usd=(value:number|null|undefined)=>typeof value==='number'&&Number.isFinite(value)?value.toLocaleString('en-US',{style:'currency',currency:'USD',minimumFractionDigits:2,maximumFractionDigits:2}):'—';
  const newsTime=(value:number|null)=>value===null?'—':time(new Date(value).toISOString());
@@ -64,13 +66,15 @@ export default function CompactDashboard({data,token,onNavigate}:{
    <div><strong>Telemetry unavailable</strong><p>{diagnostic}</p></div></div>}
   <DemoControl token={token} runtime={demoRuntime} refresh={refreshDemo} now={now} batchRaw={data?.demoBatch??data?.market?.demoBatch} newsRaw={data?.news}/>
 
+  <MarketRegimePanel raw={data?.market?.marketRegime??demoRuntime?.preflightEvidence?.market} now={now} collectedAt={data?.market?.collectedAt}/>
+
   <ReportSection title="Basket &amp; Adaptive" className="mt-u-panel" aria-labelledby="risk-title" header={<div className="mt-u-panel-head"><h2 id="risk-title"><I name="shield"/> Basket &amp; Adaptive</h2>
     <span className="mt-u-chip">{recovery?'Recovery required':closeReconciled?'Reconciled':engine.status==='ENGINE_REPORT_STALE'?'Last engine report':engine.entrySuspended===true?'Entry suspended':engine.status==='ENGINE_REPORTED'?engine.state||'Reported':'Unverified'}</span></div>}>
 
    <div className="mt-telemetry-grid">
     <Datum icon="activity" label="Basket estimate" value={usd((!engineCurrent||!estimate?.fresh)&&owned?owned.value:estimate?.value)} hint={(!engineCurrent||!estimate?.fresh)&&owned?`${marketFresh?'Observed':'Last known'} open P&L + swap · realized excluded`:estimate?`${estimate.fresh?'Reported':'Last known'} · ${Math.max(0,Math.floor((now-Math.min(estimate.atMs,estimate.tickMs))/1000))}s ago · costs unverified`:'Awaiting estimate'}/>
     <Datum icon="shield" label="Hard loss" value={usd(engine.hardLossUsd)} hint={!engineCurrent?'Last target · enforcement unverified':engine.riskExitCommitted===true?'Exit committed':'engine report'}/>
-    <Datum icon="check" label="Basket TP" value={['ATR_PRICE_DISTANCE','POINTS_PRICE_DISTANCE'].includes(engine.tpBasis??'')?fmt(engine.tpDistancePoints,' pts'):usd(engine.targetUsd)} hint={!engineCurrent?'Last target · enforcement unverified':engine.tpBasis==='ATR_CURRENT_USD'?`${engine.tpMultiplier}× current ATR · ${engine.tpAtrFresh?'profit USD':'last known USD'}`:['ATR_PRICE_DISTANCE','POINTS_PRICE_DISTANCE'].includes(engine.tpBasis??'')?`${usd(engine.tpDistancePrice)} price move · weighted entry`:'engine report'}/>
+    <Datum icon="check" label="Basket TP" value={basketClosed||closeReconciled?'—':['ATR_PRICE_DISTANCE','POINTS_PRICE_DISTANCE'].includes(engine.tpBasis??'')?fmt(engine.tpDistancePoints,' pts'):usd(engine.targetUsd)} hint={basketClosed||closeReconciled?'Basket closed · no active TP':!engineCurrent?'Last target · enforcement unverified':engine.tpBasis==='ATR_CURRENT_USD'?`${engine.tpMultiplier}× current ATR · ${engine.tpAtrFresh?'profit USD':'last known USD'}`:['ATR_PRICE_DISTANCE','POINTS_PRICE_DISTANCE'].includes(engine.tpBasis??'')?`${usd(engine.tpDistancePrice)} price move · weighted entry`:'engine report'}/>
    </div>
    {!owned&&estimate&&!estimate.fresh&&<p className="mt-compact-note mt-basket-stale">Last known estimate · cycle {estimate.cycleId}. Current basket P&amp;L is unverified.</p>}
    {recovery&&<p className="mt-compact-note">Engine stopped. Open P&amp;L comes from the independent MT5 observer; automatic basket exits and adaptive entries are not verified. Use Close all to request an account-wide exit.</p>}

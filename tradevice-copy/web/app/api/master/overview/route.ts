@@ -37,7 +37,7 @@ export async function GET(request: Request) {
   if (!masterAuthAllowed(user)) return result(403, 'MASTER_ADMIN_REQUIRED');
   const origin = apiOrigin(process.env);
   let memberApi: 'ONLINE'|'UNAVAILABLE'|'NOT_CONFIGURED'|'SAFETY_MISMATCH' = 'NOT_CONFIGURED';
-  if (origin) {
+  const healthRead=(async()=>{if (origin) {
     try {
       const response = await fetch(origin + '/health', {
         cache: 'no-store', redirect: 'error', signal: AbortSignal.timeout(6000),
@@ -47,6 +47,7 @@ export async function GET(request: Request) {
       memberApi = 'UNAVAILABLE';
     }
   }
+  })();
   // The internal service-to-service secret is never exposed in the response or to browser code.
   const sharedSecret = process.env.MASTER_TELEMETRY_SHARED_SECRET || '';
   // Admin-only, low-cardinality codes. Never forward secrets or provider exception messages.
@@ -74,6 +75,7 @@ export async function GET(request: Request) {
               observed_ms:batch.observed_ms,completed:batch.completed,status:batch.status}));
             lastBatchDelivery=delivery;
           }
+          await healthRead;
           return Response.json({
             ...snapshot,
             infrastructure: { ...snapshot.infrastructure, memberApi },

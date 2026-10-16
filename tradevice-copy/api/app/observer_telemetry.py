@@ -21,7 +21,7 @@ SOURCE="TRADEVICEPC_MT5_READ_ONLY"
 FEED_TTL_MS=9000
 BODY_MAX_BYTES=8192
 SIGNATURE_WINDOW_MS=10000
-MIN_RECEIVE_INTERVAL_MS=1000
+MIN_RECEIVE_INTERVAL_MS=250
 
 class ObserverRateLimited(ValueError):
     pass
@@ -155,8 +155,17 @@ def parse_observer(raw, server_ms):
         if bars[-1][0]+60000!=lastclosed or abs(recomputed-atr)>0.000001 or abs(recomputed*100/bars[-1][4]-vol)>0.000001:
             raise ObserverRejected("OBSERVER_ATR_PROOF_MISMATCH")
         atr_verified=True
+    regime=None
+    if packet.get('market_regime') is not None:
+        try:
+            from .demo_control import validate_market_evidence
+            candidate=packet['market_regime']
+            validate_market_evidence(candidate,{'atr':candidate.get('atrPassed'),'adx':candidate.get('adxPassed')},server_ms)
+            regime=candidate
+        except (ValueError,TypeError,AttributeError):pass
     # Return only a minimal, bounded, non-execution display projection.
     return {
+        "marketRegime":regime,"collectedAt":_utc(collected),
         "demoBatch":project_batch(packet.get("demo_batch"),server_ms),
         "engineDiagnostics":project_engine(packet.get("engine_diagnostics"),server_ms),
         "ownedPositionPnl":project_owned(packet.get("owned_position_pnl"),exposure,currency),

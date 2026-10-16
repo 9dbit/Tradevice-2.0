@@ -40,7 +40,7 @@ class TerminalBuffer:
   p=validate(json.loads(body),now)
   with self.lock:
    if self.packet and p['observedMs']<=self.packet['observedMs']:raise ValueError('REPLAY')
-   if self.received is not None and now-self.received<1000:raise OverflowError('RATE_LIMIT')
+   if self.received is not None and now-self.received<500:raise OverflowError('RATE_LIMIT')
    self.packet=p;self.received=now
  def projection(self,now):
   with self.lock:

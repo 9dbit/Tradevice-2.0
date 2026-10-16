@@ -1,4 +1,5 @@
 /** Fail-closed projection for server-to-server staging master telemetry. No synthetic fallback. */
+import {marketRegime} from './market-regime.mjs';
 import {validateEngine,validateOwned} from './engine-diagnostics.mjs';
 import {validateBatch} from './demo-batch.mjs';
 import {validateGrowth} from './growth-history.mjs';
@@ -80,6 +81,7 @@ export function validateWorkerTelemetry(raw, now=Date.now()) {
     typeof m.volatilityPct==='number'&&Number.isFinite(m.volatilityPct)&&
     m.volatilityPct>=0&&m.volatilityPct<=100;
   const market=observed?{
+      marketRegime:marketRegime(m.marketRegime,now)?m.marketRegime:null,collectedAt:dateOrNull(m.collectedAt),
       demoBatch:validateBatch(m.demoBatch,now),engineDiagnostics:validateEngine(m.engineDiagnostics,now),ownedPositionPnl:validateOwned(m.ownedPositionPnl),
       status:'OBSERVED_READ_ONLY',source:'SIGNED_MT5_STAGING_READ_ONLY',
       brokerName:bounded(m.brokerName,70)||'Exness',accountMode:'DEMO',symbol:'XAUUSDm',

@@ -110,8 +110,8 @@ def test_exchange_failure_closes_connection_without_automatic_resend(status,tamp
  assert len(c.requests)==1 and c.closed and client.connection is None
 
 def test_heartbeat_cadence_counts_work_and_respects_rate_limit():
- assert b.heartbeat_delay(.2)==1.3
- assert b.heartbeat_delay(2.5)==.5
+ assert b.heartbeat_delay(.2)==.8
+ assert b.heartbeat_delay(2.5)==.05
 
 def test_calendar_evidence_is_negotiated_without_starting_cycle(tmp_path):
  c,r,s=setup(tmp_path)

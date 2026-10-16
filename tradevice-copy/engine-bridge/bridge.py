@@ -32,7 +32,7 @@ class ExchangeClient:
    self.connection=None
    raise
 
-def heartbeat_delay(elapsed):return max(.5,1.5-elapsed)
+def heartbeat_delay(elapsed):return max(.05,1.-elapsed)
 
 class Controller:
  def __init__(self,path,runtime,clock=time.time):

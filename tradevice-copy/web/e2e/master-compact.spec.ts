@@ -153,7 +153,7 @@ test('fresh heartbeat cannot imply Ready with blocked preflight, stale checks cl
  await expect(page.locator('.mt-demo-control .mt-news-explanation')).toHaveAttribute('data-status','UNKNOWN');
  await expect(page.locator('.mt-demo-control .mt-news-explanation')).toContainText('New entries remain blocked.');
  await page.getByRole('button',{name:'Preflight 8 / 10',exact:true}).click();
- await expect(page.getByRole('img',{name:'Verified',exact:true})).toHaveCount(8);
+ await expect(page.getByRole('img',{name:'Verified',exact:true})).toHaveCount(9);
  await expect(page.getByRole('img',{name:'Blocked',exact:true})).toHaveCount(2);
  f.freeze();f.setFail(true);
  await expect(page.getByLabel('Engine connection')).toHaveText('Stale',{timeout:10000});
@@ -340,7 +340,7 @@ test('growth chart filters actual timestamped fixtures and remains usable on mob
  test.setTimeout(60000);
  const f=await setup(page);await page.setViewportSize({width:390,height:844});
  const sections=page.locator('.mt-dense-dashboard > section');
- await expect(sections).toHaveCount(8);
+ await expect(sections).toHaveCount(9);
  const titles=await sections.locator('.mt-section-heading-row h2').allTextContents();
  expect(titles.indexOf(' Basket & Adaptive')).toBe(titles.indexOf(' Growth')-1);
  for(let i=0;i<await sections.count();i++){
@@ -351,7 +351,7 @@ test('growth chart filters actual timestamped fixtures and remains usable on mob
   await expect(section.locator(':scope > .mt-section-body')).toBeHidden();
  }
  await page.waitForTimeout(1500);
- await expect(page.locator('.mt-dense-dashboard > section[data-open=false]')).toHaveCount(8);
+ await expect(page.locator('.mt-dense-dashboard > section[data-open=false]')).toHaveCount(9);
  await page.screenshot({path:'/tmp/tradevice-all-sections-collapsed.png',fullPage:true});
  for(let i=0;i<await sections.count();i++)await sections.nth(i).locator(':scope > .mt-section-heading-row > .mt-section-toggle').click();
  await page.getByRole('button',{name:'Collapse Growth',exact:true}).focus();await page.keyboard.press('Enter');
@@ -725,4 +725,25 @@ test('points TP sends explicit points and blocks invalid inputs',async({page})=>
  expect(f.posts).toHaveLength(1);
  expect(f.posts[0].settings).toEqual({protocol:'V51_DYNAMIC_ATR_USD_20261015',baseLot:.01,tpMode:'POINTS',customTpUsd:null,tpPoints:4200});
  f.running();await expect(page.getByLabel('Basket TP points')).toBeDisabled();
+});
+
+test('ADX values and limits stay visible; confirmed basket close clears TP within one second',async({page})=>{
+ const f=await setup(page);await page.setViewportSize({width:390,height:844});
+ const at=Date.now();
+ const regime={policy:'V51_RANGE_PREFLIGHT_20261016',observedMs:at,m1ClosedMs:Math.floor(at/60000)*60000,m5ClosedMs:Math.floor(at/300000)*300000,adxLimit:20,stableBars:3,adxM1:35.56,adxM5:24.65,adxM1Max3:36,adxM5Max3:25,adxPassed:false,atrM1:1.211,minAtr:1.2,maxAtr:1.66};
+ f.setMarket({marketRegime:regime,collectedAt:new Date(at).toISOString()});
+ const panel=page.getByRole('region',{name:'Market entry filter'});
+ await expect(panel).toContainText('35.56');await expect(panel).toContainText('24.65');await expect(panel).toContainText('ADX blocked');
+ await expect(panel).toContainText('20.00');await expect(panel).toContainText('3 completed candles');
+ expect(await page.evaluate(()=>document.documentElement.scrollWidth-innerWidth)).toBeLessThanOrEqual(1);
+ f.running();
+ const report={policy:'CLOSE_DISTANCE_RISK_V51',status:'ENGINE_REPORTED',observedMs:Date.now(),cycleId:'cycle-one',state:'ACTIVE',hardLossUsd:-250,targetUsd:3.5,riskExitCommitted:false,brokerFlatReconciled:false,entrySuspended:false,pnl:{value:2,atMs:Date.now(),tickMs:Date.now(),basis:'ENGINE_EXECUTABLE_PLUS_CACHED_REALIZED'},authorization:'NONE',authorizationExpiresMs:null,orderDispatchAuthorized:false};
+ f.setEngine(report);
+ const tp=page.locator('[aria-labelledby=risk-title] .mt-telemetry-datum').filter({hasText:'Basket TP'});
+ await expect(tp.locator('strong')).toHaveText('$3.50');
+ f.setEngine({...report,observedMs:Date.now(),state:'COMPLETE_TP',brokerFlatReconciled:true,pnl:null});
+ await expect(tp).toContainText('Basket closed · no active TP',{timeout:1000});
+ await expect(tp.locator('strong')).toHaveText('—');
+ expect(f.posts).toHaveLength(0);
+ await page.screenshot({path:'/workspace/scratch/112743ff214f/adx-dashboard-mobile.png',fullPage:true});
 });
