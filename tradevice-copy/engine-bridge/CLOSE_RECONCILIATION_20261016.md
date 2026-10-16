@@ -13,6 +13,7 @@ Two explicit account Close all requests were APPLIED and the account was empty, 
 - New immutable proof files and a separate hash-chained audit journal record reconciliation. The SQLite active pointer is retired transactionally. No historical trading journal or command receipt is rewritten; no broker order is dispatched.
 - A stopped batch never resumes. Existing skill selection can be acknowledged again, but every new Start still requires explicit user action and all admission checks, including news.
 - A manual bypass/resolve button is intentionally unnecessary for this proven completion path. Incomplete evidence remains blocked.
+- Basket & Adaptive shows Reconciled only when a fresh matching Close all completion and current reconciliation check supersede the old suspended engine report. News admission remains independent. Historical targets remain labeled as historical.
 
 ## Verification and installation
 

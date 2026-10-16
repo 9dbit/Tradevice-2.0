@@ -591,6 +591,9 @@ test('recovery keeps account Close all and pending controls available with indep
 
 test('verified Close all replaces slider with local Reset then gated Start despite historical unfinished cycle',async({page})=>{
  await page.setViewportSize({width:390,height:844});const f=await setup(page);f.recovery();
+ f.setEngine({status:'ENGINE_REPORT_STALE',observedMs:Date.now()-3600000,cycleId:'53fbfb71',state:'SAFETY_PAUSED',policy:'CLOSE_DISTANCE_RISK_V51',hardLossUsd:-250,targetUsd:3.5,riskExitCommitted:false,brokerFlatReconciled:false,entrySuspended:true,pnl:null,authorization:'UNKNOWN',authorizationExpiresMs:null,orderDispatchAuthorized:false});
+ const basket=page.locator('[aria-labelledby=risk-title]');
+ await expect(basket).toContainText('Entries suspended');
  f.setBatch({schema:'tradevice.v51.demo.batch.v1',read_only:true,batch_id:'v51_dashboard_'+'c'.repeat(32),observed_ms:Date.now(),status:'SAFETY_STOP',requested:10,blockers:['BROKER_REJECT_10013'],cycles:[{number:1,cycle_id:'53fbfb71',outcome:'SAFETY_STOP',broker_flat:false,layers:1,peak_lots:.01,net_usd:0}]});
  const dialog=page.getByRole('dialog',{name:'Trading batch stopped'});
  await expect(dialog).toBeVisible();await expect(dialog.getByRole('button',{name:'Reset',exact:true})).toBeDisabled();
@@ -609,6 +612,9 @@ test('verified Close all replaces slider with local Reset then gated Start despi
  await expect(page.getByLabel('Demo cycle count')).toHaveValue('10');await expect(page.getByLabel('Engine connection')).toHaveText('Blocked');expect(f.posts).toHaveLength(1);
  await page.screenshot({path:'/tmp/tradevice-post-close-reset.png',fullPage:true});
  f.ready();await expect(start).toBeEnabled();expect(f.posts).toHaveLength(1);
+ await expect(basket.locator('.mt-u-chip')).toHaveText('Reconciled');await expect(basket).not.toContainText('Entries suspended');
+ await expect(basket).toContainText('including news');
+ f.block();await expect(start).toBeDisabled();await expect(basket.locator('.mt-u-chip')).toHaveText('Reconciled');
  // A newer Start invalidates historical close proof even before runtime catches up.
  f.setReceipts([{requestId:'new-start',action:'START',status:'PENDING',errorCode:null},{requestId:id,action:'EMERGENCY_CLOSE',status:'APPLIED',errorCode:null}]);
  f.running();await expect(slider).toBeEnabled();await expect(start).toHaveCount(0);expect(f.posts).toHaveLength(1);

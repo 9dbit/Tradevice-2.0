@@ -3,6 +3,7 @@ import {useEffect,useMemo,useRef,useState} from 'react';
 import type {Snapshot} from './master-console';
 import {validateEngine,validateOwned} from '../../lib/engine-diagnostics.mjs';
 import {basketEstimate} from '../../lib/basket-estimate.mjs';
+import {closeCompleted} from '../../lib/close-completion.mjs';
 import type {BasketEstimate} from '../../lib/basket-estimate.mjs';
 import {validateBatch} from '../../lib/demo-batch.mjs';
 import {NewsStatus} from './news-status';
@@ -41,8 +42,9 @@ export default function CompactDashboard({data,token,onNavigate}:{
  const marketLabel=market?'Fresh':displayMarket?'Last known · stale':'Unavailable';
  const engine=validateEngine(displayMarket?.engineDiagnostics,now);
  const owned=validateOwned(displayMarket?.ownedPositionPnl);
- const recovery=demoRuntime?.state==='RECOVERY_REQUIRED';
- const engineCurrent=marketFresh&&engine.status==='ENGINE_REPORTED'&&!recovery;
+ const recovery=demoRuntime?.state==='RECOVERY_REQUIRED'||demoRuntime?.blockers.some(b=>/RECOVERY|RECONCILIATION/.test(b))===true;
+ const closeReconciled=closeCompleted(demoRuntime,Math.max(now,Date.now()))&&!recovery&&demoRuntime?.checks.reconciled===true;
+ const engineCurrent=marketFresh&&engine.status==='ENGINE_REPORTED'&&!recovery&&!closeReconciled;
  const decision=engineCurrent?engine.decision:null;
  const [lastEstimate,setLastEstimate]=useState<BasketEstimate|null>(null);
  const estimate=basketEstimate(lastEstimate,data?.market?.engineDiagnostics,now,marketFresh);
@@ -63,7 +65,7 @@ export default function CompactDashboard({data,token,onNavigate}:{
   <DemoControl token={token} runtime={demoRuntime} refresh={refreshDemo} now={now} batchRaw={data?.demoBatch??data?.market?.demoBatch} newsRaw={data?.news}/>
 
   <ReportSection title="Basket &amp; Adaptive" className="mt-u-panel" aria-labelledby="risk-title" header={<div className="mt-u-panel-head"><h2 id="risk-title"><I name="shield"/> Basket &amp; Adaptive</h2>
-    <span className="mt-u-chip">{recovery?'Recovery required':engine.status==='ENGINE_REPORT_STALE'?'Last engine report':engine.entrySuspended===true?'Entry suspended':engine.status==='ENGINE_REPORTED'?engine.state||'Reported':'Unverified'}</span></div>}>
+    <span className="mt-u-chip">{recovery?'Recovery required':closeReconciled?'Reconciled':engine.status==='ENGINE_REPORT_STALE'?'Last engine report':engine.entrySuspended===true?'Entry suspended':engine.status==='ENGINE_REPORTED'?engine.state||'Reported':'Unverified'}</span></div>}>
 
    <div className="mt-telemetry-grid">
     <Datum icon="activity" label="Basket estimate" value={usd((!engineCurrent||!estimate?.fresh)&&owned?owned.value:estimate?.value)} hint={(!engineCurrent||!estimate?.fresh)&&owned?`${marketFresh?'Observed':'Last known'} open P&L + swap · realized excluded`:estimate?`${estimate.fresh?'Reported':'Last known'} · ${Math.max(0,Math.floor((now-Math.min(estimate.atMs,estimate.tickMs))/1000))}s ago · costs unverified`:'Awaiting estimate'}/>
@@ -72,7 +74,7 @@ export default function CompactDashboard({data,token,onNavigate}:{
    </div>
    {!owned&&estimate&&!estimate.fresh&&<p className="mt-compact-note mt-basket-stale">Last known estimate · cycle {estimate.cycleId}. Current basket P&amp;L is unverified.</p>}
    {recovery&&<p className="mt-compact-note">Engine stopped. Open P&amp;L comes from the independent MT5 observer; automatic basket exits and adaptive entries are not verified. Use Close all to request an account-wide exit.</p>}
-   {engine.entrySuspended===true&&<p className="mt-inline-blocker"><I name="alert" size={14}/><span>Entries suspended · resolve blockers and reconcile before a new cycle.</span></p>}
+   {closeReconciled?<p className="mt-compact-note">Batch closed · reconciliation verified. A new Start still requires all preflight checks, including news.</p>:engine.entrySuspended===true&&<p className="mt-inline-blocker"><I name="alert" size={14}/><span>Entries suspended · resolve blockers and reconcile before a new cycle.</span></p>}
    <ReportDrawer title="L6–L10 & risk details" meta={recovery?'Engine stopped':decision?'L'+decision.layer:'No fresh decision'}>
     <div className="mt-telemetry-grid">
      <Datum icon="wallet" label="Open P&L + swap" value={usd(owned?.value)} hint="owned positions"/>
@@ -80,7 +82,7 @@ export default function CompactDashboard({data,token,onNavigate}:{
      <Datum icon="activity" label="Body / ATR" value={fmt(decision?.body_atr)} hint={engine.policy==='CLOSE_DISTANCE_RISK_V51'?'Sizing input':'min 0.50'}/>
      <Datum icon="activity" label="Body / range" value={fmt(decision?.body_range)} hint={engine.policy==='CLOSE_DISTANCE_RISK_V51'?'Observed only':'min 0.55'}/>
      <Datum icon="repeat" label={engine.policy==='CLOSE_DISTANCE_RISK_V51'?"Close signal":"Reversal"} value={engine.policy==='CLOSE_DISTANCE_RISK_V51'?(decision?decision.accepted?'Passed':'Waiting':'—'):(decision?.structuralReversal===true?'Confirmed':decision?.structuralReversal===false?'Not confirmed':'—')}/>
-     <Datum icon="shield" label="Broker flat" value={engine.brokerFlatReconciled===true?'Reported':'Unverified'}/>
+     <Datum icon="shield" label="Broker flat" value={closeReconciled?'Verified':engine.brokerFlatReconciled===true?'Reported':'Unverified'}/>
     </div>
     <dl className="mt-detail-list">
      <div><dt>TP price</dt><dd>{engine.targetPrice!=null?engine.targetPrice.toFixed(3):'Unverified'}</dd></div>
