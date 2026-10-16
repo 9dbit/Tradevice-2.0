@@ -40,6 +40,7 @@ for(const device of [
 // Synthetic UI fixtures only. All API traffic intercepted; no broker commands.
 async function setup(page:Page){
  let canStart=true,state='READY',blocked=false,expiredPreflight=false;
+ let automatic:any=null;
  let emergency:any=null,receipts:any[]=[],postLost=false;
  let extraBlockers:string[]=[];
  let preflightEvidence:any=undefined;
@@ -50,7 +51,7 @@ async function setup(page:Page){
  await page.addInitScript(s=>localStorage.setItem('tradevice-master-console-staging',JSON.stringify(s)),session);
  await page.route('https://scqzlcivherovlwqypeu.supabase.co/**',r=>r.fulfill({json:{user:session.user}}));
  await page.route('**/api/runtime',r=>r.fulfill({json:{configured:true,supabaseUrl:'https://scqzlcivherovlwqypeu.supabase.co',publishableKey:'sb_publishable_fixture'}}));
- await page.route('**/api/master/overview',async r=>{overviewPolls.push(Date.now());if(overviewDelay)await new Promise(resolve=>setTimeout(resolve,overviewDelay));if(overviewFail)return r.fulfill({status:503,json:{}});return r.fulfill({json:{source:'STAGING_WORKER_TELEMETRY',environment:'staging',executionMode:'PAPER_ONLY',news,demoBatch,terminalMirror,growthHistory,market:overviewUnavailable?null:{engineDiagnostics,status:'OBSERVED_READ_ONLY',observedAt:new Date(marketStamp).toISOString(),brokerName:'Fixture broker',accountMode:'DEMO',symbol:'XAUUSDm',spreadPoints:23,atr14:7.89,positionsCount:2,pendingOrdersCount:3,equity:12345.67,margin:123.45,freeMargin:12222.22,accountCurrency:'USD',...marketValues},master:{state:'DEGRADED',anomalies:0},risk:{killSwitch:'DISENGAGED'},infrastructure:{memberApi:'ONLINE',masterWorker:'ONLINE',journal:'CONNECTED',adminAuth:'VERIFIED'},activity:[],paperOrders:[],equityCurve:[],terminal:[],commands:[],queue:{queued:0,accepted:0},control:{runStatus:'STOPPED'}}});});
+ await page.route('**/api/master/overview',async r=>{overviewPolls.push(Date.now());if(overviewDelay)await new Promise(resolve=>setTimeout(resolve,overviewDelay));if(overviewFail)return r.fulfill({status:503,json:{}});return r.fulfill({json:{source:'STAGING_WORKER_TELEMETRY',environment:'staging',executionMode:'PAPER_ONLY',news,demoBatch,terminalMirror,growthHistory,market:overviewUnavailable?null:{engineDiagnostics,status:'OBSERVED_READ_ONLY',observedAt:new Date(marketStamp).toISOString(),brokerName:'Fixture broker',accountMode:'DEMO',symbol:'XAUUSDm',spreadPoints:23,atr14:7.89,positionsCount:0,pendingOrdersCount:0,equity:12345.67,margin:123.45,freeMargin:12222.22,accountCurrency:'USD',...marketValues},master:{state:'DEGRADED',anomalies:0},risk:{killSwitch:'DISENGAGED'},infrastructure:{memberApi:'ONLINE',masterWorker:'ONLINE',journal:'CONNECTED',adminAuth:'VERIFIED'},activity:[],paperOrders:[],equityCurve:[],terminal:[],commands:[],queue:{queued:0,accepted:0},control:{runStatus:'STOPPED'}}});});
  await page.route('**/api/master/skills',r=>r.fulfill({json:{revision:1,selectedSkillId:'fixture',skills:[{id:'fixture',name:'GoldTrap ARC V5.1',version:'5.1',description:'Synthetic UI fixture only — no trading evidence.',strategy:'PREARM_BOTH',kind:'BUILTIN',sha256:'fixture',documentation:'Fixture documentation',active:true,executionStatus:'ADAPTER_AVAILABLE'}],executionAuthorized:false,selectionScope:'STAGING_DEMO_ENGINE'}}));
  let fail=false,stamp=Date.now(),freeze=false,delay=0,concurrent=0,maxConcurrent=0;
  const posts:any[]=[];
@@ -61,12 +62,12 @@ async function setup(page:Page){
    if(delay)await new Promise(resolve=>setTimeout(resolve,delay));
    if(fail)return await r.fulfill({status:503,json:{}});
    if(!freeze)stamp=Date.now();
-   await r.fulfill({json:{emergencyCloseProtocol:'V51_EMERGENCY_CLOSE_20261016',emergencyClose:emergency,preflightEvidence:preflightEvidence===undefined?{observedMs:stamp,settings:{protocol:'V51_DYNAMIC_ATR_USD_20261015',baseLot:.01,tpMode:'FIXED_3_5',customTpUsd:null},checks:{},blockers:[],margin:null}:preflightEvidence,settingsProtocol:'V51_DYNAMIC_ATR_USD_20261015',online:!offline,observedMs:stamp,state:offline?'OFFLINE':state,activeSkillId:'fixture',activeHash:'fixture',revision:1,checks:Object.fromEntries(['identity','brokerFlat','quote','spread','margin','commission','news','reconciled','engineHash'].map(k=>[k,!expiredPreflight&&!(blocked&&k==='news')])),blockers:[...(state==='RECOVERY_REQUIRED'?['ENGINE_RECOVERY_REQUIRED']:blocked?['PREFLIGHT_NEWS','NEWS_NOT_CLEAR']:[]),...(expiredPreflight?['ENGINE_NOT_READY',...['identity','brokerFlat','quote','spread','margin','commission','news','reconciled','engineHash'].map(k=>'PREFLIGHT_'+k.toUpperCase())]:[]),...extraBlockers],canStart,commands:receipts}});
+   await r.fulfill({json:{automatic,canArmAutomatic:!automatic?.enabled,emergencyCloseProtocol:'V51_EMERGENCY_CLOSE_20261016',emergencyClose:emergency,preflightEvidence:preflightEvidence===undefined?{observedMs:stamp,settings:{protocol:'V51_DYNAMIC_ATR_USD_20261015',baseLot:.01,tpMode:'FIXED_3_5',customTpUsd:null},checks:{},blockers:[],margin:null}:preflightEvidence,settingsProtocol:'V51_DYNAMIC_ATR_USD_20261015',online:!offline,observedMs:stamp,state:offline?'OFFLINE':state,activeSkillId:'fixture',activeHash:'fixture',revision:1,checks:Object.fromEntries(['identity','brokerFlat','quote','spread','margin','commission','news','reconciled','engineHash'].map(k=>[k,!expiredPreflight&&!(blocked&&k==='news')&&!(k==='brokerFlat'&&(state==='RUNNING'||state==='RECOVERY_REQUIRED'&&!(emergency?.phase==='COMPLETE'&&receipts[0]?.action==='EMERGENCY_CLOSE'&&receipts[0]?.status==='APPLIED'&&receipts[0]?.requestId===emergency?.requestId)))])),blockers:[...(state==='RECOVERY_REQUIRED'?['ENGINE_RECOVERY_REQUIRED']:blocked?['PREFLIGHT_NEWS','NEWS_NOT_CLEAR']:[]),...(expiredPreflight?['ENGINE_NOT_READY',...['identity','brokerFlat','quote','spread','margin','commission','news','reconciled','engineHash'].map(k=>'PREFLIGHT_'+k.toUpperCase())]:[]),...extraBlockers],canStart,commands:receipts}});
   }finally{concurrent--;}
  });
  await page.goto('/master');
  await expect(page.getByLabel('Engine connection')).toHaveText('Ready');
- return {posts,overviewPolls,setPreflightEvidence:(v:any)=>preflightEvidence=v,setEmergency:(v:any)=>emergency=v,setReceipts:(v:any[])=>receipts=v,setPostLost:(v:boolean)=>postLost=v,setMarket:(v:Record<string,unknown>)=>{marketValues=v;marketStamp=Date.now();},setOverviewUnavailable:(v:boolean)=>overviewUnavailable=v,setOverviewDelay:(v:number)=>overviewDelay=v,setOverviewFail:(v:boolean)=>overviewFail=v,setOffline:(v:boolean)=>offline=v,setEngine:(v:any)=>{engineDiagnostics=v;marketStamp=Date.now();},expirePreflight:()=>{expiredPreflight=true;},setExtraBlockers:(v:string[])=>extraBlockers=v,restorePreflight:()=>{expiredPreflight=false;},setNews:(v:any)=>news=v,recovery:()=>{state='RECOVERY_REQUIRED';canStart=false;},ready:()=>{state='READY';canStart=true;},setGrowth:(v:any)=>growthHistory=v,setBatch:(v:any)=>demoBatch=v,setTerminal:(v:any)=>terminalMirror=v,block:()=>{canStart=false;blocked=true;},running:()=>{canStart=false;state='RUNNING';},setFail:(v:boolean)=>fail=v,freeze:()=>freeze=true,setDelay:(v:number)=>delay=v,max:()=>maxConcurrent};
+ return {posts,overviewPolls,setAutomatic:(v:any)=>{automatic=v;state=v?.enabled?'AUTO_WAITING':'STOPPED';canStart=!v?.enabled;},setPreflightEvidence:(v:any)=>preflightEvidence=v,setEmergency:(v:any)=>emergency=v,setReceipts:(v:any[])=>receipts=v,setPostLost:(v:boolean)=>postLost=v,setMarket:(v:Record<string,unknown>)=>{marketValues=v;marketStamp=Date.now();},setOverviewUnavailable:(v:boolean)=>overviewUnavailable=v,setOverviewDelay:(v:number)=>overviewDelay=v,setOverviewFail:(v:boolean)=>overviewFail=v,setOffline:(v:boolean)=>offline=v,setEngine:(v:any)=>{engineDiagnostics=v;marketStamp=Date.now();},expirePreflight:()=>{expiredPreflight=true;},setExtraBlockers:(v:string[])=>extraBlockers=v,restorePreflight:()=>{expiredPreflight=false;},setNews:(v:any)=>news=v,recovery:()=>{state='RECOVERY_REQUIRED';canStart=false;},ready:()=>{state='READY';canStart=true;},setGrowth:(v:any)=>growthHistory=v,setBatch:(v:any)=>demoBatch=v,setTerminal:(v:any)=>terminalMirror=v,block:()=>{canStart=false;blocked=true;},running:()=>{canStart=false;state='RUNNING';},setFail:(v:boolean)=>fail=v,freeze:()=>freeze=true,setDelay:(v:number)=>delay=v,max:()=>maxConcurrent};
 }
 
 test('margin shortfall is explained without unlocking Start or claiming unavailable evidence',async({page})=>{
@@ -589,7 +590,7 @@ async function slideClose(page:Page,fraction=1){
 test('close slider replaces Start only for active batch and follows Pause Stop availability',async({page})=>{
  await page.setViewportSize({width:390,height:844});const f=await setup(page);
  await expect(page.getByRole('button',{name:'Start Cycle',exact:true})).toBeVisible();
- await expect(page.getByRole('slider',{name:'Slide to close all'})).toBeEnabled();
+ await expect(page.getByRole('slider',{name:'Slide to close all'})).toHaveCount(0);
  await expect(page.getByRole('button',{name:'Emergency Close',exact:true})).toHaveCount(0);
  f.running();await expect(page.getByLabel('Engine connection')).toHaveText('Running');
  const slider=page.getByRole('slider',{name:'Slide to close all'});
@@ -682,7 +683,7 @@ test('verified Close all replaces slider with local Reset then gated Start despi
  await expect(page.getByRole('button',{name:'Pause',exact:true})).toBeDisabled();await expect(page.getByRole('button',{name:'Stop',exact:true})).toBeDisabled();
  await page.reload();await expect(reset).toBeEnabled();await expect(slider).toHaveCount(0);
  await reset.click();const start=page.getByRole('button',{name:'Start Cycle',exact:true});await expect(start).toBeVisible();await expect(start).toBeDisabled();
- await expect(page.getByLabel('Cycle count')).toHaveValue('10');await expect(page.getByLabel('Engine connection')).toHaveText('Blocked');expect(f.posts).toHaveLength(1);
+ await expect(page.getByLabel('Cycle count')).toHaveValue('10');await expect(page.getByLabel('Engine connection')).toHaveText('Recovery required');expect(f.posts).toHaveLength(1);
  await page.screenshot({path:'/tmp/tradevice-post-close-reset.png',fullPage:true});
  f.ready();await expect(start).toBeEnabled();expect(f.posts).toHaveLength(1);
  await expect(basket.locator('.mt-u-chip')).toHaveText('Reconciled');await expect(basket).not.toContainText('Entries suspended');
@@ -746,4 +747,38 @@ test('ADX values and limits stay visible; confirmed basket close clears TP withi
  await expect(tp.locator('strong')).toHaveText('—');
  expect(f.posts).toHaveLength(0);
  await page.screenshot({path:'/workspace/scratch/112743ff214f/adx-dashboard-mobile.png',fullPage:true});
+});
+
+for(const width of [320,390,430])test(`cycle controls fit ${width}px with one primary slot and large results`,async({page})=>{
+ await page.setViewportSize({width,height:844});const f=await setup(page);
+ const slider=page.getByRole('slider',{name:'Slide to close all'});
+ await expect(slider).toHaveCount(0);
+ await page.getByLabel('Cycle mode',{exact:true}).selectOption('AUTOMATIC');
+ const select=page.getByLabel('Cycle mode',{exact:true});
+ const fits=await select.evaluate(el=>{
+  const e=el as HTMLSelectElement,c=document.createElement('canvas').getContext('2d')!,s=getComputedStyle(e);c.font=s.font;
+  return c.measureText(e.selectedOptions[0].text).width+parseFloat(s.paddingLeft)+parseFloat(s.paddingRight)<e.clientWidth;
+ });expect(fits).toBe(true);
+ const gap=await page.evaluate(()=>document.querySelector('.mt-u-buttons')!.getBoundingClientRect().top-document.querySelector('.mt-automatic-message')!.getBoundingClientRect().bottom);
+ expect(gap).toBeGreaterThanOrEqual(16);
+ f.setAutomatic({protocol:'V51_AUTOMATIC_20261017',enabled:true,completedCycles:0,cycleRequestId:null});
+ await expect(page.getByRole('button',{name:'Waiting for entry',exact:true})).toBeDisabled();
+ if(width===390)await page.screenshot({path:'/tmp/tradevice-automatic-layout.png',fullPage:true});
+ await expect(slider).toHaveCount(0);
+ await expect(page.getByRole('button',{name:'Stop',exact:true})).toBeEnabled();
+ f.running();await expect(slider).toBeEnabled();
+ expect(await page.locator('.mt-close-slider').count()).toBe(1);
+ const align=await page.evaluate(()=>{const a=document.querySelector('.mt-close-slider')!.getBoundingClientRect(),b=document.querySelector('button[aria-label="Stop"]')!.getBoundingClientRect();return Math.abs(a.top-b.top);});expect(align).toBeLessThan(2);
+ f.setAutomatic(null);f.ready();await expect(slider).toHaveCount(0);
+ await page.getByLabel('Cycle mode',{exact:true}).selectOption('CUSTOM');
+ f.setBatch({schema:'tradevice.v51.demo.batch.v1',read_only:true,batch_id:'v51_dashboard_'+'a'.repeat(32),observed_ms:Date.now(),status:'COMPLETED',requested:10,blockers:[],cycles:Array.from({length:10},(_,i)=>({number:i+1,cycle_id:(i+1).toString(16).padStart(8,'0'),outcome:'COMPLETE_TP',broker_flat:true,layers:1,peak_lots:.01,net_usd:3.5}))});
+ await expect(page.getByLabel('Current cycle',{exact:true})).toHaveText('10/10');
+ // Future-size layout probe only: command and evidence limits remain unchanged.
+ for(const text of ['10/10','100/100','1000/1000']){
+  const m=await page.getByLabel('Current cycle',{exact:true}).evaluate((el,text)=>{el.textContent=text;const r=el.getBoundingClientRect(),p=el.parentElement!.getBoundingClientRect();return {right:r.right,parentRight:p.right,scroll:el.scrollWidth,client:el.clientWidth,overflow:document.documentElement.scrollWidth-innerWidth};},text);
+  expect(m.right).toBeLessThanOrEqual(m.parentRight+1);expect(m.scroll).toBeLessThanOrEqual(m.client+1);expect(m.overflow).toBeLessThanOrEqual(1);
+ }
+ if(width===390)await page.screenshot({path:'/tmp/tradevice-large-cycle-layout.png',fullPage:true});
+ await page.getByRole('button',{name:'Reset',exact:true}).click();await expect(slider).toHaveCount(0);
+ await expect(page.getByRole('button',{name:'Start Cycle',exact:true})).toBeVisible();expect(f.posts).toHaveLength(0);
 });

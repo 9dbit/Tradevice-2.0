@@ -1,0 +1,1 @@
+export function showCloseControl(runtime: {state?:string;checks?:Record<string,boolean>;blockers?:string[]}|null, options:{fresh:boolean;closed:boolean;lastActive?:{state?:string}|null;brokerExposure?:number|null;unfinished?:number}):boolean;

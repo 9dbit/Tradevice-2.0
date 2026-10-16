@@ -369,3 +369,14 @@
 .mt-batch-settings label{display:flex;flex-direction:column;gap:6px;font-size:12px;color:#aaa}
 .mt-report .mt-batch-settings :is(select,input){box-sizing:border-box;width:100%;min-width:0;min-height:44px;padding:8px;border:1px solid #333;border-radius:10px;background:#151515;color:#ff923d;font:inherit;font-size:14px}
 .mt-report .mt-batch-settings :disabled{opacity:.6}
+
+/* One primary action slot; labels and counters must fit narrow PWA screens. */
+.mt-report .mt-cycle-mode{grid-template-columns:minmax(0,1fr);margin:16px 0 12px}
+.mt-report .mt-cycle-mode select{padding-right:32px;font-size:16px}
+.mt-report .mt-automatic-message{margin:12px 0 18px;line-height:1.6}
+.mt-report .mt-demo-inputs{grid-template-columns:minmax(0,1fr) auto;gap:12px;margin:14px 0 18px}
+.mt-report .mt-demo-inputs label{min-width:0;overflow-wrap:anywhere}
+.mt-report .mt-demo-inputs input{width:72px}
+.mt-report .mt-current-cycle{max-width:100%;font-size:clamp(20px,5vw,30px);letter-spacing:-.035em;line-height:1.3}
+.mt-report .mt-drawer-trigger>small{min-width:0;overflow-wrap:anywhere}
+.mt-report .mt-summary-grid .mt-telemetry-datum>strong{overflow-wrap:anywhere}

@@ -9,6 +9,7 @@ import {NewsStatus} from './news-status';
 import {batchStopNotice} from '../../lib/batch-stop.mjs';
 import {cycleProgress} from '../../lib/cycle-progress.mjs';
 import {commandMessage,engineStatus,automaticMessage} from '../../lib/demo-presentation.mjs';
+import {showCloseControl} from '../../lib/cycle-controls.mjs';
 import {closeCompleted} from '../../lib/close-completion.mjs';
 import {ReportSection,ReportDrawer,ReportIcon as I} from './report-ui';
 const preflightChecks=[['identity','Account identity'],['brokerFlat','Broker flat'],['quote','Fresh quote'],['spread','Spread'],['margin','Margin'],['commission','Commission'],['news','News'],['reconciled','Reconciliation'],['engineHash','Engine hash'],['atr','ATR range'],['adx','ADX range'],['engineReady','Engine ready']];
@@ -26,7 +27,7 @@ export function useDemoRuntime(token:string){
  useEffect(()=>{generation.current++;setRuntime(null);void refresh();const t=setInterval(()=>void refresh(),1000);return()=>{generation.current++;clearInterval(t);};},[refresh]);
  return {runtime,refresh};
 }
-export default function DemoControl({token,runtime,refresh,now,batchRaw,newsRaw}:{token:string;runtime:DemoRuntime|null;refresh:()=>void;now:number;batchRaw?:unknown;newsRaw?:unknown}){
+export default function DemoControl({token,runtime,refresh,now,batchRaw,newsRaw,brokerExposure=null}:{token:string;runtime:DemoRuntime|null;refresh:()=>void;now:number;batchRaw?:unknown;newsRaw?:unknown;brokerExposure?:number|null}){
  const [cycleMode,setCycleMode]=useState<'CUSTOM'|'AUTOMATIC'>('CUSTOM');
  const automatic=runtime?.automatic?.enabled===true||cycleMode==='AUTOMATIC';
  const startAllowed=automatic?runtime?.canArmAutomatic===true:runtime?.canStart===true;
@@ -71,7 +72,7 @@ export default function DemoControl({token,runtime,refresh,now,batchRaw,newsRaw}
  useEffect(()=>{if(fresh)setLastActive(runtimeRunning?runtime:null);},[runtime,fresh,runtimeRunning]);
  const activeNotice=fresh?(runtimeRunning?runtime:null):lastActive;
  const ended=!!progress&&['COMPLETED','STOPPED','SAFETY_STOP','BLOCKED'].includes(progress.status)&&!runtimeRunning;
- const closed=!runtimeRunning&&closeCompleted(runtime,evidenceNow)&&!(request?.action==='START'&&['SENDING','PENDING','DISPATCHED','UNCERTAIN'].includes(request.phase));
+ const closed=!(brokerExposure!==null&&brokerExposure>0)&&!runtimeRunning&&closeCompleted(runtime,evidenceNow)&&!(request?.action==='START'&&['SENDING','PENDING','DISPATCHED','UNCERTAIN'].includes(request.phase));
  const resetSafe=ended&&(progress!.unfinished===0||closed);
  const showReset=!!showCycle&&ended;
  const stopNotice=batchStopNotice(progress,runtimeRunning);
@@ -95,7 +96,8 @@ export default function DemoControl({token,runtime,refresh,now,batchRaw,newsRaw}
  const recovery=runtime?.state==='RECOVERY_REQUIRED'||runtime?.blockers.some(b=>/RECOVERY|RECONCILIATION/.test(b))===true;
  const pauseEnabled=fresh&&!busy&&!closed&&(['AUTO_WAITING','STARTING','RUNNING'].includes(runtime?.state||'')||recovery);
  const stopEnabled=fresh&&!busy&&!closed&&(['AUTO_WAITING','STARTING','RUNNING','PAUSING','PAUSED'].includes(runtime?.state||'')||recovery);
- const showClose=!closed&&!!(runtimeRunning||activeNotice||recovery||progress?.unfinished||runtime?.checks.brokerFlat===false);
+ const showClose=showCloseControl(runtime,{fresh,closed,lastActive:activeNotice,brokerExposure,unfinished:progress?.unfinished??0});
+ const automaticArmed=runtime?.automatic?.enabled===true;
  const status=engineStatus(runtime,fresh,selectedChecked);
  const blocker=!fresh?'Engine heartbeat unavailable':runtime?.canStart?'':visibleBlockers.filter(b=>!['PREFLIGHT_NEWS','NEWS_NOT_CLEAR'].includes(b)&&!(runtime?.state==='AUTO_WAITING'&&b==='ENGINE_NOT_READY')).join(' · ')||(['AUTO_WAITING','STARTING','RUNNING','PAUSING','PAUSED','STOPPING'].includes(runtime?.state||'')?'':'Preflight incomplete');
  return <ReportSection notice={activeNotice&&<p className="mt-compact-note mt-batch-notice" role="status">{activeNotice.state==='AUTO_WAITING'?'Automatic is armed and waiting for entry checks. Waiting does not mean a position is open.':`Engine ${activeNotice.state.toLowerCase()}. Existing basket supervision continues until reconciliation.`} {fresh?'':'Last reported state only; the heartbeat is stale.'}</p>} title="Trading Cycle" className="mt-u-panel mt-demo-control" aria-labelledby="demo-control-title" header={<div className="mt-u-panel-head mt-demo-heading"><h2 id="demo-control-title"><I name="repeat"/> Trading Cycle</h2><strong aria-label="Engine connection" data-state={status}>{status}</strong></div>} overlay={<dialog ref={stopDialog} className="mt-stop-dialog" aria-labelledby="batch-stop-title" aria-describedby="batch-stop-reason" onCancel={e=>{e.preventDefault();dismissStop();}}>
@@ -121,12 +123,12 @@ export default function DemoControl({token,runtime,refresh,now,batchRaw,newsRaw}
    {!settings&&<p className="mt-inline-blocker">{tpMode==='POINTS'?'TP points must be a whole number from 1 to 100,000. Broker price and stop-distance checks still apply.':'Custom TP must be $0.01–$250.00, with at most two decimals.'}</p>}
    {!settingsReady&&<p className="mt-compact-note">Waiting for the engine settings protocol. Start remains blocked.</p>}
   </ReportDrawer>
-  <div className="mt-batch-settings"><label>Cycle mode<select aria-label="Cycle mode" value={automatic?'AUTOMATIC':'CUSTOM'} disabled={busy||runtimeRunning} onChange={e=>setCycleMode(e.target.value as 'CUSTOM'|'AUTOMATIC')}><option value="CUSTOM">Custom cycle count</option><option value="AUTOMATIC">Automatic · until stopped</option></select></label></div>
-  {automatic&&<p className="mt-compact-note" role="status">{automaticMessage(runtime,fresh)}</p>}
+  <div className="mt-batch-settings mt-cycle-mode"><label>Cycle mode<select aria-label="Cycle mode" value={automatic?'AUTOMATIC':'CUSTOM'} disabled={busy||runtimeRunning} onChange={e=>setCycleMode(e.target.value as 'CUSTOM'|'AUTOMATIC')}><option value="CUSTOM">Custom cycle count</option><option value="AUTOMATIC">Automatic · until stopped</option></select></label></div>
+  {automatic&&<p className="mt-compact-note mt-automatic-message" role="status">{automaticMessage(runtime,fresh)}</p>}
   {!automatic&&<div className="mt-demo-inputs"><label htmlFor={showCycle?undefined:'demo-cycle-count'}>{showCycle?(ended?'Executed cycles':'Current cycle'):'Cycle count'}<small>XAUUSDm{showCycle?` · ${ended?'Last side':'Side'}: ${progress?.side||'Unverified'}`:''}{showCycle?(progress?.fresh?'':' · Last reported'):' · 1–10'}</small></label>
    {showCycle?<output className="mt-current-cycle" aria-label="Current cycle">{ended?progress!.executedCount:progress!.current}/{progress!.total}</output>:<input id="demo-cycle-count" aria-label="Cycle count" type="text" inputMode="numeric" pattern="[0-9]*" maxLength={2} value={count} disabled={busy||runtimeRunning} onChange={e=>setCount(e.target.value.replace(/\D/g,''))}/>}
   </div>}
-  <EmergencyClose token={token} runtime={runtime} refresh={refresh} now={evidenceNow} enabled={fresh&&!pending} visible={showClose} closed={closed} primary={<button className="mt-u-primary" type="button" disabled={showReset?busy||!resetSafe:!settingsReady||!settings||(!automatic&&!!showCycle)||!fresh||!startAllowed||busy||(!automatic&&!/^([1-9]|10)$/.test(count))} onClick={()=>showReset?resetComposer():void send('START')}><I name={showReset?"repeat":"play"} size={15}/>{showReset?'Reset':automatic?'Enable Automatic':'Start Cycle'}</button>} secondary={<>   <button className="mt-u-secondary mt-cycle-icon" type="button" aria-label="Pause" title="Pause" disabled={!pauseEnabled} onClick={()=>void send('PAUSE')}><I name="pause" size={19}/></button>
+  <EmergencyClose token={token} runtime={runtime} refresh={refresh} now={evidenceNow} enabled={fresh&&!pending} visible={showClose} closed={closed} primary={<button className="mt-u-primary" type="button" disabled={showReset?busy||!resetSafe:automaticArmed||!settingsReady||!settings||(!automatic&&!!showCycle)||!fresh||!startAllowed||busy||(!automatic&&!/^([1-9]|10)$/.test(count))} onClick={()=>showReset?resetComposer():void send('START')}><I name={showReset?"repeat":"play"} size={15}/>{showReset?'Reset':automaticArmed?(runtime?.state==='AUTO_WAITING'?'Waiting for entry':'Automatic enabled'):automatic?'Enable Automatic':'Start Cycle'}</button>} secondary={<>   <button className="mt-u-secondary mt-cycle-icon" type="button" aria-label="Pause" title="Pause" disabled={!pauseEnabled} onClick={()=>void send('PAUSE')}><I name="pause" size={19}/></button>
    <button className="mt-u-secondary mt-cycle-icon" type="button" aria-label="Stop" title="Stop" disabled={!stopEnabled} onClick={()=>void send('STOP')}><I name="stop" size={19}/></button></>}/>
   {!automatic&&<div className="mt-cycle-progress" data-running={displayedProgress?.active===true} data-stale={displayedProgress?!displayedProgress.fresh:false}>
    <div className="mt-cycle-track" role="progressbar" aria-label="Completed cycles" aria-valuemin={0} aria-valuemax={displayedProgress?.total??10} {...(displayedProgress?{'aria-valuenow':displayedProgress.completed}:{})} aria-valuetext={displayedProgress?`${displayedProgress.completed} of ${displayedProgress.total} completed${displayedProgress.fresh?'':' · last reported'}`:'Awaiting batch evidence'}><span style={{width:(displayedProgress?.percent??0)+'%'}}/>{displayedProgress?.active&&<i aria-hidden="true" style={{left:(Math.min(displayedProgress.percent,97))+'%'}}/>}</div>

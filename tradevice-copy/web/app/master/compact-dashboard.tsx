@@ -64,7 +64,7 @@ export default function CompactDashboard({data,token,onNavigate}:{
  return <div className="mt-unified mt-dense-dashboard">
   {diagnostic&&<div className="mt-u-diagnostic" role="alert"><I name="alert"/>
    <div><strong>Telemetry unavailable</strong><p>{diagnostic}</p></div></div>}
-  <DemoControl token={token} runtime={demoRuntime} refresh={refreshDemo} now={now} batchRaw={data?.demoBatch??data?.market?.demoBatch} newsRaw={data?.news}/>
+  <DemoControl token={token} runtime={demoRuntime} refresh={refreshDemo} now={now} batchRaw={data?.demoBatch??data?.market?.demoBatch} newsRaw={data?.news} brokerExposure={marketFresh&&Number.isInteger(data?.market?.positionsCount)&&Number.isInteger(data?.market?.pendingOrdersCount)?data!.market!.positionsCount!+data!.market!.pendingOrdersCount!:null}/>
 
   <MarketRegimePanel raw={data?.market?.marketRegime??demoRuntime?.preflightEvidence?.market} now={now} collectedAt={data?.market?.collectedAt}/>
 

@@ -46,5 +46,3 @@ html[data-master-theme=light] .mt .mt-ai-label{background:#fff;color:#000}
 .mt .mt-close-help{min-height:36px;margin:8px 0 0;font-size:12px;line-height:1.5}
 .mt .mt-emergency-status{display:grid;gap:4px;font-size:13px;line-height:1.5;overflow-wrap:anywhere;font-variant-numeric:tabular-nums;color:var(--master-muted)}
 .mt .mt-emergency-status strong{color:var(--master-text);font-weight:500}
-
-.mt .mt-close-standby{margin-top:12px;max-width:100%}
