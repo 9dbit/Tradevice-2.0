@@ -2,6 +2,7 @@
 import {useEffect,useRef,useState,type ReactNode} from 'react';
 import CloseSlider from './close-slider';
 import type {DemoRuntime} from './demo-control';
+import {closeCompleted} from '../../lib/close-completion.mjs';
 const protocol='V51_EMERGENCY_CLOSE_20261016';
 const storageKey='tradevice-emergency-request-v1';
 type Request={id:string;status:string;sentMs:number;error?:string};
@@ -25,7 +26,10 @@ export default function EmergencyClose({token,runtime,refresh,now,enabled,visibl
  const pending=!!request&&['SENDING','PENDING','DISPATCHED'].includes(request.status)&&now-request.sentMs<65000;
  const unconfirmed=!!request&&(request.status==='UNKNOWN'||['PENDING','DISPATCHED','SENDING'].includes(request.status)&&!pending);
  const evidence=runtime?.emergencyClose?.requestId===request?.id?runtime?.emergencyClose:null;
- const verified=request?.status==='APPLIED'&&evidence?.phase==='COMPLETE';
+ const completedReceipt=request?.status==='APPLIED'&&evidence?.phase==='COMPLETE';
+ const latestControl=runtime?.commands.find(c=>c.action==='EMERGENCY_CLOSE'||c.action==='START'&&!['REJECTED','EXPIRED'].includes(c.status));
+ const previousBatchClose=completedReceipt&&latestControl?.action==='START';
+ const verified=completedReceipt&&closeCompleted(runtime,Math.max(now,Date.now()));
  async function send(){
   if(sending.current||!supported||pending||!enabled)return;
   sending.current=true;setBusy(true);
@@ -41,13 +45,13 @@ export default function EmergencyClose({token,runtime,refresh,now,enabled,visibl
   }catch{setRequest({id,sentMs,status:'UNKNOWN',error:'CONNECTION_UNAVAILABLE'});}
   finally{sending.current=false;setBusy(false);}
  }
- const status=verified?'Last close: broker-flat verified':request?.status==='APPLIED'?'Close confirmed; awaiting broker evidence':request?.status==='REJECTED'?'Request rejected':request?.status==='EXPIRED'?'Request expired; closure not confirmed':request?.status==='UNCERTAIN'?'Closure unconfirmed; reconciliation required':unconfirmed?'Request unconfirmed; check connection':evidence&&evidence.phase!=='COMPLETE'?phases[evidence.phase]:pending?(fresh?'Close requested; awaiting bridge':'Queued; bridge offline'):supported?'Emergency close available':'Emergency bridge upgrade required';
+ const status=verified?'Last close: broker-flat verified':completedReceipt?'Previous close completed; current broker-flat unverified':request?.status==='APPLIED'?'Close confirmed; awaiting broker evidence':request?.status==='REJECTED'?'Request rejected':request?.status==='EXPIRED'?'Request expired; closure not confirmed':request?.status==='UNCERTAIN'?'Closure unconfirmed; reconciliation required':unconfirmed?'Request unconfirmed; check connection':evidence&&evidence.phase!=='COMPLETE'?phases[evidence.phase]:pending?(fresh?'Close requested; awaiting bridge':'Queued; bridge offline'):supported?'Emergency close available':'Emergency bridge upgrade required';
  return <>
   <div className="mt-u-buttons">{visible?<CloseSlider disabled={!ready||!supported||!enabled||busy||pending} onConfirm={()=>void send()} label={busy?'Sending…':pending?'Closing…':unconfirmed?'Verify close':'Close all'}/>:primary}{secondary}</div>
   {!visible&&!closed&&<div className="mt-close-standby"><CloseSlider disabled={!ready||!supported||!enabled||busy||pending} onConfirm={()=>void send()} label={busy?'Sending…':pending?'Closing…':unconfirmed?'Verify close':'Close all'}/></div>}
   {!closed&&<p id="close-all-help" className="mt-compact-note mt-close-help">Slide right to close ALL positions and cancel ALL pending orders on the connected demo account.</p>}
-  {request&&<div className="mt-emergency-status" role="status" aria-label="Close all status"><strong>{status}</strong>
-   {evidence&&<span>{evidence.positionsRemaining!=null&&evidence.ordersRemaining!=null?`${evidence.positionsRemaining} positions · ${evidence.ordersRemaining} pending orders · `:''}Last report {new Date(evidence.observedMs).toLocaleTimeString('en-GB',{timeZone:'Asia/Jakarta'})} WIB{!fresh?' · connection stale':''}</span>}
+  {request&&!previousBatchClose&&<div className="mt-emergency-status" role="status" aria-label="Close all status"><strong>{status}</strong>
+   {evidence&&<span>{completedReceipt&&!verified?'Historical close report · ':''}{evidence.positionsRemaining!=null&&evidence.ordersRemaining!=null?`${evidence.positionsRemaining} positions · ${evidence.ordersRemaining} pending orders · `:''}Last report {new Date(evidence.observedMs).toLocaleTimeString('en-GB',{timeZone:'Asia/Jakarta'})} WIB{!fresh?' · connection stale':''}</span>}
    {request.error&&<span>{request.error.replaceAll('_',' ')}</span>}
    {verified&&<span>The closed batch will not resume. A new batch requires an explicit Start and verified preflight.</span>}
   </div>}

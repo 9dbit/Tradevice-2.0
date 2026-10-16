@@ -1,0 +1,14 @@
+--- a/goldtrap_arc/execution.py
++++ b/goldtrap_arc/execution.py
+@@ -557,7 +557,10 @@
+             validate_closed_m1(bars,time(),allow_boundary_wait=True)
+             atr=atr_at(bars,len(bars)-1,self.cfg.atr_period)
+             row=update_atr_target(self.cfg,atr,bars[-1].time)
+-        except (ArcSafetyError,ValueError,TypeError):
++        except (ArcM1BoundaryWait,ArcSafetyError,ValueError,TypeError):
++            # M1 publication lag is an unavailable ATR sample, not a terminal
++            # cycle failure. Keep the previous verified target and supervision;
++            # callers defer ATR-dependent entries/updates until a valid sample.
+             if not self.state.get('atr_tp_unavailable'):
+                 self.state['atr_tp_unavailable']=True;self.save()
+                 self.ledger.append('ATR_TP_UNAVAILABLE',cycle_id=self.state.get('cycle_id'))

@@ -5,7 +5,7 @@ export function batchStopNotice(progress,runtimeRunning){
  const reasons={
   OPERATOR_EMERGENCY_CLOSE:'Emergency close completed. Positions and pending orders are verified empty; this batch will not resume.',
   BROKER_REJECT_10013:'The broker rejected an order update (10013: Invalid request). The batch stopped; reconciliation is required.',
-  BATCH_SAFETY_STOP:'The engine stopped after a safety check failed. Broker reconciliation is required.',
+  BATCH_SAFETY_STOP:'The engine stopped after a safety check failed. Positions and pending orders may still be open. Automatic basket supervision is unverified. Check broker exposure and use Close all if you want to exit; reconciliation is required.',
   BROKER_TP_AFTER_SAFETY_STOP:'The remaining position closed at broker TP after the safety stop. Broker-flat reconciliation is verified; this batch will not resume.',
  };
  let reason=progress.blockers?.map(code=>reasons[code]||code).join(' · ');

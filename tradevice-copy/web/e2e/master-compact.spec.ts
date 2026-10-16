@@ -594,7 +594,24 @@ test('close slider replaces Start only for active batch and follows Pause Stop a
  await page.reload();await expect(page.getByRole('status',{name:'Close all status'})).toContainText('Close requested');expect(f.posts).toHaveLength(1);
  f.setReceipts([{requestId:post.requestId,action:'EMERGENCY_CLOSE',status:'APPLIED',errorCode:null}]);
  f.setEmergency({requestId:post.requestId,phase:'COMPLETE',positionsRemaining:0,ordersRemaining:0,observedMs:Date.now()});
+ await expect(page.getByRole('status',{name:'Close all status'})).toContainText('current broker-flat unverified');
+ f.ready();
  await expect(page.getByRole('status',{name:'Close all status'})).toContainText('broker-flat verified');
+});
+
+test('new safety-stopped batch cannot display prior Close all as current flat evidence',async({page})=>{
+ const f=await setup(page),closeId='11111111-1111-4111-8111-111111111111';
+ f.setReceipts([{requestId:'22222222-2222-4222-8222-222222222222',action:'START',status:'APPLIED',errorCode:null},{requestId:closeId,action:'EMERGENCY_CLOSE',status:'APPLIED',errorCode:null}]);
+ f.setEmergency({requestId:closeId,phase:'COMPLETE',positionsRemaining:0,ordersRemaining:0,observedMs:Date.now()-3600000});
+ f.recovery();
+ f.setBatch({schema:'tradevice.v51.demo.batch.v1',read_only:true,batch_id:'v51_dashboard_'+'2'.repeat(32),observed_ms:Date.now(),status:'SAFETY_STOP',requested:10,blockers:['BATCH_SAFETY_STOP'],cycles:[{number:1,cycle_id:'1234abcd',outcome:'SAFETY_STOP',side:'SELL',broker_flat:false,layers:1,peak_lots:.01,net_usd:null}]});
+ const modal=page.getByRole('dialog',{name:'Trading batch stopped'});
+ await expect(modal).toContainText('Positions and pending orders may still be open.');
+ await expect(modal.getByRole('button',{name:'Reset',exact:true})).toBeDisabled();
+ await modal.getByRole('button',{name:'Close',exact:true}).click();
+ await expect(page.getByRole('status',{name:'Close all status'})).toHaveCount(0);
+ await expect(page.getByRole('slider',{name:'Slide to close all'})).toBeEnabled();
+ expect(f.posts).toHaveLength(0);
 });
 
 test('close slider keyboard confirmation and lost response retain identical request ID',async({page})=>{

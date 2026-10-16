@@ -82,6 +82,37 @@ class Engine(unittest.TestCase):
  def test_stale_atr_cannot_arm_a_new_trap(self):
   self.now+=180
   self.assertEqual(self.engine.step(),'WAITING_ATR');self.assertFalse(self.api.sent)
+ def test_boundary_before_arm_defers_without_dispatch(self):
+  self.now=(int(self.now)//60+1)*60+.1
+  self.assertEqual(self.engine.step(),'WAITING_ATR');self.assertFalse(self.api.sent)
+  self.assertTrue(self.engine.state['atr_tp_unavailable'])
+ def test_boundary_after_l1_keeps_ladder_and_supervision_then_recovers(self):
+  self.engine.step();self.api.fill_layer(1)
+  pending={o.ticket for o in self.api.orders if ':B' in o.comment and not o.comment.endswith('B01')}
+  self.now=(int(self.now)//60+1)*60+.1
+  prior=self.rows[-1]['time']
+  with patch.object(self.engine,'next_entry') as entry,patch.object(self.engine,'pause_safety') as pause:
+   self.assertEqual(self.engine.step(),'ACTIVE');entry.assert_not_called();pause.assert_not_called()
+  self.assertEqual(pending,{o.ticket for o in self.api.orders})
+  self.assertFalse(self.engine.state.get('safety_paused'))
+  self.assertEqual(self.engine.state['atr_tp_current']['candle_time'],prior)
+  self.assertEqual(basket_tp_usd(self.cfg),4)
+  for row in self.rows:row['time']+=60;row['high']=101.55;row['low']=98.45
+  self.now+=1
+  self.assertEqual(self.engine.step(),'ACTIVE')
+  self.assertFalse(self.engine.state['atr_tp_unavailable'])
+  self.assertAlmostEqual(basket_tp_usd(self.cfg),3.1)
+  self.assertEqual(pending,{o.ticket for o in self.api.orders})
+ def test_boundary_does_not_block_hard_loss_exit(self):
+  self.fill();self.now=(int(self.now)//60+1)*60+.1
+  with patch.object(self.a,'executable_pl',return_value=-300):
+   self.assertEqual(self.engine.step(),'COMPLETE_RISK_EXIT')
+  self.assertFalse(self.api.positions or self.api.orders)
+ def test_boundary_does_not_block_last_verified_target_exit(self):
+  self.fill();self.now=(int(self.now)//60+1)*60+.1
+  p=self.api.positions[0];self.api.tick_bid=p.price_open+4.2;self.api.tick_ask=self.api.tick_bid+.24
+  self.assertEqual(self.engine.step(),'COMPLETE_TARGET')
+  self.assertFalse(self.api.positions or self.api.orders)
  def test_stale_atr_retains_last_target_and_cannot_admit_entry(self):
   self.fill();self.now+=180
   self.assertFalse(self.engine.refresh_atr_tp());self.assertEqual(basket_tp_usd(self.cfg),4)
