@@ -19,6 +19,8 @@ export function marginRequirements(e){
 }
 export function failureRequirement(code){
  const c=String(code||'').replace(/^SKILL_START_/,'');
+ if(/MARKET_|PREFLIGHT_ATR|ATR_OUTSIDE_RANGE/.test(c))return /MARKET_/.test(c)?'ATR/ADX data is unavailable, stale or incomplete. Wait for fresh completed M1/M5 candles and sufficient broker history. Reset cannot bypass this check.':'Wait for ATR14 M1 to return within the rolling P20–P60 range shown below. This is a new-cycle entry filter, not the basket TP amount.';
+ if(/ADX/.test(c))return 'Wait for ADX14 on both M1 and M5 to remain below 20 for three completed candles on each timeframe. Existing basket supervision continues.';
  if(/MARGIN_ENVELOPE_INSUFFICIENT/.test(c))return 'Insufficient free margin. Reduce the selected base lot or provide enough free margin for the calculated requirement, then run a fresh check. Reset does not change the requirement.';
  if(/MARGIN|ECONOMICS/.test(c))return 'Margin capacity is unverified. Valid broker margin calculations and current account data are required; a funding shortfall cannot be assumed.';
  if(/RECONCIL|RECOVERY|UNRESOLVED/.test(c))return 'Reconcile broker positions, pending orders and command receipts. A new batch requires verified completion of the previous cycle. Reset cannot clear this blocker.';
@@ -38,4 +40,11 @@ export function failureRequirement(code){
  if(/ENGINE_NOT_READY/.test(c))return 'The engine is not ready for a new batch. Resolve the listed failed checks and wait for fresh engine acknowledgement.';
  if(/PREFLIGHT_FAILED/.test(c))return 'This rejection did not record its individual failed checks. Its historical requirement is unavailable; the current preflight is a separate observation.';
  return 'No detailed requirement was recorded for this error. Inspect the command receipt and engine journal before retrying.';
+}
+
+export function marketRequirements(e){
+ const m=e?.market;
+ if(m?.policy!=='V51_RANGE_PREFLIGHT_20261016'||!['atrM1','atrPoints','minAtr','maxAtr','adxM1','adxM5','adxM1Max3','adxM5Max3','adxLimit'].every(k=>typeof m[k]==='number'&&Number.isFinite(m[k])))return [];
+ const n=v=>v.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:3});
+ return [['ATR14 M1 · price / points',`${n(m.atrM1)} / ${n(m.atrPoints)} points`],['Allowed ATR · prior 1,440 M1 candles',`${n(m.minAtr)}–${n(m.maxAtr)} · P20–P60`],['ADX14 M1 · current / last 3 maximum',`${n(m.adxM1)} / ${n(m.adxM1Max3)}`],['ADX14 M5 · current / last 3 maximum',`${n(m.adxM5)} / ${n(m.adxM5Max3)}`],['Required ADX · both timeframes',`< ${n(m.adxLimit)} for 3 completed candles`]];
 }

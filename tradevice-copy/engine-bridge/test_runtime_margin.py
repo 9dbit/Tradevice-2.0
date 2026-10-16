@@ -8,7 +8,7 @@ from v51_dashboard_runtime import Runtime
 class SafetyError(RuntimeError):pass
 
 class MarginPreflight(unittest.TestCase):
- def run_preflight(self,error=None):
+ def run_preflight(self,error=None,market=None):
   adapter=Mock()
   adapter.identity.return_value=(NS(trade_mode=0,server='Exness-MT5Trial14'),None,NS(name='XAUUSDm'))
   adapter.quote_metrics.return_value={'fresh':True}
@@ -23,7 +23,7 @@ class MarginPreflight(unittest.TestCase):
    'goldtrap_arc.mt5_adapter':NS(MT5ArcAdapter=factory),
    'goldtrap_arc.persistence':NS(ArcLedger=Mock(),ArcStateStore=Mock()),
    'v51_batch_research':NS(margin_envelope=margin)}
-  with tempfile.TemporaryDirectory() as tmp,patch.dict(sys.modules,modules),patch('v51_dashboard_runtime.configure_adapter'):
+  with tempfile.TemporaryDirectory() as tmp,patch.dict(sys.modules,modules),patch('v51_dashboard_runtime.configure_adapter'),patch('v51_dashboard_runtime.inspect_market',return_value=market or ({'atr':True,'adx':True},[],None)):
    runtime=Runtime.__new__(Runtime);runtime.root=Path(tmp)
    runtime.fingerprint=Mock();runtime.reconcile_prior=Mock()
    runtime.calendar=NS(decision=lambda:{'status':'CLEAR','entries_allowed':True})
@@ -49,6 +49,10 @@ class MarginPreflight(unittest.TestCase):
     checks,blockers=self.run_preflight(error)
     self.assertFalse(checks['margin'])
     self.assertEqual(blockers,['MARGIN_ENVELOPE_UNVERIFIED','PREFLIGHT_MARGIN'])
+ def test_market_failure_does_not_poison_other_checks(self):
+  checks,blockers=self.run_preflight(market=({'atr':True,'adx':False},['ADX_TREND_NOT_RANGING'],None))
+  self.assertTrue(checks['atr']);self.assertFalse(checks['adx']);self.assertTrue(checks['margin'])
+  self.assertEqual(blockers,['ADX_TREND_NOT_RANGING','PREFLIGHT_ADX'])
  def test_success_still_requires_actual_margin_check(self):
   checks,blockers=self.run_preflight()
   self.assertTrue(checks['margin']);self.assertEqual(blockers,[])

@@ -7,7 +7,7 @@ from demo_settings import SETTINGS_PROTOCOL,validate_settings
 
 API='https://copy-api-staging-4c33.up.railway.app/internal/master/demo/exchange'
 APPROVED_HASH='bcdefbaf270419f2dbe5968bd10e5a88dc3fe4efc7086fef5b2869fb40f81cee'
-CHECKS=('identity','brokerFlat','quote','spread','margin','commission','news','reconciled','engineHash')
+CHECKS=('identity','brokerFlat','quote','spread','margin','commission','news','reconciled','engineHash','atr','adx')
 
 def sign(secret,stamp,body):
  return hmac.new(bytes.fromhex(secret),b'tradevice-demo-v1\n'+stamp.encode()+b'\n'+body,hashlib.sha256).hexdigest()
@@ -223,7 +223,7 @@ class Controller:
      else:
       self.db.execute('UPDATE active_run SET request_id=NULL WHERE singleton=1')
       self.state='PAUSED' if self.mode=='PAUSE' else 'STOPPED'
-    if not started:self.acknowledge(rid,'REJECTED','ENTRY_NOT_STARTED')
+    if not started:self.acknowledge(rid,'REJECTED',getattr(self.runtime,'entry_blocker',None) or 'ENTRY_NOT_STARTED')
    except Exception:
     with self.lock:
      if self.mode!='EMERGENCY_CLOSE':self.recovery=True;self.state='RECOVERY_REQUIRED';self.reason='ENGINE_RECOVERY_REQUIRED'

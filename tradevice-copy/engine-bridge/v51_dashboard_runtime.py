@@ -5,9 +5,10 @@ import hashlib,json,threading,time
 from pathlib import Path
 from demo_settings import default_settings,validate_settings
 from v51_execution_settings import configure_adapter
+from v51_market_preflight import inspect_market
 
 APPROVED_HASH='bcdefbaf270419f2dbe5968bd10e5a88dc3fe4efc7086fef5b2869fb40f81cee'
-KEYS=('identity','brokerFlat','quote','spread','margin','commission','news','reconciled','engineHash')
+KEYS=('identity','brokerFlat','quote','spread','margin','commission','news','reconciled','engineHash','atr','adx')
 class Runtime:
  def __init__(self,root):
   self.root=Path(root);self.reason=None;self._checks={k:False for k in KEYS};self.checked_at=0
@@ -45,7 +46,7 @@ class Runtime:
  def fingerprint(self):
   manifest=json.loads((self.root/'read_only'/'demo_engine_fingerprint.json').read_text())
   files=manifest['files']
-  if manifest['skillHash']!=APPROVED_HASH or len(files)<10:raise ValueError('ENGINE_FINGERPRINT_INVALID')
+  if manifest['skillHash']!=APPROVED_HASH or len(files)<10 or 'v51_market_preflight.py' not in files:raise ValueError('ENGINE_FINGERPRINT_INVALID')
   for relative,expected in files.items():
    path=(self.root/relative).resolve()
    if not path.is_relative_to(self.root.resolve()) or hashlib.sha256(path.read_bytes()).hexdigest()!=expected:raise ValueError('ENGINE_FINGERPRINT_MISMATCH')
@@ -66,7 +67,7 @@ class Runtime:
   from goldtrap_arc.config import ArcSafetyError
   settings=validate_settings(settings or default_settings())
   self._preflight_evidence=None
-  checks={k:False for k in KEYS};blockers=[];margin={}
+  checks={k:False for k in KEYS};blockers=[];margin={};market=None
   try:self.fingerprint();checks['engineHash']=True
   except Exception:blockers.append('ENGINE_FINGERPRINT_MISMATCH')
   a=MT5ArcAdapter(mt5,allow_execution=False)
@@ -84,6 +85,8 @@ class Runtime:
     # broker evidence. Never publish arbitrary exception text or account data.
     blockers.append('MARGIN_ENVELOPE_INSUFFICIENT' if isinstance(exc,ArcSafetyError) and
      str(exc)=='RESEARCH_MARGIN_ENVELOPE_INSUFFICIENT' else 'MARGIN_ENVELOPE_UNVERIFIED')
+   market_checks,market_blockers,market=inspect_market(a)
+   checks.update(market_checks);blockers.extend(market_blockers)
    deals,_=a._raw_history()
    owned=[d for d in deals if getattr(d,'symbol','')=='XAUUSDm' and getattr(d,'magic',0)==a.cfg.magic and getattr(d,'type',-1) in (0,1)]
    checks['commission']=bool(owned) and all(getattr(d,'commission',None)==0 and getattr(d,'fee',None)==0 for d in owned)
@@ -98,7 +101,7 @@ class Runtime:
   except ValueError:checks['reconciled']=False;blockers.append('EMERGENCY_INTENT_INVALID')
   blockers.extend('PREFLIGHT_'+k.upper() for k,v in checks.items() if not v)
   self._checks=checks;self.checked_at=time.time()
-  self._preflight_evidence=dict(observedMs=int(self.checked_at*1000),settings=settings,checks=dict(checks),blockers=list(blockers),margin=margin or None)
+  self._preflight_evidence=dict(observedMs=int(self.checked_at*1000),settings=settings,checks=dict(checks),blockers=list(blockers),margin=margin or None,market=market)
   return checks,blockers
  def reconcile_completed_close(self,prior_run,close_id):
   from v51_close_reconciliation import reconcile_closed_run
@@ -132,7 +135,7 @@ class Runtime:
    atomic_json(self.root/'read_only'/'dashboard_prior_reconciliation.json',dict(observed_ms=int(time.time()*1000),read_only=True,
     broker_flat=True,evidence=evidence,original_journals_modified=False,counted_in_new_run=False))
   return proved
- def prepare(self,settings):self.settings=validate_settings(settings);self.reason=None
+ def prepare(self,settings):self.settings=validate_settings(settings);self.reason=None;self.entry_blocker=None
  def suspend(self,reason):self.reason=reason
  def run(self,request_id,target,ready,expires_ms):
   import MetaTrader5 as mt5
@@ -154,7 +157,12 @@ class Runtime:
     outer.fingerprint()
     configure_adapter(adapter,outer.settings)
     if outer.reason:raise ArcSafetyError('DASHBOARD_ENTRY_SUSPENDED')
-    return super().admission(adapter)
+    result=super().admission(adapter)
+    # Re-evaluate after acknowledgement/calendar waits, before EVERY new cycle.
+    checks,reasons,market=inspect_market(adapter)
+    outer.entry_blocker=reasons[0] if reasons else None
+    if not all(checks.values()):return False
+    return result
    def engine(self,*args,**kwargs):
     kwargs['cfg']=args[0].cfg
     engine=super().engine(*args,**kwargs)
@@ -173,7 +181,7 @@ class Runtime:
     completed=sum(s.get('result',{}).get('broker_flat_confirmed') is True and s.get('result',{}).get('layers',0)>0 for s in slots)
     mapped=('COMPLETED' if completed==target else 'STOPPED') if status=='AUTO_STOP_10_CYCLES' else ('STOPPED' if status.startswith('STOPPED_') else status)
     if mapped=='WAITING_CALENDAR_REFRESH':mapped='SUSPENDED'
-    blockers=([outer.reason] if outer.reason else [])+stop_blockers(m,engine)
+    blockers=([outer.reason] if outer.reason else [])+([outer.entry_blocker] if getattr(outer,'entry_blocker',None) else [])+stop_blockers(m,engine)
     if engine and engine.state.get('news_entry_suspended'):
      blockers.append(engine.state.get('news_reason','ENTRY_SUSPENDED'))
     payload=report(batch_id,mapped,slots,blockers,int(now*1000));payload['requested']=target

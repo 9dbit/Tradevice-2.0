@@ -7,7 +7,8 @@ from .demo_settings import SETTINGS_PROTOCOL,validate_settings
 from .demo_pool import connection
 
 APPROVED_HASH='bcdefbaf270419f2dbe5968bd10e5a88dc3fe4efc7086fef5b2869fb40f81cee'
-CHECKS=('identity','brokerFlat','quote','spread','margin','commission','news','reconciled','engineHash')
+LEGACY_CHECKS=('identity','brokerFlat','quote','spread','margin','commission','news','reconciled','engineHash')
+CHECKS=LEGACY_CHECKS+('atr','adx')
 STATES={'OFF','READY','STARTING','RUNNING','PAUSING','PAUSED','STOPPING','STOPPED','BLOCKED','RECOVERY_REQUIRED'}
 BUSY={'STARTING','RUNNING','PAUSING','STOPPING','RECOVERY_REQUIRED'}
 EMERGENCY_PROTOCOL='V51_EMERGENCY_CLOSE_20261015'
@@ -122,15 +123,37 @@ def submit(dsn,p,news_clear):
             VALUES(%s,%s,%s,%s,%s,%s,%s,%s)''',(p['requestId'],p['actor_id'],p['action'],sel['selected_skill_id'],APPROVED_HASH if sel['selected_skill_id'] else None,sel['revision'],p['targetCycles'],Jsonb(p['settings']) if p['settings'] is not None else None))
         return dict(requestId=p['requestId'],status='PENDING')
 
+def validate_market_evidence(m,checks,now):
+    invalid=lambda:SkillError('SKILL_MARKET_EVIDENCE_INVALID')
+    if m is None:
+        if checks.get('atr') or checks.get('adx'):raise invalid()
+        return
+    numeric={'observedMs','atrM1','atrPoints','minAtr','maxAtr','adxM1','adxM5','adxM1Max3','adxM5Max3','adxLimit','stableBars','lookbackBars','m1ClosedMs','m5ClosedMs'}
+    if not isinstance(m,dict) or set(m)!=numeric|{'policy','atrMethod','adxMethod','atrPassed','adxPassed'}:raise invalid()
+    if (m['policy'],m['atrMethod'],m['adxMethod'])!=('V51_RANGE_PREFLIGHT_20261016','SMA_TR_14','WILDER_14'):raise invalid()
+    if any(type(m[k]) not in (int,float) or not math.isfinite(m[k]) or not 0<=m[k]<=2**53-1 for k in numeric):raise invalid()
+    if (m['adxLimit'],m['stableBars'],m['lookbackBars'])!=(20,3,1440):raise invalid()
+    if not 0<m['observedMs']<=now or not 0<=now-m['observedMs']<=8000:raise invalid()
+    for key,period in [('m1ClosedMs',60000),('m5ClosedMs',300000)]:
+        if m[key]!=int(m['observedMs']//period)*period:raise invalid()
+    if not 0<=m['minAtr']<=m['maxAtr'] or m['atrPoints']<0:raise invalid()
+    if not 0<=m['adxM1']<=m['adxM1Max3']<=100 or not 0<=m['adxM5']<=m['adxM5Max3']<=100:raise invalid()
+    atr_ok=m['atrM1']>0 and m['minAtr']<=m['atrM1']<=m['maxAtr']
+    adx_ok=max(m['adxM1Max3'],m['adxM5Max3'])<m['adxLimit']
+    if type(m['atrPassed']) is not bool or type(m['adxPassed']) is not bool:raise invalid()
+    if m['atrPassed']!=atr_ok or m['adxPassed']!=adx_ok:raise invalid()
+    if checks.get('atr')!=atr_ok or checks.get('adx')!=adx_ok:raise invalid()
+
 def validate_preflight_evidence(e,now):
     if e is None:return
     invalid=lambda:SkillError('SKILL_PREFLIGHT_EVIDENCE_INVALID')
-    if not isinstance(e,dict) or set(e)!={'observedMs','settings','checks','blockers','margin'}:raise invalid()
+    if not isinstance(e,dict) or set(e)-{'market'}!={'observedMs','settings','checks','blockers','margin'}:raise invalid()
     if type(e['observedMs']) is not int or not 0<e['observedMs']<=now+1000:raise invalid()
     try:validate_settings(e['settings'])
     except (ValueError,TypeError):raise invalid() from None
-    if not isinstance(e['checks'],dict) or set(e['checks'])!=set(CHECKS) or any(type(v) is not bool for v in e['checks'].values()):raise invalid()
+    if not isinstance(e['checks'],dict) or set(e['checks']) not in (set(CHECKS),set(LEGACY_CHECKS)) or any(type(v) is not bool for v in e['checks'].values()):raise invalid()
     if not isinstance(e['blockers'],list) or len(e['blockers'])>20 or any(not isinstance(v,str) or not re.fullmatch('[A-Z0-9_]{1,100}',v) for v in e['blockers']):raise invalid()
+    validate_market_evidence(e.get('market'),e['checks'],e['observedMs'])
     m=e['margin']
     if m is None:return
     fields={'freeMargin','usedMargin','exposureMargin','reserve','requiredFreeMargin','minimumEquity','shortfall'}
@@ -163,7 +186,7 @@ def validate_snapshot(p,now):
     if p['activeHash'] not in (None,APPROVED_HASH):raise SkillError('SKILL_ENGINE_HASH_INVALID')
     if (p['activeSkillId'] is None)!=(p['activeHash'] is None):raise SkillError('SKILL_ENGINE_HASH_INVALID')
     if type(p['revision']) is not int or not 0<=p['revision']<=2**53-1:raise SkillError('SKILL_REVISION_INVALID')
-    if not isinstance(p['checks'],dict) or set(p['checks'])!=set(CHECKS) or any(type(v) is not bool for v in p['checks'].values()):raise SkillError('SKILL_ENGINE_CHECKS_INVALID')
+    if not isinstance(p['checks'],dict) or set(p['checks']) not in (set(CHECKS),set(LEGACY_CHECKS)) or any(type(v) is not bool for v in p['checks'].values()):raise SkillError('SKILL_ENGINE_CHECKS_INVALID')
     if not isinstance(p['blockers'],list) or len(p['blockers'])>20 or any(not isinstance(v,str) or not re.fullmatch('[A-Z0-9_]{1,100}',v) for v in p['blockers']):raise SkillError('SKILL_ENGINE_REPORT_INVALID')
     if not isinstance(p['receipts'],list) or len(p['receipts'])>16:raise SkillError('SKILL_ENGINE_RECEIPT_INVALID')
     for r in p['receipts']:

@@ -1,6 +1,6 @@
 /** Display only: never turns stale or recovery evidence into authorization. */
 const activeStates=new Set(['STARTING','RUNNING','PAUSING','STOPPING']);
-const startChecks=['identity','brokerFlat','quote','spread','margin','commission','news','reconciled','engineHash'];
+const startChecks=['identity','brokerFlat','quote','spread','margin','commission','news','reconciled','engineHash','atr','adx'];
 const startOnlyBlockers=new Set(['ENGINE_NOT_READY',...startChecks.map(k=>'PREFLIGHT_'+k.toUpperCase())]);
 export function preflightDeferred(runtime,fresh){
  return !!(fresh&&runtime&&activeStates.has(runtime.state)&&
@@ -8,7 +8,8 @@ export function preflightDeferred(runtime,fresh){
 }
 function explicitFailure(runtime,key){
  const blockers=runtime?.blockers??[];
- return key==='news'&&blockers.includes('NEWS_NOT_CLEAR')||
+ return ['atr','adx'].includes(key)&&blockers.some(b=>b.startsWith('MARKET_')||key==='atr'&&b==='ATR_OUTSIDE_RANGE'||key==='adx'&&b==='ADX_TREND_NOT_RANGING')||
+  key==='news'&&blockers.includes('NEWS_NOT_CLEAR')||
   key==='margin'&&blockers.some(b=>['MARGIN_ENVELOPE_INSUFFICIENT','MARGIN_ENVELOPE_UNVERIFIED'].includes(b))||
   key==='engineHash'&&blockers.includes('ENGINE_FINGERPRINT_MISMATCH');
 }

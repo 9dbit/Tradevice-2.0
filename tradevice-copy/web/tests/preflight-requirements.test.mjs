@@ -27,3 +27,15 @@ test('shortfall differs from missing evidence and legacy rejection',()=>{
  assert.match(failureRequirement('SKILL_START_ENGINE_OFFLINE_OR_STALE'),/Restore the bridge/);
  assert.match(failureRequirement('PRIOR_CYCLE_RECONCILIATION_REQUIRED'),/Reset cannot clear/);
 });
+
+test('ATR/ADX requirements show numeric limits without confusing ATR with USD TP',async()=>{
+ const {marketRequirements}=await import('../lib/preflight-requirements.mjs');
+ const m={policy:'V51_RANGE_PREFLIGHT_20261016',atrM1:1.211,atrPoints:1211,minAtr:1.2,maxAtr:1.66,adxM1:35.56,adxM5:24.65,adxM1Max3:36,adxM5Max3:25,adxLimit:20};
+ const rows=Object.fromEntries(marketRequirements({market:m}));
+ assert.equal(rows['ATR14 M1 · price / points'],'1.211 / 1,211.00 points');
+ assert.match(rows['Required ADX · both timeframes'],/< 20.00/);
+ assert.deepEqual(marketRequirements({market:{...m,adxM1:NaN}}),[]);
+ assert.match(failureRequirement('ATR_OUTSIDE_RANGE'),/not the basket TP/);
+ assert.match(failureRequirement('ADX_TREND_NOT_RANGING'),/three completed candles/);
+ assert.match(failureRequirement('MARKET_DATA_STALE'),/Reset cannot bypass/);
+});

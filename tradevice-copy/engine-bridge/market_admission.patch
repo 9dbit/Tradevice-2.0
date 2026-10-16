@@ -1,0 +1,25 @@
+--- v51_batch_core.py
++++ v51_batch_core.py
+@@ -205,7 +205,9 @@
+         adapter.batch_lock = lock
+         adapter.initialize()
+         adapter.check_batch_identity()
+-        admission(adapter)
++        if admission(adapter) is False:
++            account_book(adapter, flat=True)
++            return 0  # No cycle reserved and no broker dispatch.
+         if resume:
+             m = json.loads(manifest_path.read_text(encoding='utf-8'))
+             if fixed_arming and fixed_arming!=m.get('fixed_arming'):
+@@ -258,7 +260,10 @@
+                     if len(m['slots']) == m['max_cycles']:
+                         m.update(status='AUTO_STOP_10_CYCLES', ended_at=utc())
+                         break
+-                    admission(adapter)
++                    if admission(adapter) is False:
++                        account_book(adapter, flat=True)
++                        m.update(status='STOPPED_ENTRY_PREFLIGHT', ended_at=utc(), no_new_cycle=True)
++                        break  # Prior cycle has reconciled; never reserve a new slot.
+                     connection_read(engine, lambda: account_book(adapter, flat=True), sleeper)
+                     slot = reserve_slot(m, root)
+                     atomic_json(manifest_path, m)  # Durable reservation BEFORE engine may create a cycle.

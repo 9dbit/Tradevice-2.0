@@ -158,13 +158,13 @@ def test_account_scope_is_explicit_and_bound_to_retry(monkeypatch):
  with pytest.raises(SkillError):control.submit('fixture',emergency_command(),False)
 
 def diagnostic():
- return dict(observedMs=int(time.time()*1000),settings=default_settings()|{'baseLot':.1},checks={k:k!='margin' for k in CHECKS},blockers=['MARGIN_ENVELOPE_INSUFFICIENT','PREFLIGHT_MARGIN'],margin=dict(currency='USD',freeMargin=2000,usedMargin=0,exposureMargin=6041.39,reserve=265,requiredFreeMargin=6306.39,minimumEquity=6306.39,shortfall=4306.39))
+ return dict(observedMs=int(time.time()*1000),settings=default_settings()|{'baseLot':.1},checks={k:k not in ('margin','atr','adx') for k in CHECKS},blockers=['MARGIN_ENVELOPE_INSUFFICIENT','PREFLIGHT_MARGIN'],margin=dict(currency='USD',freeMargin=2000,usedMargin=0,exposureMargin=6041.39,reserve=265,requiredFreeMargin=6306.39,minimumEquity=6306.39,shortfall=4306.39))
 
 def test_strict_preflight_numeric_evidence_and_receipt_protocol():
  e=diagnostic();now=e['observedMs'];validate_preflight_evidence(e,now)
  for patch in [dict(observedMs=now+1001),dict(settings={}),dict(checks={}),dict(blockers=['private broker text']),dict(margin=e['margin']|{'freeMargin':float('nan')}),dict(margin=e['margin']|{'minimumEquity':6000}),dict(margin=e['margin']|{'shortfall':True}),dict(account='private')]:
   with pytest.raises(SkillError):validate_preflight_evidence(e|patch,now)
- s=snapshot();r=dict(requestId=str(uuid.uuid4()),status='REJECTED',errorCode='MARGIN_ENVELOPE_INSUFFICIENT',diagnostics=e)
+ s=snapshot()|{'observedMs':now};r=dict(requestId=str(uuid.uuid4()),status='REJECTED',errorCode='MARGIN_ENVELOPE_INSUFFICIENT',diagnostics=e)
  validate_snapshot(s|dict(preflightEvidence=e,receipts=[r]),now)
  with pytest.raises(SkillError):validate_snapshot(s|dict(receipts=[r|{'status':'APPLIED'}]),now)
  validate_snapshot(s|dict(receipts=[{k:v for k,v in r.items() if k!='diagnostics'}]),now)
@@ -185,3 +185,21 @@ def test_receipt_diagnostics_cannot_be_attached_to_other_command_settings(monkey
  monkeypatch.setattr(control,'locked',lambda _:({},dict(snapshot={},observed_ms=0),s['observedMs']))
  with pytest.raises(SkillError,match='SKILL_PREFLIGHT_SETTINGS_MISMATCH'):exchange('fixture',s)
  assert writes==[]
+
+def test_legacy_reports_remain_readable_but_cannot_authorize_start():
+ s=snapshot();s['checks'].pop('atr');s['checks'].pop('adx')
+ validate_snapshot(s,s['observedMs'])
+ errors=start_blockers(s,dict(selected_skill_id=s['activeSkillId'],revision=1),s['observedMs'],True)
+ assert 'PREFLIGHT_ATR' in errors and 'PREFLIGHT_ADX' in errors
+
+def test_market_evidence_contract_and_failed_check_cannot_be_promoted():
+ from app.demo_control import validate_market_evidence
+ now=1800000000000
+ m=dict(policy='V51_RANGE_PREFLIGHT_20261016',observedMs=now,atrMethod='SMA_TR_14',adxMethod='WILDER_14',atrM1=1.21,atrPoints=1210,minAtr=1.2,maxAtr=1.66,adxM1=35.56,adxM5=24.65,adxM1Max3=36.,adxM5Max3=25.,adxLimit=20,stableBars=3,lookbackBars=1440,m1ClosedMs=now,m5ClosedMs=now,atrPassed=True,adxPassed=False)
+ checks={'atr':True,'adx':False}
+ validate_market_evidence(m,checks,now)
+ for patch in [dict(adxPassed=True),dict(atrM1=2),dict(adxLimit=30),dict(adxM1=float('nan')),dict(m1ClosedMs=now-60000),dict(observedMs=now+1),dict(policy='old'),dict(account='private')]:
+  with pytest.raises(SkillError):validate_market_evidence(m|patch,checks,now)
+ with pytest.raises(SkillError):validate_market_evidence(m,dict(atr=True,adx=True),now)
+ with pytest.raises(SkillError):validate_market_evidence(None,checks,now)
+ validate_market_evidence(None,dict(atr=False,adx=False),now)
