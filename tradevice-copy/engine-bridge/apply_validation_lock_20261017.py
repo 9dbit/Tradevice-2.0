@@ -236,8 +236,8 @@ def install():
             touched = []
             try:
                 for name, (prior_hash, _) in FILES.items():
-                    write(ROOT / name, payload[name], existing=prior_hash is not None)
                     touched.append((name, prior_hash is not None))
+                    write(ROOT / name, payload[name], existing=prior_hash is not None)
                 write(FINGERPRINT, new_fingerprint, existing=True)
                 manifest_verify()
                 from v51_dashboard_runtime import Runtime
