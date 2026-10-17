@@ -1,0 +1,59 @@
+name: V5.1 Risk Research CI
+
+on:
+  push:
+    branches: ['research/v51-l5-exposure-20261017']
+    paths:
+      - 'tradevice-copy/**'
+      - '.github/workflows/v51-risk-research.yml'
+  pull_request:
+    branches: ['feature/v51-automatic-start-20261017']
+    paths:
+      - 'tradevice-copy/**'
+      - '.github/workflows/v51-risk-research.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: v51-risk-research
+  cancel-in-progress: false
+
+jobs:
+  api:
+    name: API command safety
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      PYTHONPATH: tradevice-copy/api:tradevice-copy/services:tradevice-copy/worker
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install -r tradevice-copy/api/requirements-dev.txt
+      - run: python -m pip install -r tradevice-copy/worker/requirements.txt
+      - run: python -m pytest tradevice-copy/api/tests tradevice-copy/services tradevice-copy/worker -q --tb=short
+
+  web:
+    name: Dashboard risk messaging
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm ci --ignore-scripts --no-fund
+        working-directory: tradevice-copy/web
+      - run: npm test
+        working-directory: tradevice-copy/web
+      - run: npm run typecheck
+        working-directory: tradevice-copy/web
+      - run: npm run build
+        working-directory: tradevice-copy/web
+        env:
+          NEXT_TELEMETRY_DISABLED: '1'
+
+# MT5 / proprietary clone tests run read-only on TRADEVICEPC.
+# No deployment secrets, broker credentials or dispatch actions in CI.
