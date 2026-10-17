@@ -13,7 +13,8 @@ def auto_evidence():return dict(protocol=AUTOMATIC_PROTOCOL,enabled=False,comple
 
 def test_automatic_requires_explicit_mode_confirmation_and_no_count():
  p=command()|dict(cycleMode='AUTOMATIC',targetCycles=None)
- validate_command(p)
+ with pytest.raises(SkillError,match='SKILL_AUTOMATIC_VALIDATION_REQUIRED'):
+  validate_command(p)
  for patch in [dict(targetCycles=1),dict(confirmDemo=False),dict(cycleMode='FOREVER'),dict(settings=p['settings']|{'cycleMode':'AUTOMATIC'})]:
   with pytest.raises(SkillError):validate_command(p|patch)
  for action in ['STOP','PAUSE','EMERGENCY_CLOSE']:
@@ -22,7 +23,7 @@ def test_automatic_requires_explicit_mode_confirmation_and_no_count():
 def test_arming_can_wait_for_market_but_requires_fresh_bound_supported_engine():
  s=snapshot()|dict(automatic=auto_evidence(),checks={k:False for k in CHECKS})
  sel=dict(selected_skill_id=s['activeSkillId'],revision=1);now=s['observedMs']
- assert arm_blockers(s,sel,now)==[]
+ assert arm_blockers(s,sel,now)==['AUTOMATIC_VALIDATION_REQUIRED']
  assert 'AUTOMATIC_UPGRADE_REQUIRED' in arm_blockers(s|{'automatic':None},sel,now)
  assert 'ENGINE_OFFLINE_OR_STALE' in arm_blockers(s,sel,now+8001)
  assert 'SKILL_ENGINE_ACK_MISMATCH' in arm_blockers(s,sel|{'revision':2},now)
@@ -35,21 +36,20 @@ def test_automatic_snapshot_validation():
  for patch in [dict(enabled=False),dict(completedCycles=True),dict(completedCycles=-1),dict(cycleRequestId='bad'),dict(protocol='old')]:
   with pytest.raises(SkillError):validate_snapshot(s|dict(automatic=s['automatic']|patch),s['observedMs'])
 
-def test_automatic_mode_is_persisted_and_bound_to_command_retry(monkeypatch):
- from contextlib import contextmanager
+def test_automatic_refused_before_database_access(monkeypatch):
  import app.demo_control as control
  p=command()|dict(cycleMode='AUTOMATIC',targetCycles=None)
- stored=p['settings']|{'cycleMode':'AUTOMATIC'}
- old=dict(actor_id=p['actor_id'],action='START',target_cycles=1,selection_revision=1,settings=stored,status='APPLIED')
- class Conn:
-  def execute(self,*args):return self
-  def fetchone(self):return old
- @contextmanager
- def connection(_):yield Conn()
- monkeypatch.setattr(control,'connection',connection);monkeypatch.setattr(control,'locked',lambda _:({}, {}, 0))
- assert submit('fixture',p,False)['status']=='APPLIED'
- with pytest.raises(SkillError):submit('fixture',p|dict(cycleMode='CUSTOM',targetCycles=1),False)
- assert automatic_settings(stored) and execution_settings(stored)==p['settings']
+ def unsafe(_):raise AssertionError('database should not be accessed')
+ monkeypatch.setattr(control,'connection',unsafe)
+ with pytest.raises(SkillError,match='SKILL_AUTOMATIC_VALIDATION_REQUIRED'):
+  control.submit('fixture',p,False)
+ for n in (2,3,10,True,0):
+  with pytest.raises(SkillError,match='SKILL_VALIDATION_SINGLE_CYCLE_ONLY'):
+   validate_command(command()|dict(targetCycles=n))
+ validate_command(command())
+ assert start_blocker('AUTOMATIC',None)=='AUTOMATIC_VALIDATION_REQUIRED'
+ assert start_blocker('CUSTOM',1) is None
+
 
 def test_all_start_gates_and_skill_binding():
  s=snapshot();sel=dict(selected_skill_id=s['activeSkillId'],revision=1);now=s['observedMs']
@@ -110,6 +110,10 @@ def test_projection_uses_consistent_snapshot_and_preserves_guards(age,kill,uncon
   def fetchone(self):return dict(snapshot=s,ms=s['observedMs']+age,selected_skill_id=s['activeSkillId'],revision=1,kill_switch=kill,unconfirmed=unconfirmed,history=[])
  result=projection(Conn(),news_clear=True)
  assert result['canStart'] is expected
+ assert result['canArmAutomatic'] is False
+ assert result['validation']['status']=='LOCKED_VALIDATION_PENDING'
+ assert result['validation']['automaticAllowed'] is False
+ assert result['riskPolicy']['maxBookedLots']==0.40
  assert result['online'] is (age<=8000)
  if age>8000:assert result['activeSkillId'] is None and result['checks']=={}
 
