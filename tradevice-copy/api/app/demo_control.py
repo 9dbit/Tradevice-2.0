@@ -5,7 +5,7 @@ from psycopg.types.json import Jsonb
 from .master_skills import SkillError
 from .demo_settings import SETTINGS_PROTOCOL,validate_settings
 from .demo_pool import connection
-from .validation_gate import automatic_blocker, start_blocker, status as validation_status
+from .validation_gate import automatic_blocker, start_blocker, status as validation_status,valid_status as valid_validation_status
 
 APPROVED_HASH='bcdefbaf270419f2dbe5968bd10e5a88dc3fe4efc7086fef5b2869fb40f81cee'
 LEGACY_CHECKS=('identity','brokerFlat','quote','spread','margin','commission','news','reconciled','engineHash')
@@ -93,6 +93,7 @@ def projection(conn,news_clear=False):
         preflightEvidence=s.get('preflightEvidence'),
         automatic=s.get('automatic'),canArmAutomatic=False,
         validation=validation_status(),
+        bridgeValidationVerified=bool(online and valid_validation_status(s.get('validation'))),
         riskPolicy=dict(policy='V51_RESEARCH_RISK_CEILING_20261017',maxBookedLots=0.40,maxCycleLossTriggerUsd=30.0,maxEquityRiskFraction=0.03,source='policy_configuration_not_live_exposure'),
         emergencyCloseProtocol=s.get('emergencyCloseProtocol'),emergencyClose=s.get('emergencyClose'),
         commands=[dict(requestId=str(c['request_id']),action=c['action'],status=c['status'],errorCode=c['error_code'],diagnostics=c.get('diagnostics')) for c in row['history']])
@@ -202,7 +203,8 @@ def validate_preflight_evidence(e,now):
     if e['checks']['margin'] and m['shortfall']>0:raise invalid()
 
 def validate_snapshot(p,now):
-    if not isinstance(p,dict) or set(p)-{'news','settingsProtocol','emergencyCloseProtocol','emergencyClose','preflightEvidence','automatic'}!={'observedMs','bootId','activeSkillId','activeHash','revision','state','checks','blockers','receipts'}:raise SkillError('SKILL_ENGINE_REPORT_INVALID')
+    if not isinstance(p,dict) or set(p)-{'news','settingsProtocol','emergencyCloseProtocol','emergencyClose','preflightEvidence','automatic','validation'}!={'observedMs','bootId','activeSkillId','activeHash','revision','state','checks','blockers','receipts'}:raise SkillError('SKILL_ENGINE_REPORT_INVALID')
+    if 'validation' in p and not valid_validation_status(p['validation']):raise SkillError('SKILL_VALIDATION_REPORT_INVALID')
     auto=p.get('automatic')
     if auto is not None:
         if not isinstance(auto,dict) or set(auto)!={'protocol','enabled','completedCycles','cycleRequestId'} or auto['protocol']!=AUTOMATIC_PROTOCOL or type(auto['enabled']) is not bool or type(auto['completedCycles']) is not int or not 0<=auto['completedCycles']<=2**53-1:raise SkillError('SKILL_AUTOMATIC_REPORT_INVALID')
