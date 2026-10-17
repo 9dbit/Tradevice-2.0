@@ -12,6 +12,7 @@ CHECKS=LEGACY_CHECKS+('atr','adx')
 STATES={'OFF','READY','AUTO_WAITING','STARTING','RUNNING','PAUSING','PAUSED','STOPPING','STOPPED','BLOCKED','RECOVERY_REQUIRED'}
 BUSY={'AUTO_WAITING','STARTING','RUNNING','PAUSING','STOPPING','RECOVERY_REQUIRED'}
 AUTOMATIC_PROTOCOL='V51_AUTOMATIC_20261017'
+MAX_BASE_LOT_FOR_RISK_RESEARCH=0.01
 
 def automatic_settings(settings):return isinstance(settings,dict) and settings.get('cycleMode')=='AUTOMATIC'
 def execution_settings(settings):return {k:v for k,v in settings.items() if k!='cycleMode'} if isinstance(settings,dict) else settings
@@ -47,6 +48,7 @@ def start_blockers(s,selection,now,news_clear):
     for key in CHECKS:
         if s.get('checks',{}).get(key) is not True:errors.append('PREFLIGHT_'+key.upper())
     if not news_clear:errors.append('NEWS_NOT_CLEAR')
+    if 'EXPOSURE_PLAN_CAP_EXCEEDED' in s.get('blockers',[]):errors.append('EXPOSURE_PLAN_CAP_EXCEEDED')
     return errors
 
 def locked(conn):
@@ -111,8 +113,12 @@ def validate_command(p):
         if mode=='AUTOMATIC':
             if p['targetCycles'] is not None:raise SkillError('SKILL_DEMO_AUTHORIZATION_REQUIRED')
         elif type(p['targetCycles']) is not int or not 1<=p['targetCycles']<=10:raise SkillError('SKILL_DEMO_AUTHORIZATION_REQUIRED')
-        try:validate_settings(p.get('settings'))
+        try:settings=validate_settings(p.get('settings'))
         except (ValueError,TypeError):raise SkillError('SKILL_SETTINGS_INVALID') from None
+        # The reviewed 5x2 prearmed V5.1 ladder at baseLot 0.01 books 0.38
+        # gross lots. Larger settings exceed the temporary 0.40-lot cap.
+        # This is a server-side deny, not client-side lot-size rewriting.
+        if settings['baseLot']!=MAX_BASE_LOT_FOR_RISK_RESEARCH:raise SkillError('SKILL_EXPOSURE_PLAN_CAP_EXCEEDED',409)
     elif p.get('settings') is not None or p['targetCycles'] is not None or p['confirmDemo'] is not False:raise SkillError('SKILL_ENGINE_COMMAND_INVALID')
 
 def submit(dsn,p,news_clear):
