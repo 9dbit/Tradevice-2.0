@@ -26,7 +26,7 @@ APPROVED_SKILL = "bcdefbaf270419f2dbe5968bd10e5a88dc3fe4efc7086fef5b2869fb40f81c
 
 # All hashes below were measured on TRADEVICEPC against the intended commit.
 FILES = {
-    "bridge.py": ("d0025feb6d71e6371251f176183d7b03177b24cb4997013402917de2bde738dc", "e5456ed89241cee191c2e115b2da84683c4609ee20ec07520824842ae866c9a6"),
+    "bridge.py": ("d0025feb6d71e6371251f176183d7b03177b24cb4997013402917de2bde738dc", "803d0bbf432156e47c6897ccc06e48a8f7b957fe354253a76874dc4a3f1fb729"),
     "v51_demo_batch_runtime.py": ("f75dbe2853fdcc453458e9636f339019f41066224bed55618104a53c498dedab", "7f3fb6d1aaed454282406fd9ad31e0e1cf36399ec226974cb44f54f872d45308"),
     "validation_gate.py": (None, "6511704fcef4be2a3676354d7adcf0de16af8265206f07fa03817f7a073e1253"),
 }
