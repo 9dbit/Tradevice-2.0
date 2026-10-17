@@ -25,6 +25,7 @@ export function engineStatus(runtime,fresh,selectedChecked){
 }
 export function automaticMessage(runtime,fresh){
  if(!fresh)return 'Automatic state unavailable · waiting for fresh engine evidence.';
+ if(runtime?.validation?.status==='LOCKED_VALIDATION_PENDING')return 'Automatic locked pending broker UAT, full execution replay and out-of-sample validation. This cannot be unlocked by selecting the mode.';
  if(!runtime?.automatic)return 'Automatic support has not been confirmed by this engine.';
  if(!runtime.automatic.enabled)return 'Automatic off. Selecting this mode does not enable it; use Enable Automatic to arm it.';
  return `Automatic enabled · ${runtime.automatic.completedCycles} cycles completed in this activation. ${runtime.state==='AUTO_WAITING'?'Waiting for every entry check to pass.':'Current cycle remains supervised.'}`;
