@@ -16,8 +16,7 @@ def test_auto_cannot_arm_with_valid_broker_and_fresh_checks(tmp_path):
  assert c.state=='READY' and r.started==0
  assert c.db.execute('SELECT request_id FROM active_run WHERE singleton=1').fetchone()==(None,)
  assert c.snapshot()['automatic']['enabled'] is False
- assert c.snapshot()['validation']==status()
- assert c.snapshot()['validation']['approvalId'] is None
+ assert 'validation' not in c.snapshot()  # legacy API accepts known fields only
 
 def test_auto_direct_api_envelope_rejected_even_if_preflight_stale(tmp_path):
  c,r,skill=setup(tmp_path)
@@ -82,3 +81,15 @@ def test_restart_does_not_restore_automatic(tmp_path):
  other=b.Controller(tmp_path/'state.db',Runtime())
  assert other.automatic is False and not other.running()
  assert other.db.execute('SELECT request_id FROM active_run WHERE singleton=1').fetchone()==(None,)
+
+def test_validation_evidence_negotiates_only_after_api_ack(tmp_path):
+ from validation_gate import PROTOCOL
+ c,r,skill=setup(tmp_path)
+ assert 'validation' not in c.snapshot()
+ base=dict(killSwitch=False,selection=dict(skillId=skill,revision=1,sha256=b.APPROVED_HASH),commands=[],confirmed=[])
+ c.received(base|{'validationEvidencePolicy':PROTOCOL})
+ assert c.snapshot()['validation']==status()
+ assert c.snapshot()['validation']['approvalId'] is None
+ c.received(base)
+ assert 'validation' not in c.snapshot()
+ assert r.started==0
