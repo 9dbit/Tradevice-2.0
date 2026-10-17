@@ -16,6 +16,8 @@ def test_auto_cannot_arm_with_valid_broker_and_fresh_checks(tmp_path):
  assert c.state=='READY' and r.started==0
  assert c.db.execute('SELECT request_id FROM active_run WHERE singleton=1').fetchone()==(None,)
  assert c.snapshot()['automatic']['enabled'] is False
+ assert c.snapshot()['validation']==status()
+ assert c.snapshot()['validation']['approvalId'] is None
 
 def test_auto_direct_api_envelope_rejected_even_if_preflight_stale(tmp_path):
  c,r,skill=setup(tmp_path)
