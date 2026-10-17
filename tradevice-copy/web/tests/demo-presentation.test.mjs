@@ -35,3 +35,9 @@ test('unconfirmed and rejected commands never read as success',()=>{
  assert.match(commandMessage({...request,phase:'UNCERTAIN'},stopped,true),/Not confirmed/);
  assert.equal(commandMessage({...request,phase:'REJECTED',error:'SKILL_ENGINE_BLOCKED'},stopped,true),'SKILL_ENGINE_BLOCKED');
 });
+
+test('validation lock distinguishes Automatic from off or waiting',()=>{
+ const locked={...stopped,validation:{protocol:'V51_VALIDATION_LOCK_20261017',status:'LOCKED_VALIDATION_PENDING',automaticAllowed:false,maxCustomCycles:1}};
+ assert.match(automaticMessage(locked,true),/Automatic locked pending broker UAT/);
+ assert.doesNotMatch(automaticMessage(locked,true),/Enable Automatic/);
+});
