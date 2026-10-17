@@ -74,6 +74,9 @@ class Runtime:
   a=MT5ArcAdapter(mt5,allow_execution=False)
   try:
    a.initialize();configure_adapter(a,settings or default_settings());a.guard_identity();account,terminal,symbol=a.identity()
+   from v51_exposure_policy import check_arming_plan,ResearchRiskBlocked
+   try:check_arming_plan(a.cfg)
+   except ResearchRiskBlocked as exc:blockers.append(str(exc))
    checks['identity']=account.trade_mode==mt5.ACCOUNT_TRADE_MODE_DEMO and account.server=='Exness-MT5Trial14' and symbol.name=='XAUUSDm'
    pos,orders=mt5.positions_get(),mt5.orders_get()
    checks['brokerFlat']=pos is not None and orders is not None and not pos and not orders
@@ -157,6 +160,9 @@ class Runtime:
      if time.time()*1000>=expires_ms:raise ArcSafetyError('DASHBOARD_START_EXPIRED')
     outer.fingerprint()
     configure_adapter(adapter,outer.settings)
+    from v51_exposure_policy import check_arming_plan,ResearchRiskBlocked
+    try:check_arming_plan(adapter.cfg)
+    except ResearchRiskBlocked as exc:raise ArcSafetyError(str(exc)) from None
     if outer.reason:raise ArcSafetyError('DASHBOARD_ENTRY_SUSPENDED')
     result=super().admission(adapter)
     # Re-evaluate after acknowledgement/calendar waits, before EVERY new cycle.
@@ -166,7 +172,9 @@ class Runtime:
     return result
    def engine(self,*args,**kwargs):
     kwargs['cfg']=args[0].cfg
-    engine=super().engine(*args,**kwargs)
+    from v51_loss_capped_engine import LossCappedArcEngine
+    engine=LossCappedArcEngine(*args,**kwargs)
+    engine.news_provider=lambda:self.decision(active_cycle=bool(engine.state.get('cycle_id')))
     original=engine.news_provider
     def admission_guard():
      if len((self.manifest or {}).get('slots',[]))<=1 and not engine.state.get('cycle_id') and time.time()*1000>=expires_ms:
