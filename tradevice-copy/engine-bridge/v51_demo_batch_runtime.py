@@ -124,6 +124,10 @@ class Session:
   finally:self.calendar.close();mt5.shutdown()
 
 def main():
+ # Legacy ten-cycle CLI cannot bypass the validation release lock.
+ # This exit happens before MT5 initialization or batch directory creation.
+ from validation_gate import start_blocker
+ if start_blocker('CUSTOM',10):raise ArcSafetyError('VALIDATION_LEGACY_MULTI_CYCLE_DISABLED')
  p=argparse.ArgumentParser();p.add_argument('--execute-demo',action='store_true');p.add_argument('--batch-id',required=True)
  p.add_argument('--continue-from')
  a=p.parse_args()
