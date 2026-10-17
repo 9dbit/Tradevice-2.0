@@ -4,7 +4,7 @@ Only the locally reviewed v51_dashboard_runtime adapter can perform demo executi
 import hashlib,hmac,http.client,json,os,re,sqlite3,threading,time,uuid
 from pathlib import Path
 from demo_settings import SETTINGS_PROTOCOL,validate_settings
-from validation_gate import start_blocker,automatic_blocker,status as validation_status
+from validation_gate import start_blocker,automatic_blocker,status as validation_status,PROTOCOL as VALIDATION_PROTOCOL
 
 API='https://copy-api-staging-4c33.up.railway.app/internal/master/demo/exchange'
 APPROVED_HASH='bcdefbaf270419f2dbe5968bd10e5a88dc3fe4efc7086fef5b2869fb40f81cee'
@@ -49,7 +49,7 @@ class Controller:
   interrupted=self.db.execute('SELECT request_id FROM active_run WHERE singleton=1').fetchone()[0]
   self.recovery=bool(interrupted) or bool(self.db.execute("SELECT 1 FROM receipts WHERE status='UNCERTAIN' LIMIT 1").fetchone())
   self.active=None;self.revision=0;self.state='RECOVERY_REQUIRED' if self.recovery else 'OFF';self.thread=None;self.emergency_thread=None
-  self.kill=True;self.reason=None;self.mode=None;self.last_ok=0;self.last_stamp=0;self.calendar_protocol=False
+  self.kill=True;self.reason=None;self.mode=None;self.last_ok=0;self.last_stamp=0;self.calendar_protocol=False;self.validation_protocol=False
   self.last_reconcile=-float('inf')
   self.automatic=False;self.auto_completed=0;self.auto_cycle=None;self.auto_blockers=[];self.auto_wake=threading.Event()
  def reconcile_completed_close(self):
@@ -96,8 +96,9 @@ class Controller:
    receipts=[dict(requestId=i,status=s,errorCode=e,**({'diagnostics':json.loads(d)} if d else {})) for i,s,e,d in self.db.execute("SELECT id,status,error,diagnostics FROM receipts WHERE status!='PROCESSING' AND confirmed=0 LIMIT 16")]
    payload=dict(settingsProtocol=SETTINGS_PROTOCOL,observedMs=self.last_stamp,bootId=self.boot,activeSkillId=self.active,
     activeHash=APPROVED_HASH if self.active else None,revision=self.revision,state=self.state,
-    checks=checks,blockers=list(dict.fromkeys(blockers))[:20],receipts=receipts,
-   validation=validation_status())
+    checks=checks,blockers=list(dict.fromkeys(blockers))[:20],receipts=receipts)
+   # Old API rejects unknown fields. Negotiate signed evidence first.
+   if self.validation_protocol:payload['validation']=validation_status()
    if hasattr(self.runtime,'preflight_evidence'):payload['preflightEvidence']=self.runtime.preflight_evidence()
    payload['automatic']=dict(protocol=AUTOMATIC_PROTOCOL,enabled=self.automatic,completedCycles=self.auto_completed,cycleRequestId=self.auto_cycle)
    if self.calendar_protocol:payload['news']=self.runtime.news_snapshot() if hasattr(self.runtime,'news_snapshot') else None
@@ -113,6 +114,7 @@ class Controller:
  def received(self,result):
   with self.lock:
    self.calendar_protocol=result.get('calendarEvidencePolicy')=='SCHEDULE_6H_V1'
+   self.validation_protocol=result.get('validationEvidencePolicy')==VALIDATION_PROTOCOL
    self.last_ok=self.clock();self.kill=result.get('killSwitch') is not False
    if self.automatic and self.kill:self.cancel_automatic('MANUAL_KILL')
    if self.kill and self.running():self.runtime.suspend('MANUAL_KILL');self.state='STOPPING'
