@@ -20,6 +20,8 @@ export function marginRequirements(e){
 }
 export function failureRequirement(code){
  const c=String(code||'').replace(/^SKILL_START_/,'');
+ if(/AUTOMATIC_VALIDATION_REQUIRED/.test(c))return 'Automatic remains locked pending independent broker UAT, full execution replay, and out-of-sample risk validation. Start cannot be enabled from the dashboard or API.';
+ if(/VALIDATION_SINGLE_CYCLE_ONLY/.test(c))return 'Only one custom demo cycle per explicit Start is permitted during validation. Set Cycle count to 1; Automatic remains locked.';
  if(/MARKET_|PREFLIGHT_ATR|ATR_OUTSIDE_RANGE/.test(c))return /MARKET_/.test(c)?'ATR/ADX data is unavailable, stale or incomplete. Wait for fresh completed M1/M5 candles and sufficient broker history. Reset cannot bypass this check.':'Wait for ATR14 M1 to return within the rolling P20–P60 range shown below. This is a new-cycle entry filter, not the basket TP amount.';
  if(/ADX/.test(c))return 'Wait for ADX14 on both M1 and M5 to remain below 20 for three completed candles on each timeframe. Existing basket supervision continues.';
  if(/EXPOSURE_PLAN_CAP_EXCEEDED|EXPOSURE_DISPATCH_CAP_EXCEEDED|SKILL_EXPOSURE_PLAN_CAP_EXCEEDED/.test(c))return 'Gross exposure is capped at 0.40 lot including BOTH five-level pending ladders and open positions. Select Base Lot 0.01 for this research profile; a higher lot is rejected before broker order creation. This is a risk limit, not insufficient funds.';
