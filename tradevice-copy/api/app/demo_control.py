@@ -5,7 +5,7 @@ from psycopg.types.json import Jsonb
 from .master_skills import SkillError
 from .demo_settings import SETTINGS_PROTOCOL,validate_settings
 from .demo_pool import connection
-from .validation_gate import automatic_blocker, start_blocker, status as validation_status,valid_status as valid_validation_status
+from .validation_gate import automatic_blocker, start_blocker, status as validation_status,valid_status as valid_validation_status,PROTOCOL as VALIDATION_PROTOCOL
 
 APPROVED_HASH='bcdefbaf270419f2dbe5968bd10e5a88dc3fe4efc7086fef5b2869fb40f81cee'
 LEGACY_CHECKS=('identity','brokerFlat','quote','spread','margin','commission','news','reconciled','engineHash')
@@ -270,7 +270,7 @@ def exchange(dsn,p):
         safety=safety_query.fetchone()
         package=package_query.fetchone() if package_query else None
         selected_hash=package['sha256'] if package and package['kind']=='BUILTIN' and package['sha256']==APPROVED_HASH else None
-        return dict(serverMs=now,calendarEvidencePolicy='SCHEDULE_6H_V1',killSwitch=not safety or safety['kill_switch'] is not False,selection=dict(skillId=str(sel['selected_skill_id']) if sel['selected_skill_id'] else None,revision=sel['revision'],sha256=selected_hash),confirmed=confirmed,
+        return dict(serverMs=now,calendarEvidencePolicy='SCHEDULE_6H_V1',validationEvidencePolicy=VALIDATION_PROTOCOL,killSwitch=not safety or safety['kill_switch'] is not False,selection=dict(skillId=str(sel['selected_skill_id']) if sel['selected_skill_id'] else None,revision=sel['revision'],sha256=selected_hash),confirmed=confirmed,
             commands=[dict(requestId=str(c['request_id']),action=c['action'],confirmClose=c['action']=='EMERGENCY_CLOSE',**({'cycleMode':'AUTOMATIC'} if automatic_settings(c.get('settings')) else {}),targetCycles=None if automatic_settings(c.get('settings')) else c['target_cycles'],settings=execution_settings(c.get('settings')),skillId=str(c['skill_id']) if c['skill_id'] else None,sha256=c['skill_hash'],revision=c['selection_revision'],expiresMs=int(c['expires_at'].timestamp()*1000)) for c in cmds])
 
 def signature(secret,stamp,body):
