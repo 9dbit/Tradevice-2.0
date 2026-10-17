@@ -19,7 +19,7 @@ export function factorDetails(key,runtime,settings,now){
  const fresh=runtime?.online===true&&Number.isFinite(runtime.observedMs)&&now-runtime.observedMs>=0&&now-runtime.observedMs<=8000;
  const deferred=preflightDeferred(runtime,fresh),checked=selectedPreflightChecked(runtime,settings,now),e=runtime?.preflightEvidence;
  const state=fresh&&!deferred&&!checked&&['margin','engineReady'].includes(key)?'Not checked':preflightStatus(runtime,fresh,key);
- const matches=b=>key==='engineReady'||b==='PREFLIGHT_'+key.toUpperCase()||({margin:/MARGIN|ECONOMICS/,adx:/ADX|MARKET_/,atr:/ATR|MARKET_/,reconciled:/RECONCIL|RECOVERY|UNRESOLVED/,engineHash:/HASH|FINGERPRINT|ACK|REVISION/,news:/NEWS/,brokerFlat:/BROKERFLAT/,quote:/QUOTE/,spread:/SPREAD/,identity:/IDENTITY/,commission:/COMMISSION/}[key]?.test(b));
+ const matches=b=>key==='engineReady'||b==='PREFLIGHT_'+key.toUpperCase()||({margin:/MARGIN|ECONOMICS|EXPOSURE_/,adx:/ADX|MARKET_/,atr:/ATR|MARKET_/,reconciled:/RECONCIL|RECOVERY|UNRESOLVED/,engineHash:/HASH|FINGERPRINT|ACK|REVISION/,news:/NEWS/,brokerFlat:/BROKERFLAT/,quote:/QUOTE/,spread:/SPREAD/,identity:/IDENTITY/,commission:/COMMISSION/}[key]?.test(b));
  const blockers=(runtime?.blockers||[]).filter(matches);
  const rows=[['Engine state',runtime?.state||'Unavailable'],['Selected configuration',settingsLabel(settings)],['Engine-checked configuration',settingsLabel(e?.settings)]];
  if(key==='margin')rows.push(...marginRequirements(e));
