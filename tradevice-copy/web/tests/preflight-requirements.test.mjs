@@ -74,3 +74,10 @@ test('each preflight factor has distinct popup information; mismatch never means
  assert.match(factorDetails('margin',r,{...settings,baseLot:.1},11000).note,/does not mean insufficient/);
  assert.equal(factorDetails('margin',r,settings,19000).state,'Stale');
 });
+
+test('risk validation rejection has a concrete safe requirement',()=>{
+ assert.match(failureRequirement('SKILL_AUTOMATIC_VALIDATION_REQUIRED'),/Automatic remains locked/);
+ assert.match(failureRequirement('AUTOMATIC_VALIDATION_REQUIRED'),/out-of-sample risk validation/);
+ assert.match(failureRequirement('SKILL_VALIDATION_SINGLE_CYCLE_ONLY'),/Cycle count to 1/);
+ assert.match(failureRequirement('VALIDATION_SINGLE_CYCLE_ONLY'),/Automatic remains locked/);
+});

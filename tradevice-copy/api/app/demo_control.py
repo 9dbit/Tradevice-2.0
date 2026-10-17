@@ -5,6 +5,7 @@ from psycopg.types.json import Jsonb
 from .master_skills import SkillError
 from .demo_settings import SETTINGS_PROTOCOL,validate_settings
 from .demo_pool import connection
+from .validation_gate import automatic_blocker, start_blocker, status as validation_status,valid_status as valid_validation_status,PROTOCOL as VALIDATION_PROTOCOL
 
 APPROVED_HASH='bcdefbaf270419f2dbe5968bd10e5a88dc3fe4efc7086fef5b2869fb40f81cee'
 LEGACY_CHECKS=('identity','brokerFlat','quote','spread','margin','commission','news','reconciled','engineHash')
@@ -23,7 +24,8 @@ def arm_blockers(s,selection,now):
     errors=[e for e in errors if not e.startswith('PREFLIGHT_')]
     if (s.get('automatic') or {}).get('protocol')!=AUTOMATIC_PROTOCOL:errors.append('AUTOMATIC_UPGRADE_REQUIRED')
     if (s.get('automatic') or {}).get('enabled'):errors.append('AUTOMATIC_ALREADY_ENABLED')
-    return errors
+    errors.append(automatic_blocker())
+    return list(dict.fromkeys(errors))
 EMERGENCY_PROTOCOL='V51_EMERGENCY_CLOSE_20261015'
 EMERGENCY_PROTOCOLS={EMERGENCY_PROTOCOL,'V51_EMERGENCY_CLOSE_20261016'}
 
@@ -89,7 +91,10 @@ def projection(conn,news_clear=False):
         revision=s.get('revision') if online else None,checks=s.get('checks',{}) if online else {},
         blockers=list(dict.fromkeys(blockers+s.get('blockers',[]))),canStart=not blockers,
         preflightEvidence=s.get('preflightEvidence'),
-        automatic=s.get('automatic'),canArmAutomatic=not auto_errors,
+        automatic=s.get('automatic'),canArmAutomatic=False,
+        validation=validation_status(),
+        bridgeValidationVerified=bool(online and valid_validation_status(s.get('validation'))),
+        riskPolicy=dict(policy='V51_RESEARCH_RISK_CEILING_20261017',maxBookedLots=0.40,maxCycleLossTriggerUsd=30.0,maxEquityRiskFraction=0.03,source='policy_configuration_not_live_exposure'),
         emergencyCloseProtocol=s.get('emergencyCloseProtocol'),emergencyClose=s.get('emergencyClose'),
         commands=[dict(requestId=str(c['request_id']),action=c['action'],status=c['status'],errorCode=c['error_code'],diagnostics=c.get('diagnostics')) for c in row['history']])
 
@@ -110,6 +115,8 @@ def validate_command(p):
     if type(p['expectedRevision']) is not int or not 0<=p['expectedRevision']<=2**53-1:raise SkillError('SKILL_REVISION_INVALID')
     if p['action']=='START':
         if p['confirmDemo'] is not True:raise SkillError('SKILL_DEMO_AUTHORIZATION_REQUIRED')
+        validation_error=start_blocker(mode,p.get('targetCycles'))
+        if validation_error:raise SkillError('SKILL_'+validation_error,409)
         if mode=='AUTOMATIC':
             if p['targetCycles'] is not None:raise SkillError('SKILL_DEMO_AUTHORIZATION_REQUIRED')
         elif type(p['targetCycles']) is not int or not 1<=p['targetCycles']<=10:raise SkillError('SKILL_DEMO_AUTHORIZATION_REQUIRED')
@@ -196,7 +203,8 @@ def validate_preflight_evidence(e,now):
     if e['checks']['margin'] and m['shortfall']>0:raise invalid()
 
 def validate_snapshot(p,now):
-    if not isinstance(p,dict) or set(p)-{'news','settingsProtocol','emergencyCloseProtocol','emergencyClose','preflightEvidence','automatic'}!={'observedMs','bootId','activeSkillId','activeHash','revision','state','checks','blockers','receipts'}:raise SkillError('SKILL_ENGINE_REPORT_INVALID')
+    if not isinstance(p,dict) or set(p)-{'news','settingsProtocol','emergencyCloseProtocol','emergencyClose','preflightEvidence','automatic','validation'}!={'observedMs','bootId','activeSkillId','activeHash','revision','state','checks','blockers','receipts'}:raise SkillError('SKILL_ENGINE_REPORT_INVALID')
+    if 'validation' in p and not valid_validation_status(p['validation']):raise SkillError('SKILL_VALIDATION_REPORT_INVALID')
     auto=p.get('automatic')
     if auto is not None:
         if not isinstance(auto,dict) or set(auto)!={'protocol','enabled','completedCycles','cycleRequestId'} or auto['protocol']!=AUTOMATIC_PROTOCOL or type(auto['enabled']) is not bool or type(auto['completedCycles']) is not int or not 0<=auto['completedCycles']<=2**53-1:raise SkillError('SKILL_AUTOMATIC_REPORT_INVALID')
@@ -262,7 +270,7 @@ def exchange(dsn,p):
         safety=safety_query.fetchone()
         package=package_query.fetchone() if package_query else None
         selected_hash=package['sha256'] if package and package['kind']=='BUILTIN' and package['sha256']==APPROVED_HASH else None
-        return dict(serverMs=now,calendarEvidencePolicy='SCHEDULE_6H_V1',killSwitch=not safety or safety['kill_switch'] is not False,selection=dict(skillId=str(sel['selected_skill_id']) if sel['selected_skill_id'] else None,revision=sel['revision'],sha256=selected_hash),confirmed=confirmed,
+        return dict(serverMs=now,calendarEvidencePolicy='SCHEDULE_6H_V1',validationEvidencePolicy=VALIDATION_PROTOCOL,killSwitch=not safety or safety['kill_switch'] is not False,selection=dict(skillId=str(sel['selected_skill_id']) if sel['selected_skill_id'] else None,revision=sel['revision'],sha256=selected_hash),confirmed=confirmed,
             commands=[dict(requestId=str(c['request_id']),action=c['action'],confirmClose=c['action']=='EMERGENCY_CLOSE',**({'cycleMode':'AUTOMATIC'} if automatic_settings(c.get('settings')) else {}),targetCycles=None if automatic_settings(c.get('settings')) else c['target_cycles'],settings=execution_settings(c.get('settings')),skillId=str(c['skill_id']) if c['skill_id'] else None,sha256=c['skill_hash'],revision=c['selection_revision'],expiresMs=int(c['expires_at'].timestamp()*1000)) for c in cmds])
 
 def signature(secret,stamp,body):

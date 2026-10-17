@@ -4,6 +4,7 @@ Only the locally reviewed v51_dashboard_runtime adapter can perform demo executi
 import hashlib,hmac,http.client,json,os,re,sqlite3,threading,time,uuid
 from pathlib import Path
 from demo_settings import SETTINGS_PROTOCOL,validate_settings
+from validation_gate import start_blocker,automatic_blocker,status as validation_status,PROTOCOL as VALIDATION_PROTOCOL
 
 API='https://copy-api-staging-4c33.up.railway.app/internal/master/demo/exchange'
 APPROVED_HASH='bcdefbaf270419f2dbe5968bd10e5a88dc3fe4efc7086fef5b2869fb40f81cee'
@@ -48,7 +49,7 @@ class Controller:
   interrupted=self.db.execute('SELECT request_id FROM active_run WHERE singleton=1').fetchone()[0]
   self.recovery=bool(interrupted) or bool(self.db.execute("SELECT 1 FROM receipts WHERE status='UNCERTAIN' LIMIT 1").fetchone())
   self.active=None;self.revision=0;self.state='RECOVERY_REQUIRED' if self.recovery else 'OFF';self.thread=None;self.emergency_thread=None
-  self.kill=True;self.reason=None;self.mode=None;self.last_ok=0;self.last_stamp=0;self.calendar_protocol=False
+  self.kill=True;self.reason=None;self.mode=None;self.last_ok=0;self.last_stamp=0;self.calendar_protocol=False;self.validation_protocol=False
   self.last_reconcile=-float('inf')
   self.automatic=False;self.auto_completed=0;self.auto_cycle=None;self.auto_blockers=[];self.auto_wake=threading.Event()
  def reconcile_completed_close(self):
@@ -96,6 +97,8 @@ class Controller:
    payload=dict(settingsProtocol=SETTINGS_PROTOCOL,observedMs=self.last_stamp,bootId=self.boot,activeSkillId=self.active,
     activeHash=APPROVED_HASH if self.active else None,revision=self.revision,state=self.state,
     checks=checks,blockers=list(dict.fromkeys(blockers))[:20],receipts=receipts)
+   # Old API rejects unknown fields. Negotiate signed evidence first.
+   if self.validation_protocol:payload['validation']=validation_status()
    if hasattr(self.runtime,'preflight_evidence'):payload['preflightEvidence']=self.runtime.preflight_evidence()
    payload['automatic']=dict(protocol=AUTOMATIC_PROTOCOL,enabled=self.automatic,completedCycles=self.auto_completed,cycleRequestId=self.auto_cycle)
    if self.calendar_protocol:payload['news']=self.runtime.news_snapshot() if hasattr(self.runtime,'news_snapshot') else None
@@ -111,6 +114,7 @@ class Controller:
  def received(self,result):
   with self.lock:
    self.calendar_protocol=result.get('calendarEvidencePolicy')=='SCHEDULE_6H_V1'
+   self.validation_protocol=result.get('validationEvidencePolicy')==VALIDATION_PROTOCOL
    self.last_ok=self.clock();self.kill=result.get('killSwitch') is not False
    if self.automatic and self.kill:self.cancel_automatic('MANUAL_KILL')
    if self.kill and self.running():self.runtime.suspend('MANUAL_KILL');self.state='STOPPING'
@@ -202,6 +206,9 @@ class Controller:
    self.acknowledge(rid,'REJECTED','ENGINE_NOT_READY');return
   if not self.active or (c['skillId'],c['sha256'],c['revision'])!=(self.active,APPROVED_HASH,self.revision):
    self.acknowledge(rid,'REJECTED','SKILL_ENGINE_ACK_MISMATCH');return
+  gate=start_blocker(c.get('cycleMode','CUSTOM'),c.get('targetCycles'))
+  if gate:
+   self.acknowledge(rid,'REJECTED',gate);return
   if c.get('cycleMode')=='AUTOMATIC':
    if c.get('targetCycles') is not None:self.acknowledge(rid,'REJECTED','AUTOMATIC_TARGET_INVALID');return
    try:self.runtime.activate(APPROVED_HASH);settings=validate_settings(c.get('settings'))
@@ -251,47 +258,14 @@ class Controller:
  def cancel_automatic(self,reason):
   self.automatic=False;self.auto_wake.set();self.runtime.suspend(reason);self.reason=reason;self.state='STOPPING'
  def execute_automatic(self,settings):
-  # One explicit arming authorizes repeated single-cycle runs, never adoption.
-  # Each child has a fresh durable marker and retains the existing guarded runner.
-  try:
-   while self.automatic:
-    with self.lock:
-     if self.kill or self.clock()-self.last_ok>8:
-      self.cancel_automatic('BRIDGE_CONNECTION_LOST' if not self.kill else 'MANUAL_KILL');break
-     self.state='AUTO_WAITING'
-    try:checks,blockers=self.runtime.preflight(settings)
-    except Exception:checks={};blockers=['PREFLIGHT_UNAVAILABLE']
-    with self.lock:
-     self.auto_blockers=list(dict.fromkeys(blockers+['PREFLIGHT_'+k.upper() for k in CHECKS if checks.get(k) is not True]))
-     if not self.automatic:break
-     if self.kill or self.clock()-self.last_ok>8:
-      self.cancel_automatic('BRIDGE_CONNECTION_LOST' if not self.kill else 'MANUAL_KILL');break
-     if not self.auto_blockers:
-      self.runtime.activate(APPROVED_HASH)
-      rid=str(uuid.uuid4());self.auto_cycle=rid
-      self.db.execute('UPDATE active_run SET request_id=? WHERE singleton=1',(rid,))
-      self.runtime.prepare(settings);self.state='STARTING';self.reason=None
-    if self.auto_blockers:
-     self.auto_wake.wait(1);continue
-    def ready():
-     with self.lock:
-      if self.state=='STARTING':self.state='RUNNING'
-    flat=self.runtime.run(rid,1,ready,int(self.clock()*1000)+60000)
-    with self.lock:
-     if self.mode=='EMERGENCY_CLOSE':break
-     if flat is not True and flat!='RISK_STOP_FLAT':
-      self.recovery=True;self.state='RECOVERY_REQUIRED';self.reason='BROKER_FLAT_UNCONFIRMED';break
-     self.db.execute('UPDATE active_run SET request_id=NULL WHERE singleton=1')
-     if getattr(self.runtime,'last_cycle_completed',False):self.auto_completed+=1
-     if flat=='RISK_STOP_FLAT':self.reason='AUTOMATIC_RISK_STOP';break
-    self.auto_wake.wait(1)
-  except Exception:
-   with self.lock:
-    if self.mode!='EMERGENCY_CLOSE':self.recovery=True;self.state='RECOVERY_REQUIRED';self.reason='ENGINE_RECOVERY_REQUIRED'
-  finally:
-   with self.lock:
-    self.automatic=False
-    if not self.recovery and self.mode!='EMERGENCY_CLOSE':self.state='PAUSED' if self.mode=='PAUSE' else 'STOPPED'
+  # Defense in depth: even direct invocation of the legacy worker is locked.
+  # No settings, heartbeat or remote command authorizes an automatic cycle.
+  with self.lock:
+   self.automatic=False
+   self.auto_wake.set()
+   self.reason=automatic_blocker()
+   if self.state=='AUTO_WAITING':self.state='STOPPED'
+  return
  def disconnected(self):
   with self.lock:
    if self.automatic and self.clock()-self.last_ok>8:self.cancel_automatic('BRIDGE_CONNECTION_LOST')
