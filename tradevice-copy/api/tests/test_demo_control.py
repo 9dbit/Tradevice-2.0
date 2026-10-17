@@ -74,6 +74,16 @@ def test_report_validates_provenance_and_values():
  for patch in [dict(observedMs=0),dict(activeHash='x'),dict(checks={}),dict(state='LIVE'),dict(blockers=['private text']),dict(receipts=[{}]),dict(revision=True)]:
   with pytest.raises(SkillError):validate_snapshot(s|patch,s['observedMs'])
 
+def test_validation_snapshot_is_signed_and_cannot_claim_approval():
+ from app.validation_gate import status
+ p=snapshot()|{'validation':status()}
+ validate_snapshot(p,p['observedMs'])
+ for v in (status()|{'automaticAllowed':True},status()|{'approvalId':'faked'},
+           status()|{'maxCustomCycles':5},status()|{'extra':True},
+           status()|{'status':'APPROVED'},None,{}):
+  with pytest.raises(SkillError,match='SKILL_VALIDATION_REPORT_INVALID'):
+   validate_snapshot(p|{'validation':v},p['observedMs'])
+
 def test_hmac_separate_namespace_body_and_time():
  body=b'{}';stamp=str(int(time.time()*1000));secret='a'*64
  authenticate(secret,stamp,signature(secret,stamp,body),body,int(stamp))
@@ -113,6 +123,7 @@ def test_projection_uses_consistent_snapshot_and_preserves_guards(age,kill,uncon
  assert result['canArmAutomatic'] is False
  assert result['validation']['status']=='LOCKED_VALIDATION_PENDING'
  assert result['validation']['automaticAllowed'] is False
+ assert result['bridgeValidationVerified'] is False
  assert result['riskPolicy']['maxBookedLots']==0.40
  assert result['online'] is (age<=8000)
  if age>8000:assert result['activeSkillId'] is None and result['checks']=={}
