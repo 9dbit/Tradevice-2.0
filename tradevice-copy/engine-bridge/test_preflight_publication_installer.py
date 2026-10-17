@@ -90,8 +90,12 @@ class PublicationInstallerTests(unittest.TestCase):
         status, _, _ = installer.source_check()
         self.assertEqual(status, "already_installed")
         with patch.object(installer, "broker_flat"):
-            with self.assertRaisesRegex(ValueError, "INSTALLED_SOURCE_NOT_FINGERPRINTED"):
+            with self.assertRaisesRegex(ValueError, "FINGERPRINT_FILE_MISMATCH"):
                 installer.validate()
+            self.manifest["files"]["v51_dashboard_runtime.py"] = sha(NEW)
+            self.fp.write_text(json.dumps(self.manifest), encoding="utf-8")
+            status, _, _, _, _ = installer.validate()
+            self.assertEqual(status, "already_installed")
 
     def test_active_run_blocks_update(self):
         db = sqlite3.connect(self.db)
