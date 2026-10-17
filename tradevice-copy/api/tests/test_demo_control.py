@@ -57,6 +57,7 @@ def test_all_start_gates_and_skill_binding():
  for k in CHECKS:
   assert 'PREFLIGHT_'+k.upper() in start_blockers(s|{'checks':s['checks']|{k:False}},sel,now,True)
  assert 'NEWS_NOT_CLEAR' in start_blockers(s,sel,now,False)
+ assert 'EXPOSURE_PLAN_CAP_EXCEEDED' in start_blockers(s|{'blockers':['EXPOSURE_PLAN_CAP_EXCEEDED']},sel,now,True)
  assert 'ENGINE_OFFLINE_OR_STALE' in start_blockers(s,sel,now+8001,True)
  assert 'SKILL_ENGINE_ACK_MISMATCH' in start_blockers(s,sel|{'revision':2},now,True)
  assert 'ENGINE_NOT_READY' in start_blockers(s|{'state':'RUNNING'},sel,now,True)
@@ -118,7 +119,8 @@ def test_settings_upgrade_required_and_invalid_parameters_rejected():
  assert 'ENGINE_SETTINGS_UPGRADE_REQUIRED' in start_blockers(s|{'settingsProtocol':None},sel,s['observedMs'],True)
  for settings in [None,{},default_settings()|{'baseLot':.11},default_settings()|{'tpMode':'CUSTOM','customTpUsd':True}]:
   with pytest.raises(SkillError):validate_command(command()|{'settings':settings})
- validate_command(command()|{'settings':default_settings()|{'tpMode':'ATR_2','baseLot':.1}})
+ with pytest.raises(SkillError,match='SKILL_EXPOSURE_PLAN_CAP_EXCEEDED'):
+  validate_command(command()|{'settings':default_settings()|{'tpMode':'ATR_2','baseLot':.1}})
 
 
 def test_legacy_pause_stop_remain_available_during_upgrade():
