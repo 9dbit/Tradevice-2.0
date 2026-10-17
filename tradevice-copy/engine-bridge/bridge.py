@@ -4,7 +4,7 @@ Only the locally reviewed v51_dashboard_runtime adapter can perform demo executi
 import hashlib,hmac,http.client,json,os,re,sqlite3,threading,time,uuid
 from pathlib import Path
 from demo_settings import SETTINGS_PROTOCOL,validate_settings
-from validation_gate import start_blocker,automatic_blocker
+from validation_gate import start_blocker,automatic_blocker,status as validation_status
 
 API='https://copy-api-staging-4c33.up.railway.app/internal/master/demo/exchange'
 APPROVED_HASH='bcdefbaf270419f2dbe5968bd10e5a88dc3fe4efc7086fef5b2869fb40f81cee'
@@ -96,7 +96,8 @@ class Controller:
    receipts=[dict(requestId=i,status=s,errorCode=e,**({'diagnostics':json.loads(d)} if d else {})) for i,s,e,d in self.db.execute("SELECT id,status,error,diagnostics FROM receipts WHERE status!='PROCESSING' AND confirmed=0 LIMIT 16")]
    payload=dict(settingsProtocol=SETTINGS_PROTOCOL,observedMs=self.last_stamp,bootId=self.boot,activeSkillId=self.active,
     activeHash=APPROVED_HASH if self.active else None,revision=self.revision,state=self.state,
-    checks=checks,blockers=list(dict.fromkeys(blockers))[:20],receipts=receipts)
+    checks=checks,blockers=list(dict.fromkeys(blockers))[:20],receipts=receipts,
+   validation=validation_status())
    if hasattr(self.runtime,'preflight_evidence'):payload['preflightEvidence']=self.runtime.preflight_evidence()
    payload['automatic']=dict(protocol=AUTOMATIC_PROTOCOL,enabled=self.automatic,completedCycles=self.auto_completed,cycleRequestId=self.auto_cycle)
    if self.calendar_protocol:payload['news']=self.runtime.news_snapshot() if hasattr(self.runtime,'news_snapshot') else None
