@@ -116,8 +116,9 @@ def test_api_response_is_signed_and_errors_do_not_leak(monkeypatch):
 def test_projection_uses_consistent_snapshot_and_preserves_guards(age,kill,unconfirmed,expected):
  s=snapshot()
  class Conn:
-  def execute(self,query):return self
-  def fetchone(self):return dict(snapshot=s,ms=s['observedMs']+age,selected_skill_id=s['activeSkillId'],revision=1,kill_switch=kill,unconfirmed=unconfirmed,history=[])
+  waiting=False
+  def execute(self,query):self.waiting='master_demo.automatic_waiting' in query;return self
+  def fetchone(self):return None if self.waiting else dict(snapshot=s,ms=s['observedMs']+age,selected_skill_id=s['activeSkillId'],revision=1,kill_switch=kill,unconfirmed=unconfirmed,history=[])
  result=projection(Conn(),news_clear=True)
  assert result['canStart'] is expected
  assert result['canArmAutomatic'] is False
