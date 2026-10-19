@@ -1,6 +1,7 @@
 import math
 import unittest
-from types import SimpleNamespace as NS
+import sys
+from types import SimpleNamespace as NS, ModuleType
 from unittest.mock import Mock, patch
 from v51_market_preflight import evaluate, indicators, inspect_market, require_market, percentile
 
@@ -68,7 +69,12 @@ class MarketPreflight(unittest.TestCase):
         a=NS(mt5=mt5,identity=lambda:(None,None,NS(name='XAUUSDm',point=.001)))
         self.assertTrue(all(inspect_market(a,clock=lambda:NOW)[0].values()))
     def test_actual_gate_raises_before_entry(self):
-        with patch('v51_market_preflight.inspect_market',return_value=({'atr':True,'adx':False},['ADX_TREND_NOT_RANGING'],{})):
-            with self.assertRaisesRegex(Exception,'ADX_TREND_NOT_RANGING'):require_market(Mock())
+        # This gate imports the proprietary engine exception lazily. Use a
+        # module stub so the pure evidence policy can run in Linux CI.
+        package=ModuleType('goldtrap_arc');package.__path__=[]
+        config=ModuleType('goldtrap_arc.config');config.ArcSafetyError=RuntimeError
+        with patch.dict(sys.modules,{'goldtrap_arc':package,'goldtrap_arc.config':config}):
+            with patch('v51_market_preflight.inspect_market',return_value=({'atr':True,'adx':False},['ADX_TREND_NOT_RANGING'],{})):
+                with self.assertRaisesRegex(RuntimeError,'ADX_TREND_NOT_RANGING'):require_market(Mock())
 
 if __name__=='__main__':unittest.main()
