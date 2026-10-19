@@ -6,6 +6,7 @@ from .master_skills import SkillError
 from .demo_settings import SETTINGS_PROTOCOL,validate_settings
 from .demo_pool import connection
 from .validation_gate import automatic_blocker, start_blocker, status as validation_status,valid_status as valid_validation_status,PROTOCOL as VALIDATION_PROTOCOL
+from . import automatic_waiting
 
 APPROVED_HASH='bcdefbaf270419f2dbe5968bd10e5a88dc3fe4efc7086fef5b2869fb40f81cee'
 LEGACY_CHECKS=('identity','brokerFlat','quote','spread','margin','commission','news','reconciled','engineHash')
@@ -86,7 +87,8 @@ def projection(conn,news_clear=False):
     auto_errors=arm_blockers(s,row,now)
     if row['kill_switch'] is not False:auto_errors.append('MANUAL_KILL_OR_SAFETY_UNAVAILABLE')
     if row['unconfirmed']:auto_errors.append('COMMAND_UNCONFIRMED')
-    return dict(settingsProtocol=s.get('settingsProtocol') if online else None,online=online,observedMs=s.get('observedMs'),state=s.get('state') if online else 'OFFLINE',
+    waiting=automatic_waiting.read(conn)
+    return dict(automaticWaiting=waiting,settingsProtocol=s.get('settingsProtocol') if online else None,online=online,observedMs=s.get('observedMs'),state=s.get('state') if online else 'OFFLINE',
         activeSkillId=s.get('activeSkillId') if online else None,activeHash=s.get('activeHash') if online else None,
         revision=s.get('revision') if online else None,checks=s.get('checks',{}) if online else {},
         blockers=list(dict.fromkeys(blockers+s.get('blockers',[]))),canStart=not blockers,
@@ -129,6 +131,8 @@ def validate_command(p):
     elif p.get('settings') is not None or p['targetCycles'] is not None or p['confirmDemo'] is not False:raise SkillError('SKILL_ENGINE_COMMAND_INVALID')
 
 def submit(dsn,p,news_clear):
+    if isinstance(p,dict) and p.get('action') in ('REQUEST_AUTOMATIC_WAITING','CANCEL_AUTOMATIC_WAITING'):
+        return automatic_waiting.request(dsn,p)
     validate_command(p)
     p=dict(p,settings={'close_scope':'ALL_DEMO_ACCOUNT'} if p['action']=='EMERGENCY_CLOSE' and p.get('closeScope')=='ALL_DEMO_ACCOUNT' else p.get('settings'))
     automatic=p.get('cycleMode')=='AUTOMATIC'
