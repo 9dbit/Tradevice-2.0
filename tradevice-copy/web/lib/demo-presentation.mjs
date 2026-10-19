@@ -1,6 +1,8 @@
 /** Presentation only. A command receipt is not proof that a basket has closed. */
 export function commandMessage(request,runtime,fresh){
  if(request.error)return request.error;
+ if(request.action==='REQUEST_AUTOMATIC_WAITING')return request.phase==='APPLIED'?'Automatic booking recorded for 100 cycles. Waiting validation; no broker Start command created.':request.phase==='SENDING'?'Saving 100-cycle Automatic booking (no broker orders)…':'Automatic booking not yet confirmed; refresh the booking status before retrying.';
+ if(request.action==='CANCEL_AUTOMATIC_WAITING')return request.phase==='APPLIED'?'Automatic booking cancelled. No broker command was sent.':request.phase==='SENDING'?'Cancelling booking…':'Cancellation not confirmed; refresh booking status.';
  if(['SENDING','PENDING','DISPATCHED'].includes(request.phase))return 'Awaiting engine confirmation…';
  if(request.phase!=='APPLIED')return 'Not confirmed. Check command history before retrying.';
  if(!fresh)return 'Command applied. Current engine state is unavailable; completion is not verified.';
