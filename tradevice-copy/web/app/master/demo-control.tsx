@@ -14,7 +14,7 @@ import {showCloseControl} from '../../lib/cycle-controls.mjs';
 import {closeCompleted} from '../../lib/close-completion.mjs';
 import {ReportSection,ReportDrawer,ReportIcon as I} from './report-ui';
 const preflightChecks=[['identity','Account identity'],['brokerFlat','Broker flat'],['quote','Fresh quote'],['spread','Spread'],['margin','Margin'],['commission','Commission'],['news','News'],['reconciled','Reconciliation'],['engineHash','Engine hash'],['atr','ATR range'],['adx','ADX range'],['engineReady','Engine ready']];
-export type DemoRuntime={automatic?:{protocol:string;enabled:boolean;completedCycles:number;cycleRequestId:string|null}|null;canArmAutomatic?:boolean;bridgeValidationVerified?:boolean;validation?:{protocol:string;status:string;automaticAllowed:boolean;reason:string;maxCustomCycles:number;approvalId:string|null;requiredEvidence:string[]}|null;riskPolicy?:{policy:string;maxBookedLots:number;maxCycleLossTriggerUsd:number;maxEquityRiskFraction:number;source:string}|null;preflightEvidence?:PreflightEvidence|null;emergencyCloseProtocol?:string|null;emergencyClose?:{requestId:string;phase:string;observedMs:number;positionsRemaining:number|null;ordersRemaining:number|null}|null;settingsProtocol?:string|null;online:boolean;observedMs:number|null;state:string;activeSkillId:string|null;activeHash:string|null;revision:number|null;checks:Record<string,boolean>;blockers:string[];canStart:boolean;commands:Array<{requestId:string;action:string;status:string;errorCode:string|null;diagnostics?:PreflightEvidence|null}>};
+export type DemoRuntime={automatic?:{protocol:string;enabled:boolean;completedCycles:number;cycleRequestId:string|null}|null;sessionRisk?:{verified:boolean;admissionGranted:false;reason:string;maxGrossBookedLots:number;cycleMaxLossTriggerUsd:number;cycleMaxEquityRiskFraction:number;verifiedSessionLossUsd:number|null;remainingSessionBudgetUsd:number|null};automaticWaiting?:{protocol:string;status:'OFF'|'WAITING_VALIDATION';targetCycles:number;completedCycles:number;automaticExecutionAllowed:false;releaseStatus:string;updatedAt:string|null};canArmAutomatic?:boolean;bridgeValidationVerified?:boolean;validation?:{protocol:string;status:string;automaticAllowed:boolean;reason:string;maxCustomCycles:number;approvalId:string|null;requiredEvidence:string[]}|null;riskPolicy?:{policy:string;maxBookedLots:number;maxCycleLossTriggerUsd:number;maxEquityRiskFraction:number;source:string}|null;preflightEvidence?:PreflightEvidence|null;emergencyCloseProtocol?:string|null;emergencyClose?:{requestId:string;phase:string;observedMs:number;positionsRemaining:number|null;ordersRemaining:number|null}|null;settingsProtocol?:string|null;online:boolean;observedMs:number|null;state:string;activeSkillId:string|null;activeHash:string|null;revision:number|null;checks:Record<string,boolean>;blockers:string[];canStart:boolean;commands:Array<{requestId:string;action:string;status:string;errorCode:string|null;diagnostics?:PreflightEvidence|null}>};
 export function useDemoRuntime(token:string){
  const [runtime,setRuntime]=useState<DemoRuntime|null>(null),generation=useRef(0);
  const inFlight=useRef(false);
@@ -30,8 +30,9 @@ export function useDemoRuntime(token:string){
 }
 export default function DemoControl({token,runtime,refresh,now,batchRaw,newsRaw,brokerExposure=null}:{token:string;runtime:DemoRuntime|null;refresh:()=>void;now:number;batchRaw?:unknown;newsRaw?:unknown;brokerExposure?:number|null}){
  const [cycleMode,setCycleMode]=useState<'CUSTOM'|'AUTOMATIC'>('CUSTOM');
- const automatic=runtime?.automatic?.enabled===true||cycleMode==='AUTOMATIC';
- const automaticLocked=true; // Fail-closed in this release, independent of telemetry.
+ const waiting=runtime?.automaticWaiting?.status==='WAITING_VALIDATION';
+ const automatic=runtime?.automatic?.enabled===true||cycleMode==='AUTOMATIC'||waiting;
+ const automaticLocked=false; // Selection only, never permits broker execution.
  const startAllowed=automatic?false:runtime?.canStart===true;
  const [count,setCount]=useState('1'),[pending,setPending]=useState(false),[resetBatch,setResetBatch]=useState<string|null>(null);
  const [baseLot,setBaseLot]=useState('0.01'),[tpMode,setTpMode]=useState('FIXED_3_5'),[customTp,setCustomTp]=useState('3.50'),[tpPoints,setTpPoints]=useState('3500');
@@ -60,6 +61,20 @@ export default function DemoControl({token,runtime,refresh,now,batchRaw,newsRaw,
   const id=request.id,t=setTimeout(()=>setRequest(c=>c?.id===id&&['PENDING','DISPATCHED'].includes(c.phase)?{...c,phase:'UNCERTAIN'}:c),65000);
   return()=>clearTimeout(t);
  },[request?.id,request?.phase]);
+ async function requestAutomaticWaiting(cancel=false){
+  if(pending||busy)return;
+  const id=crypto.randomUUID(),action=cancel?'CANCEL_AUTOMATIC_WAITING':'REQUEST_AUTOMATIC_WAITING';
+  setPending(true);setRequest({id,action,phase:'SENDING',mode:'AUTOMATIC'});
+  try{
+   const r=await fetch('/api/master/demo',{method:'POST',headers:{Authorization:'Bearer '+token,'content-type':'application/json'},
+     body:JSON.stringify({requestId:id,action,targetCycles:100}),signal:AbortSignal.timeout(12000)});
+   const d=await r.json();
+   if(!r.ok){setRequest({id,action,phase:'REJECTED',error:d?.detail?.code||'AUTOMATIC_WAITING_UNAVAILABLE'});return;}
+   if(d.requestId!==id||d.automaticExecutionAllowed!==false||!['WAITING_VALIDATION','OFF'].includes(d.status))throw Error('WAITING_RESPONSE_INVALID');
+   setRequest({id,action,phase:'APPLIED',mode:'AUTOMATIC'});void refresh();
+  }catch{setRequest({id,action,phase:'UNCERTAIN',error:'WAITING_STATE_UNCONFIRMED_REFRESH_REQUIRED'});}
+  finally{setPending(false);}
+ }
  async function send(action:'START'|'PAUSE'|'STOP'){
   if(pending||!fresh)return;
   const target=Number(count);
@@ -136,9 +151,10 @@ export default function DemoControl({token,runtime,refresh,now,batchRaw,newsRaw,
    {!settings&&<p className="mt-inline-blocker">{tpMode==='POINTS'?'TP points must be a whole number from 1 to 100,000. Broker price and stop-distance checks still apply.':'Custom TP must be $0.01–$250.00, with at most two decimals.'}</p>}
    {!settingsReady&&<p className="mt-compact-note">Waiting for the engine settings protocol. Start remains blocked.</p>}
   </ReportDrawer>
-  <div className="mt-batch-settings mt-cycle-mode"><label>Cycle mode<select aria-label="Cycle mode" value={automatic?'AUTOMATIC':'CUSTOM'} disabled={busy||runtimeRunning} onChange={e=>setCycleMode(e.target.value as 'CUSTOM'|'AUTOMATIC')}><option value="CUSTOM">Custom cycle count</option><option value="AUTOMATIC" disabled={automaticLocked}>Automatic · validation pending</option></select></label></div>
-  <p className="mt-compact-note" role="status">Validation lock: Automatic disabled until broker UAT, full execution replay and out-of-sample review are approved. Custom UAT is limited to one cycle. {runtime?.bridgeValidationVerified===true?'Signed bridge lock verified.':'Signed bridge lock not yet verified; Automatic remains unavailable.'}</p>
-  {automatic&&<p className="mt-compact-note mt-automatic-message" role="status">{automaticMessage(runtime,fresh)}</p>}
+  <div className="mt-batch-settings mt-cycle-mode"><label>Cycle mode<select aria-label="Cycle mode" value={automatic?'AUTOMATIC':'CUSTOM'} disabled={busy||runtimeRunning} onChange={e=>setCycleMode(e.target.value as 'CUSTOM'|'AUTOMATIC')}><option value="CUSTOM">Custom cycle count</option><option value="AUTOMATIC" disabled={automaticLocked}>Automatic · waiting validation</option></select></label></div>
+  <p className="mt-compact-note" role="status">Automatic can be requested for 100 cycles but remains WAITING VALIDATION. No broker Start command is sent. Execution requires a separate approved release and operator confirmation. Custom UAT stays limited to one cycle. {runtime?.bridgeValidationVerified===true?'Signed engine lock verified.':'Engine lock evidence unverified; execution blocked.'}</p>
+  {automatic&&<div className="mt-cycle-progress" role="status"><strong>{waiting?'Automatic ON · Waiting Validation':'Automatic OFF · Not requested'}</strong><p>Target: 100 cycles · Executed by this request: 0</p><p>Session risk: {runtime?.sessionRisk?.verified===true?'Verified':'Unverified · broker session ledger required'}. Automatic execution remains prohibited.</p><button type="button" disabled={pending||busy||!runtime} onClick={()=>void requestAutomaticWaiting(waiting)}>{waiting?'Cancel Automatic Request':'Enable Automatic · Wait for Validation'}</button></div>}
+  {automatic&&<p className="mt-compact-note mt-automatic-message" role="status">Release status: {runtime?.validation?.status||'UNVERIFIED'}. No broker authorization.</p>}
   {!automatic&&<div className="mt-demo-inputs"><label htmlFor={showCycle?undefined:'demo-cycle-count'}>{showCycle?(ended?'Executed cycles':'Current cycle'):'Cycle count'}<small>XAUUSDm{showCycle?` · ${ended?'Last side':'Side'}: ${progress?.side||'Unverified'}`:''}{showCycle?(progress?.fresh?'':' · Last reported'):' · 1 only (validation)'}</small></label>
    {showCycle?<output className="mt-current-cycle" aria-label="Current cycle">{ended?progress!.executedCount:progress!.current}/{progress!.total}</output>:<input id="demo-cycle-count" aria-label="Cycle count" type="text" inputMode="numeric" pattern="[0-9]*" maxLength={2} value={count} disabled={busy||runtimeRunning} onChange={e=>setCount(e.target.value.replace(/\D/g,''))}/>}
   </div>}
