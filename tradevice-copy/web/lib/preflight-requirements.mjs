@@ -22,7 +22,7 @@ export function failureRequirement(code){
  const c=String(code||'').replace(/^SKILL_START_/,'');
  if(/AUTOMATIC_VALIDATION_REQUIRED/.test(c))return 'Automatic remains locked pending independent broker UAT, full execution replay, and out-of-sample risk validation. Start cannot be enabled from the dashboard or API.';
  if(/VALIDATION_SINGLE_CYCLE_ONLY/.test(c))return 'Only one custom demo cycle per explicit Start is permitted during validation. Set Cycle count to 1; Automatic remains locked.';
- if(/MARKET_|PREFLIGHT_ATR|ATR_OUTSIDE_RANGE/.test(c))return /MARKET_/.test(c)?'ATR/ADX data is unavailable, stale or incomplete. Wait for fresh completed M1/M5 candles and sufficient broker history. Reset cannot bypass this check.':'Wait for ATR14 M1 to return within the rolling P20–P60 range shown below. This is a new-cycle entry filter, not the basket TP amount.';
+ if(/MARKET_|PREFLIGHT_ATR|ATR_OUTSIDE_RANGE/.test(c))return /MARKET_/.test(c)?'ATR/ADX data is unavailable, stale or incomplete. Wait for fresh completed M1/M5 candles and sufficient broker history. Reset cannot bypass this check.':'Wait for ATR14 M1 within the current fixed 0.00–1.80 range (inclusive). Earlier historical reports may use P20–P60. This is a new-cycle entry filter, not the basket TP amount.';
  if(/ADX/.test(c))return 'Wait for ADX14 on both M1 and M5 to remain below 20 for three completed candles on each timeframe. Existing basket supervision continues.';
  if(/EXPOSURE_PLAN_CAP_EXCEEDED|EXPOSURE_DISPATCH_CAP_EXCEEDED|SKILL_EXPOSURE_PLAN_CAP_EXCEEDED/.test(c))return 'Gross exposure is capped at 0.40 lot including BOTH five-level pending ladders and open positions. Select Base Lot 0.01 for this research profile; a higher lot is rejected before broker order creation. This is a risk limit, not insufficient funds.';
  if(/MARGIN_ENVELOPE_INSUFFICIENT/.test(c))return 'Insufficient free margin. Reduce the selected base lot or provide enough free margin for the calculated requirement, then run a fresh check. Reset does not change the requirement.';
@@ -48,9 +48,9 @@ export function failureRequirement(code){
 
 export function marketRequirements(e){
  const m=e?.market;
- if(m?.policy!=='V51_RANGE_PREFLIGHT_20261016'||!['atrM1','atrPoints','minAtr','maxAtr','adxM1','adxM5','adxM1Max3','adxM5Max3','adxLimit'].every(k=>typeof m[k]==='number'&&Number.isFinite(m[k])))return [];
+ if(!['V51_RANGE_PREFLIGHT_20261016','V51_FIXED_ATR_0_1_8_20261019'].includes(m?.policy)||!['atrM1','atrPoints','minAtr','maxAtr','adxM1','adxM5','adxM1Max3','adxM5Max3','adxLimit'].every(k=>typeof m[k]==='number'&&Number.isFinite(m[k])))return [];
  const n=v=>v.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:3});
- return [['ATR14 M1 · price / points',`${n(m.atrM1)} / ${n(m.atrPoints)} points`],['Allowed ATR · prior 1,440 M1 candles',`${n(m.minAtr)}–${n(m.maxAtr)} · P20–P60`],['ADX14 M1 · current / last 3 maximum',`${n(m.adxM1)} / ${n(m.adxM1Max3)}`],['ADX14 M5 · current / last 3 maximum',`${n(m.adxM5)} / ${n(m.adxM5Max3)}`],['Required ADX · both timeframes',`< ${n(m.adxLimit)} for 3 completed candles`]];
+ return [['ATR14 M1 · price / points',`${n(m.atrM1)} / ${n(m.atrPoints)} points`],['Allowed ATR14 M1 · '+(m.policy==='V51_FIXED_ATR_0_1_8_20261019'?'fixed band':'prior 1,440 M1 candles'),`${n(m.minAtr)}–${n(m.maxAtr)} · ${m.policy==='V51_FIXED_ATR_0_1_8_20261019'?'inclusive':'P20–P60'}`],['ADX14 M1 · current / last 3 maximum',`${n(m.adxM1)} / ${n(m.adxM1Max3)}`],['ADX14 M5 · current / last 3 maximum',`${n(m.adxM5)} / ${n(m.adxM5Max3)}`],['Required ADX · both timeframes',`< ${n(m.adxLimit)} for 3 completed candles`]];
 }
 
 /** Read-only form hydration. Never overwrites an idle operator edit. */
