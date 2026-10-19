@@ -88,7 +88,12 @@ def projection(conn,news_clear=False):
     if row['kill_switch'] is not False:auto_errors.append('MANUAL_KILL_OR_SAFETY_UNAVAILABLE')
     if row['unconfirmed']:auto_errors.append('COMMAND_UNCONFIRMED')
     waiting=automatic_waiting.read(conn)
-    return dict(automaticWaiting=waiting,settingsProtocol=s.get('settingsProtocol') if online else None,online=online,observedMs=s.get('observedMs'),state=s.get('state') if online else 'OFFLINE',
+    # No broker-reconciled session ledger currently exists. Never present the
+    # per-cycle $30/3% trigger as an approved 100-cycle loss budget.
+    session_risk=dict(verified=False,admissionGranted=False,reason='BROKER_SESSION_LEDGER_AND_LIMIT_REQUIRED',
+        maxGrossBookedLots=0.40,cycleMaxLossTriggerUsd=30.0,cycleMaxEquityRiskFraction=0.03,
+        verifiedSessionLossUsd=None,remainingSessionBudgetUsd=None)
+    return dict(automaticWaiting=waiting,sessionRisk=session_risk,settingsProtocol=s.get('settingsProtocol') if online else None,online=online,observedMs=s.get('observedMs'),state=s.get('state') if online else 'OFFLINE',
         activeSkillId=s.get('activeSkillId') if online else None,activeHash=s.get('activeHash') if online else None,
         revision=s.get('revision') if online else None,checks=s.get('checks',{}) if online else {},
         blockers=list(dict.fromkeys(blockers+s.get('blockers',[]))),canStart=not blockers,
