@@ -81,3 +81,16 @@ test('risk validation rejection has a concrete safe requirement',()=>{
  assert.match(failureRequirement('SKILL_VALIDATION_SINGLE_CYCLE_ONLY'),/Cycle count to 1/);
  assert.match(failureRequirement('VALIDATION_SINGLE_CYCLE_ONLY'),/Automatic remains locked/);
 });
+
+test('fixed 0 to 1.8 ATR range is shown instead of P20-P60 for new signed policy',async()=>{
+ const {marketRequirements}=await import('../lib/preflight-requirements.mjs');
+ const m={policy:'V51_FIXED_ATR_0_1_8_20261019',atrM1:.96,atrPoints:960,
+  minAtr:0,maxAtr:1.8,adxM1:9.01,adxM5:15.04,adxM1Max3:9.01,adxM5Max3:15.04,adxLimit:20};
+ const rows=Object.fromEntries(marketRequirements({market:m}));
+ assert.equal(rows['Allowed ATR14 M1 · fixed band'],'0.00–1.80 · inclusive');
+ assert.equal(rows['ATR14 M1 · price / points'],'0.96 / 960.00 points');
+ assert.doesNotMatch(rows['Allowed ATR14 M1 · fixed band'],/P20|P60/);
+ assert.match(failureRequirement('ATR_OUTSIDE_RANGE'),/0.00–1.80/);
+ const legacy=Object.fromEntries(marketRequirements({market:{...m,policy:'V51_RANGE_PREFLIGHT_20261016'}}));
+ assert.match(legacy['Allowed ATR14 M1 · prior 1,440 M1 candles'],/P20–P60/);
+});
