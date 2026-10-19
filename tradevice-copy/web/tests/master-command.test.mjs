@@ -70,8 +70,11 @@ test('telemetry accepts only verified operator event metadata and no fake fills'
 
 test('custom start is limited to one cycle and Automatic is validation-locked',()=>{
  assert.match(demo,/target!==1/);
- assert.match(demo,/Automatic · validation pending/);
+ assert.match(demo,/Automatic · waiting validation/);
  assert.match(demo,/disabled=\{automaticLocked\}/);
+  assert.match(demo,/requestAutomaticWaiting\(waiting\)/);
+  assert.match(demo,/Target: 100 cycles/);
+  assert.match(demo,/automaticExecutionAllowed!==false/);
  assert.match(demo,/confirmDemo:action==='START'/);
  assert.doesNotMatch(demo,/Saya mengizinkan|type="checkbox"/);
  assert.match(demo,/onClick=\{\(\)=>showReset\?resetComposer\(\):void send\('START'\)\}/);
