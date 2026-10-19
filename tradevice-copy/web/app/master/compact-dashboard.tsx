@@ -66,7 +66,7 @@ export default function CompactDashboard({data,token,onNavigate}:{
    <div><strong>Telemetry unavailable</strong><p>{diagnostic}</p></div></div>}
   <DemoControl token={token} runtime={demoRuntime} refresh={refreshDemo} now={now} batchRaw={data?.demoBatch??data?.market?.demoBatch} newsRaw={data?.news} brokerExposure={marketFresh&&Number.isInteger(data?.market?.positionsCount)&&Number.isInteger(data?.market?.pendingOrdersCount)?data!.market!.positionsCount!+data!.market!.pendingOrdersCount!:null}/>
 
-  <MarketRegimePanel raw={data?.market?.marketRegime??demoRuntime?.preflightEvidence?.market} now={now} collectedAt={data?.market?.collectedAt}/>
+  <MarketRegimePanel raw={demoRuntime?.preflightEvidence?.market} alternate={data?.market?.marketRegime} now={now} collectedAt={data?.market?.collectedAt}/>
 
   <ReportSection title="Basket &amp; Adaptive" className="mt-u-panel" aria-labelledby="risk-title" header={<div className="mt-u-panel-head"><h2 id="risk-title"><I name="shield"/> Basket &amp; Adaptive</h2>
     <span className="mt-u-chip">{recovery?'Recovery required':closeReconciled?'Reconciled':engine.status==='ENGINE_REPORT_STALE'?'Last engine report':engine.entrySuspended===true?'Entry suspended':engine.status==='ENGINE_REPORTED'?engine.state||'Reported':'Unverified'}</span></div>}>
