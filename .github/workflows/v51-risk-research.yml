@@ -2,7 +2,7 @@ name: V5.1 Risk Research CI
 
 on:
   push:
-    branches: ['research/v51-l5-exposure-20261017', 'fix/v51-validation-lock-20261017', 'feature/v51-automatic-waiting-100-20261019', 'fix/v51-automatic-booking-atr-0-18-20261019']
+    branches: ['research/v51-l5-exposure-20261017', 'fix/v51-validation-lock-20261017', 'feature/v51-automatic-waiting-100-20261019', 'fix/v51-automatic-booking-atr-0-18-20261019', 'fix/v51-market-regime-display-20261019']
     paths:
       - 'tradevice-copy/**'
       - '.github/workflows/v51-risk-research.yml'
