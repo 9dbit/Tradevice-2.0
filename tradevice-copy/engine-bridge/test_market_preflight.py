@@ -21,13 +21,26 @@ class MarketPreflight(unittest.TestCase):
         checks,reasons,e=evaluate(bars(1600,60,True),bars(300,300,True),NOW,.001)
         self.assertFalse(checks['adx']);self.assertIn('ADX_TREND_NOT_RANGING',reasons)
         self.assertAlmostEqual(e['adxM1'],100.)
-    def test_atr_is_engine_sma_and_percentiles_exclude_current(self):
+    def test_atr_is_engine_sma_and_fixed_0_to_1_8_band(self):
         one=bars(1600,60);one[-1]['high']+=14
         atr,_=indicators(one)
         self.assertEqual(atr[-1],2.)
         checks,_,e=evaluate(one,bars(300,300),NOW,.001)
-        self.assertFalse(checks['atr']);self.assertEqual(e['minAtr'],1.);self.assertEqual(e['maxAtr'],1.)
-        self.assertAlmostEqual(percentile([1,2,3,4],.2),1.6)
+        self.assertFalse(checks['atr']);self.assertEqual(e['minAtr'],0.);self.assertEqual(e['maxAtr'],1.8)
+        self.assertEqual(e['policy'],'V51_FIXED_ATR_0_1_8_20261019')
+        self.assertIn('ATR_OUTSIDE_RANGE',evaluate(one,bars(300,300),NOW,.001)[1])
+    def test_fixed_boundaries_and_screen_shown_0_96(self):
+        for value,expected in [(0.,True),(.96,True),(1.8,True),(1.80001,False),(2.,False)]:
+            with self.subTest(atr=value), patch('v51_market_preflight.indicators',side_effect=[
+                ([value]*1600,[10.]*1600),([value]*300,[10.]*300)]):
+                checks,_,e=evaluate(bars(1600,60),bars(300,300),NOW,.001)
+                self.assertEqual(checks['atr'],expected)
+                self.assertEqual((e['minAtr'],e['maxAtr']),(0.,1.8))
+    def test_prior_percentile_is_not_used_for_admission(self):
+        with patch('v51_market_preflight.percentile',side_effect=AssertionError('historical band must not be used')):
+            checks,_,e=evaluate(bars(1600,60),bars(300,300),NOW,.001)
+            self.assertTrue(checks['atr'])
+            self.assertEqual(e['lookbackBars'],1440)  # retained closed-candle history requirement
     def test_forming_candle_cannot_change_decision(self):
         one,five=bars(1600,60),bars(300,300)
         expected=evaluate(one,five,NOW+25,.001)
