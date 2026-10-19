@@ -177,15 +177,19 @@ def validate_market_evidence(m,checks,now):
         return
     numeric={'observedMs','atrM1','atrPoints','minAtr','maxAtr','adxM1','adxM5','adxM1Max3','adxM5Max3','adxLimit','stableBars','lookbackBars','m1ClosedMs','m5ClosedMs'}
     if not isinstance(m,dict) or set(m)!=numeric|{'policy','atrMethod','adxMethod','atrPassed','adxPassed'}:raise invalid()
-    if (m['policy'],m['atrMethod'],m['adxMethod'])!=('V51_RANGE_PREFLIGHT_20261016','SMA_TR_14','WILDER_14'):raise invalid()
+    fixed_atr=m['policy']=='V51_FIXED_ATR_0_1_8_20261019'
+    if m['policy'] not in ('V51_RANGE_PREFLIGHT_20261016','V51_FIXED_ATR_0_1_8_20261019') or (m['atrMethod'],m['adxMethod'])!=('SMA_TR_14','WILDER_14'):raise invalid()
     if any(type(m[k]) not in (int,float) or not math.isfinite(m[k]) or not 0<=m[k]<=2**53-1 for k in numeric):raise invalid()
     if (m['adxLimit'],m['stableBars'],m['lookbackBars'])!=(20,3,1440):raise invalid()
     if not 0<m['observedMs']<=now or not 0<=now-m['observedMs']<=8000:raise invalid()
     for key,period in [('m1ClosedMs',60000),('m5ClosedMs',300000)]:
         if m[key]!=int(m['observedMs']//period)*period:raise invalid()
     if not 0<=m['minAtr']<=m['maxAtr'] or m['atrPoints']<0:raise invalid()
+    # Only this exact fixed policy is admissible. Forbid a client/bridge
+    # from supplying wider bounds while declaring the new protocol.
+    if fixed_atr and (m['minAtr'],m['maxAtr'])!=(0.0,1.8):raise invalid()
     if not 0<=m['adxM1']<=m['adxM1Max3']<=100 or not 0<=m['adxM5']<=m['adxM5Max3']<=100:raise invalid()
-    atr_ok=m['atrM1']>0 and m['minAtr']<=m['atrM1']<=m['maxAtr']
+    atr_ok=(m['atrM1']>=0 if fixed_atr else m['atrM1']>0) and m['minAtr']<=m['atrM1']<=m['maxAtr']
     adx_ok=max(m['adxM1Max3'],m['adxM5Max3'])<m['adxLimit']
     if type(m['atrPassed']) is not bool or type(m['adxPassed']) is not bool:raise invalid()
     if m['atrPassed']!=atr_ok or m['adxPassed']!=adx_ok:raise invalid()

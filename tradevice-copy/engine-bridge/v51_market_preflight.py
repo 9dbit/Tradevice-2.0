@@ -1,14 +1,17 @@
 """Read-only, closed-candle entry gate. Never supervises an existing basket.
 
-ATR uses the engine's SMA(TR,14); ADX uses Wilder smoothing. The percentile
-window excludes the evaluated candle. Research policy, not a safety guarantee.
+ATR uses the engine's SMA(TR,14) on completed M1 candles. An absolute,
+inclusive 0.00-1.80 price-unit band replaces the rolling P20-P60 filter.
+ADX uses Wilder smoothing on M1 and M5. Research policy, not a guarantee.
 """
 import math
 import time
 
-POLICY = 'V51_RANGE_PREFLIGHT_20261016'
+POLICY = 'V51_FIXED_ATR_0_1_8_20261019'
 PERIOD = 14
 LOOKBACK = 1440
+ATR_MIN = 0.0
+ATR_MAX = 1.8
 ADX_LIMIT = 20.0
 STABLE_BARS = 3
 
@@ -85,10 +88,11 @@ def evaluate(m1, m5, now, point):
     five = closed_bars(m5, 300, now, 200)
     atr, adx1 = indicators(one)
     _, adx5 = indicators(five)
-    baseline = atr[-LOOKBACK - 1:-1]
-    low, high = percentile(baseline, .2), percentile(baseline, .6)
+    # Preserve historical depth, closed-candle and stale/gap checks even
+    # though the admission band is now fixed rather than percentile-ranked.
+    low, high = ATR_MIN, ATR_MAX
     value = atr[-1]
-    atr_ok = value > 0 and low <= value <= high
+    atr_ok = value is not None and math.isfinite(value) and low <= value <= high
     adx_ok = max(adx1[-STABLE_BARS:]) < ADX_LIMIT and max(adx5[-STABLE_BARS:]) < ADX_LIMIT
     reasons = ([] if atr_ok else ['ATR_OUTSIDE_RANGE']) + ([] if adx_ok else ['ADX_TREND_NOT_RANGING'])
     evidence = dict(policy=POLICY, observedMs=int(now * 1000), atrMethod='SMA_TR_14', adxMethod='WILDER_14',

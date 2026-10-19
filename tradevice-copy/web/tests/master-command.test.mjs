@@ -72,12 +72,15 @@ test('custom start is limited to one cycle and Automatic is validation-locked',(
  assert.match(demo,/target!==1/);
  assert.match(demo,/Automatic · waiting validation/);
  assert.match(demo,/disabled=\{automaticLocked\}/);
-  assert.match(demo,/requestAutomaticWaiting\(waiting\)/);
+  assert.match(demo,/requestAutomaticWaiting\(false\)/);
+   assert.match(demo,/requestAutomaticWaiting\(true\)/);
   assert.match(demo,/Target: 100 cycles/);
   assert.match(demo,/automaticExecutionAllowed!==false/);
  assert.match(demo,/confirmDemo:action==='START'/);
  assert.doesNotMatch(demo,/Saya mengizinkan|type="checkbox"/);
- assert.match(demo,/onClick=\{\(\)=>showReset\?resetComposer\(\):void send\('START'\)\}/);
+ assert.match(demo,/onClick=\{\(\)=>automatic\?void requestAutomaticWaiting\(false\):showReset\?resetComposer\(\):void send\('START'\)\}/);
+  assert.match(demo,/disabled=\{automatic\?busy\|\|!bookingSupported\|\|waiting\|\|automaticArmed:/);
+  assert.match(demo,/className="mt-u-primary"/);
  assert.match(demo,/const startAllowed=automatic\?false:runtime\?\.canStart===true/);
  assert.match(dashboard,/mt-u-diagnostic/);
 });
@@ -126,4 +129,16 @@ test('demo start requires fresh independent engine evidence, not paper or observ
  assert.match(demo,/const startAllowed=automatic\?false:runtime\?\.canStart===true/);
  for(const gate of ['identity','brokerFlat','quote','spread','margin','commission','news','reconciled','engineHash'])assert.ok(demo.includes(gate));
  assert.doesNotMatch(demo,/brokerReady:\s*true|newsCalendarReady:\s*true/);
+});
+
+test('orange Automatic booking does not need ATR/ADX or Start admission and cannot enqueue broker START',()=>{
+ assert.match(demo,/const bookingSupported=runtime\?\.automaticWaiting\?\.protocol===/);
+ assert.match(demo,/disabled=\{automatic\?busy\|\|!bookingSupported\|\|waiting\|\|automaticArmed:/);
+ assert.match(demo,/onClick=\{\(\)=>automatic\?void requestAutomaticWaiting\(false\)/);
+ assert.match(demo,/body:JSON\.stringify\(\{requestId:id,action,targetCycles:100\}\)/);
+ assert.match(demo,/Automatic Booked · Waiting/);
+ assert.match(demo,/Booking is allowed even while ATR, ADX or other entry checks are blocked/);
+ assert.match(demo,/waiting&&<button[^>]*onClick=\{\(\)=>void requestAutomaticWaiting\(true\)\}/);
+ assert.match(demo,/const startAllowed=automatic\?false:runtime\?\.canStart===true/);
+ assert.doesNotMatch(demo,/onClick=\{\(\)=>void send\('START'\)\}/);
 });

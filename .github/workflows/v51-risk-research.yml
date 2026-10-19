@@ -2,7 +2,7 @@ name: V5.1 Risk Research CI
 
 on:
   push:
-    branches: ['research/v51-l5-exposure-20261017', 'fix/v51-validation-lock-20261017', 'feature/v51-automatic-waiting-100-20261019']
+    branches: ['research/v51-l5-exposure-20261017', 'fix/v51-validation-lock-20261017', 'feature/v51-automatic-waiting-100-20261019', 'fix/v51-automatic-booking-atr-0-18-20261019']
     paths:
       - 'tradevice-copy/**'
       - '.github/workflows/v51-risk-research.yml'
@@ -34,6 +34,19 @@ jobs:
       - run: python -m pip install -r tradevice-copy/api/requirements-dev.txt
       - run: python -m pip install -r tradevice-copy/worker/requirements.txt
       - run: python -m pytest tradevice-copy/api/tests tradevice-copy/services tradevice-copy/worker -q --tb=short
+
+  market_preflight:
+    name: Fixed ATR / ADX broker-free regression
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m unittest discover -s tradevice-copy/engine-bridge -p 'test_market_preflight.py' -v
+        env:
+          PYTHONPATH: tradevice-copy/engine-bridge
 
   web:
     name: Dashboard risk messaging

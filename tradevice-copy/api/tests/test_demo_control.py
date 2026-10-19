@@ -263,3 +263,26 @@ def test_market_evidence_contract_and_failed_check_cannot_be_promoted():
  with pytest.raises(SkillError):validate_market_evidence(m,dict(atr=True,adx=True),now)
  with pytest.raises(SkillError):validate_market_evidence(None,checks,now)
  validate_market_evidence(None,dict(atr=False,adx=False),now)
+
+def test_fixed_atr_0_to_1_8_report_is_verified_not_client_expandable():
+ from app.demo_control import validate_market_evidence
+ now=1800000000000
+ m=dict(policy='V51_FIXED_ATR_0_1_8_20261019',observedMs=now,
+        atrMethod='SMA_TR_14',adxMethod='WILDER_14',
+        atrM1=.96,atrPoints=960,minAtr=0.,maxAtr=1.8,
+        adxM1=9.01,adxM5=15.04,adxM1Max3=9.01,adxM5Max3=15.04,
+        adxLimit=20,stableBars=3,lookbackBars=1440,
+        m1ClosedMs=now,m5ClosedMs=now,atrPassed=True,adxPassed=True)
+ validate_market_evidence(m,dict(atr=True,adx=True),now)
+ for value in (0.,1.8):
+  v=m|dict(atrM1=value,atrPoints=value*1000)
+  validate_market_evidence(v,dict(atr=True,adx=True),now)
+ blocked=m|dict(atrM1=1.80001,atrPoints=1800.01,atrPassed=False)
+ validate_market_evidence(blocked,dict(atr=False,adx=True),now)
+ with pytest.raises(SkillError,match='SKILL_MARKET_EVIDENCE_INVALID'):
+  validate_market_evidence(blocked,dict(atr=True,adx=True),now)
+ for change in (dict(minAtr=.01),dict(maxAtr=2.0),dict(maxAtr=1.81),dict(policy='FORGED_ATR_RANGE'),
+                dict(atrM1=2.0),dict(atrPassed=False),dict(adxPassed=False),dict(stableBars=1),
+                dict(adxLimit=25),dict(lookbackBars=0)):
+  with pytest.raises(SkillError,match='SKILL_MARKET_EVIDENCE_INVALID'):
+   validate_market_evidence(m|change,dict(atr=True,adx=True),now)
