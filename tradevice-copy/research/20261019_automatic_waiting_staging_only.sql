@@ -9,11 +9,26 @@ CREATE TABLE IF NOT EXISTS master_demo.automatic_waiting (
   target_cycles integer NOT NULL DEFAULT 100 CHECK (target_cycles=100),
   updated_at timestamptz NOT NULL DEFAULT now()
 );
+-- Match the established private master_demo pattern. The API uses
+-- tradevice_master_operator, not a generic master_worker account.
+ALTER TABLE master_demo.automatic_waiting ENABLE ROW LEVEL SECURITY;
 REVOKE ALL ON master_demo.automatic_waiting FROM PUBLIC, anon, authenticated;
--- Owner is expected to be the staging database migration role. In the
--- inspected database, master_demo.runtime/commands are owned by postgres.
--- No assumed master_worker role exists in this project. Deployment must first
--- verify MASTER_OPERATOR_DATABASE_URL has SELECT/INSERT/UPDATE rights to
--- this new table; grant to that exact vetted login separately if necessary.
+GRANT SELECT, INSERT, UPDATE ON master_demo.automatic_waiting TO tradevice_master_operator;
+
+CREATE POLICY waiting_operator_read
+ON master_demo.automatic_waiting FOR SELECT TO tradevice_master_operator
+USING (singleton IS TRUE);
+
+CREATE POLICY waiting_operator_insert
+ON master_demo.automatic_waiting FOR INSERT TO tradevice_master_operator
+WITH CHECK (singleton IS TRUE AND target_cycles = 100 AND
+            status IN ('OFF','WAITING_VALIDATION'));
+
+CREATE POLICY waiting_operator_update
+ON master_demo.automatic_waiting FOR UPDATE TO tradevice_master_operator
+USING (singleton IS TRUE)
+WITH CHECK (singleton IS TRUE AND target_cycles = 100 AND
+            status IN ('OFF','WAITING_VALIDATION'));
+-- No DELETE or broker execution privileges are granted here.
 COMMENT ON TABLE master_demo.automatic_waiting IS
  'Operator preparation only. No order execution, authorization or unlock.';
