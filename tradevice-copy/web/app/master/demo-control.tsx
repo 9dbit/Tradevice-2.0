@@ -30,9 +30,9 @@ export function useDemoRuntime(token:string){
 }
 export default function DemoControl({token,runtime,refresh,now,batchRaw,newsRaw,brokerExposure=null}:{token:string;runtime:DemoRuntime|null;refresh:()=>void;now:number;batchRaw?:unknown;newsRaw?:unknown;brokerExposure?:number|null}){
  const [cycleMode,setCycleMode]=useState<'CUSTOM'|'AUTOMATIC'>('CUSTOM');
- const automatic=runtime?.automatic?.enabled===true||cycleMode==='AUTOMATIC';
- const automaticLocked=false; // Selection only, never permits broker execution.
  const waiting=runtime?.automaticWaiting?.status==='WAITING_VALIDATION';
+ const automatic=runtime?.automatic?.enabled===true||cycleMode==='AUTOMATIC'||waiting;
+ const automaticLocked=false; // Selection only, never permits broker execution.
  const startAllowed=automatic?false:runtime?.canStart===true;
  const [count,setCount]=useState('1'),[pending,setPending]=useState(false),[resetBatch,setResetBatch]=useState<string|null>(null);
  const [baseLot,setBaseLot]=useState('0.01'),[tpMode,setTpMode]=useState('FIXED_3_5'),[customTp,setCustomTp]=useState('3.50'),[tpPoints,setTpPoints]=useState('3500');
