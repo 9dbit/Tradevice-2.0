@@ -30,7 +30,7 @@ input int InpTimerIntervalSeconds=5;
 input bool InpShowChartPanel=true;
 
 int hST=INVALID_HANDLE,hADX=INVALID_HANDLE,hATR=INVALID_HANDLE;
-int hEMA=INVALID_HANDLE,hRSI=INVALID_HANDLE,hBands=INVALID_HANDLE,hH4ST=INVALID_HANDLE;
+int hEMA=INVALID_HANDLE,hRSI=INVALID_HANDLE,hBands=INVALID_HANDLE,hH1ST=INVALID_HANDLE,hH4ST=INVALID_HANDLE;
 datetime g_lastClosed=0,g_lastIntrabarBarBuy=0,g_lastIntrabarBarSell=0;
 double g_prevBid=0,g_prevAsk=0;
 int g_events=0;
@@ -131,6 +131,7 @@ string FeatureJson(int shift,int direction,double reference,double stLine)
    double rsi=BufferAt(hRSI,0,shift);
    double bbHigh=BufferAt(hBands,1,shift);
    double bbLow=BufferAt(hBands,2,shift);
+   double h1Trend=BufferAt(hH1ST,4,1);
    double h4Trend=BufferAt(hH4ST,4,1);
    double op=iOpen(_Symbol,InpSignalTF,shift);
    double cl=iClose(_Symbol,InpSignalTF,shift);
@@ -164,7 +165,7 @@ string FeatureJson(int shift,int direction,double reference,double stLine)
    s+=",\"lower_wick_atr\":"+Num(k>0?lw*k:EMPTY_VALUE,4);
    s+=",\"spread_points\":"+Num(spread,2)+",\"spread_atr\":"+Num(k>0?spread*pt*k:EMPTY_VALUE,5);
    s+=",\"distance_to_st_points\":"+Num(pt>0?MathAbs(reference-stLine)/pt:EMPTY_VALUE,2);
-   s+=",\"h4_st_direction\":"+Num(h4Trend,0);
+   s+=",\"h1_st_direction\":"+Num(h1Trend,0)+",\"h4_st_direction\":"+Num(h4Trend,0);
    s+=",\"live_bid\":"+Num(tick.bid,8)+",\"live_ask\":"+Num(tick.ask,8);
    s+=",\"tick_time_msc\":"+IntegerToString(tick.time_msc);
    s+=",\"forming_bar_tick_volume\":"+IntegerToString(iVolume(_Symbol,InpSignalTF,0));
@@ -211,6 +212,23 @@ void RefreshPanel()
    PanelLine("other","RSI: "+Num(rsi,1)+"   Relative volume: "+Num(ratio,2)+"x",114);
    PanelLine("count","Events this run: "+IntegerToString(g_events)+"    Pending outcomes: "+IntegerToString(ArraySize(g_pending)),132);
    PanelLine("last","Last: "+g_lastEvent,150);
+}
+void RecordClosedCandle(datetime closedBar)
+{
+   if(closedBar<=0)return;
+   string name="candles\\m1_"+IntegerTime(closedBar)+".json";
+   if(ExistsOne(name))return;
+   double direction=BufferAt(hST,4,1);
+   if(direction!=1.0 && direction!=-1.0)return;
+   double stLine=(direction>0)?BufferAt(hST,0,1):BufferAt(hST,1,1);
+   if(stLine<=0 || stLine==EMPTY_VALUE)return;
+   string j="{\"schema_version\":1,\"record_type\":\"CANDLE\"";
+   j+=",\"symbol\":\""+JsonEscape(_Symbol)+"\",\"timeframe\":\"M1\"";
+   j+=",\"bar_open_epoch\":"+IntegerTime(closedBar);
+   j+=",\"observed_epoch\":"+IntegerTime(TimeCurrent());
+   j+=",\"closed\":true,\"research_only\":true";
+   j+=",\"features\":"+FeatureJson(1,(int)direction,iClose(_Symbol,InpSignalTF,1),stLine)+"}";
+   SaveOne(name,j);
 }
 void CaptureEvent(string eventType,int direction,datetime signalBar,double refPrice,double stLine,int featureShift)
 {
@@ -304,6 +322,8 @@ int OnInit()
       return INIT_PARAMETERS_INCORRECT;
    hST=iCustom(_Symbol,InpSignalTF,"TradeviceResearch\\Tradevice_ST_TV_Observer",
                InpSTATRPeriod,InpSTSource,InpSTFactor,InpSTUseWilderATR,true,false,true);
+   hH1ST=iCustom(_Symbol,PERIOD_H1,"TradeviceResearch\\Tradevice_ST_TV_Observer",
+                 InpSTATRPeriod,InpSTSource,InpSTFactor,InpSTUseWilderATR,false,false,true);
    hH4ST=iCustom(_Symbol,PERIOD_H4,"TradeviceResearch\\Tradevice_ST_TV_Observer",
                  InpSTATRPeriod,InpSTSource,InpSTFactor,InpSTUseWilderATR,false,false,true);
    hADX=iADX(_Symbol,InpSignalTF,InpADXPeriod);
@@ -311,7 +331,7 @@ int OnInit()
    hEMA=iMA(_Symbol,InpSignalTF,InpEMAPeriod,0,MODE_EMA,PRICE_CLOSE);
    hRSI=iRSI(_Symbol,InpSignalTF,InpRSIPeriod,PRICE_CLOSE);
    hBands=iBands(_Symbol,InpSignalTF,20,0,2.0,PRICE_CLOSE);
-   if(hST==INVALID_HANDLE || hH4ST==INVALID_HANDLE || hADX==INVALID_HANDLE ||
+   if(hST==INVALID_HANDLE || hH1ST==INVALID_HANDLE || hH4ST==INVALID_HANDLE || hADX==INVALID_HANDLE ||
       hATR==INVALID_HANDLE || hEMA==INVALID_HANDLE || hRSI==INVALID_HANDLE || hBands==INVALID_HANDLE)
    {
       Print("Observer indicator handle failed ",GetLastError());
@@ -321,6 +341,7 @@ int OnInit()
    FolderCreate(InpStorageFolder+"\\shots");
    FolderCreate(InpStorageFolder+"\\events");
    FolderCreate(InpStorageFolder+"\\outcomes");
+   FolderCreate(InpStorageFolder+"\\candles");
    LoadPending();
    g_lastClosed=iTime(_Symbol,InpSignalTF,1); // no retroactive "live" events
    bool visible=false;
@@ -343,6 +364,7 @@ void OnDeinit(const int reason)
       if(StringFind(name,g_prefix)==0)ObjectDelete(0,name);
    }
    if(hST!=INVALID_HANDLE)IndicatorRelease(hST);
+   if(hH1ST!=INVALID_HANDLE)IndicatorRelease(hH1ST);
    if(hH4ST!=INVALID_HANDLE)IndicatorRelease(hH4ST);
    if(hADX!=INVALID_HANDLE)IndicatorRelease(hADX);
    if(hATR!=INVALID_HANDLE)IndicatorRelease(hATR);
@@ -379,6 +401,7 @@ void OnTimer()
    if(bar>0 && g_lastClosed>0 && bar!=g_lastClosed)
    {
       g_lastClosed=bar;
+      RecordClosedCandle(bar);
       if(InpCaptureClosedFlips)
       {
          double d1=BufferAt(hST,4,1),d2=BufferAt(hST,4,2);
