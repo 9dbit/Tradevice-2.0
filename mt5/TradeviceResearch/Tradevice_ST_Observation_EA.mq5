@@ -1,16 +1,16 @@
 //+------------------------------------------------------------------+
 //| Tradevice_ST_Observation_EA.mq5                                   |
-//| Research-only Supertrend event recorder. NO TRADE OPERATIONS.    |
+//| M1 Research-only Supertrend recorder. NO TRADE OPERATIONS.        |
 //| Consumes Tradevice_ST_TV_Observer; no OrderSend/CTrade/WebRequest|
 //+------------------------------------------------------------------+
 #property strict
 #property version "1.00"
-#property description "OBSERVER ONLY: H1 Supertrend flip and intrabar line-break capture, numeric feature snapshots, forward observations."
+#property description "OBSERVER ONLY: M1 Supertrend flip and intrabar line-break capture, numeric feature snapshots, forward observations."
 #property description "Absolutely no trading, broker order API or remote network calls."
 
 enum ST_SOURCE_OBS { OBS_CLOSE=0, OBS_HL2=1, OBS_HLC3=2, OBS_OHLC4=3 };
 input group "Research-only signal"
-input ENUM_TIMEFRAMES InpSignalTF=PERIOD_H1;
+input ENUM_TIMEFRAMES InpSignalTF=PERIOD_M1;
 input int InpSTATRPeriod=10;
 input double InpSTFactor=3.0;
 input ST_SOURCE_OBS InpSTSource=OBS_HL2;
@@ -165,6 +165,9 @@ string FeatureJson(int shift,int direction,double reference,double stLine)
    s+=",\"spread_points\":"+Num(spread,2)+",\"spread_atr\":"+Num(k>0?spread*pt*k:EMPTY_VALUE,5);
    s+=",\"distance_to_st_points\":"+Num(pt>0?MathAbs(reference-stLine)/pt:EMPTY_VALUE,2);
    s+=",\"h4_st_direction\":"+Num(h4Trend,0);
+   s+=",\"live_bid\":"+Num(tick.bid,8)+",\"live_ask\":"+Num(tick.ask,8);
+   s+=",\"tick_time_msc\":"+IntegerToString(tick.time_msc);
+   s+=",\"forming_bar_tick_volume\":"+IntegerToString(iVolume(_Symbol,InpSignalTF,0));
    s+=",\"point_size\":"+Num(pt,8)+",\"broker_digits\":"+IntegerToString(_Digits);
    s+=",\"reference_price\":"+Num(reference,8);
    s+=",\"features_bar_shift\":"+IntegerToString(shift);
@@ -202,7 +205,7 @@ void RefreshPanel()
    double pt=SymbolInfoDouble(_Symbol,SYMBOL_POINT);
    PanelLine("title","TRADEVICE  |  SUPERTREND RESEARCH OBSERVER",18,clrAqua);
    PanelLine("safe","RECORD ONLY  /  NO TRADING FUNCTIONS",37,clrLime);
-   PanelLine("trend","H1 ST: "+(dir>0?"BULL":dir<0?"BEAR":"WAIT")+"  ATR"+IntegerToString(InpSTATRPeriod)+" x "+DoubleToString(InpSTFactor,2),60);
+   PanelLine("trend",EnumToString(InpSignalTF)+" ST: "+(dir>0?"BULL":dir<0?"BEAR":"WAIT")+"  ATR"+IntegerToString(InpSTATRPeriod)+" x "+DoubleToString(InpSTFactor,2),60);
    PanelLine("adx","ADX: "+Num(adx,1)+"   +DI: "+Num(plus,1)+"   -DI: "+Num(minus,1),78);
    PanelLine("atr","ATR14: "+Num(atr,3)+"   Spread: "+Num(pt>0?(t.ask-t.bid)/pt:0,1)+" points",96);
    PanelLine("other","RSI: "+Num(rsi,1)+"   Relative volume: "+Num(ratio,2)+"x",114);
@@ -223,12 +226,12 @@ void CaptureEvent(string eventType,int direction,datetime signalBar,double refPr
    bool shotOK=ChartScreenShot(0,shot,InpScreenshotWidth,InpScreenshotHeight,ALIGN_RIGHT);
    string json="{\"schema_version\":1,\"record_type\":\"SIGNAL\"";
    json+=",\"event_id\":\""+JsonEscape(id)+"\",\"signal_type\":\""+eventType+"\"";
-   json+=",\"symbol\":\""+JsonEscape(_Symbol)+"\",\"timeframe\":\"H1\"";
+   json+=",\"symbol\":\""+JsonEscape(_Symbol)+"\",\"timeframe\":\""+EnumToString(InpSignalTF)+"\"";
    json+=",\"direction\":\""+SideName(direction)+"\",\"bar_open_epoch\":"+IntegerTime(signalBar);
    json+=",\"observed_utc\":\""+TimeToString(TimeGMT(),TIME_DATE|TIME_SECONDS)+"\"";
    json+=",\"bar_server_time\":\""+TimeToString(signalBar,TIME_DATE|TIME_SECONDS)+"\"";
    json+=",\"snapshot_file\":\""+JsonEscape(shotOK?shot:"")+"\",\"snapshot_requested\":"+(shotOK?"true":"false");
-   json+=",\"price_reference\":\""+(eventType=="CONFIRMED_FLIP"?"BAR_CLOSE_MID_PROXY":"LIVE_BID_ASK")+"\"";
+   json+=",\"price_reference\":\""+(eventType=="CONFIRMED_FLIP"?"BAR_CLOSE_BID":"LIVE_BID_OR_ASK")+"\"";
    json+=",\"features\":"+FeatureJson(featureShift,direction,refPrice,stLine);
    json+=",\"research_only\":true}";
    if(!SaveOne(fname,json))return;
@@ -294,7 +297,7 @@ int OnInit()
 {
    if(_Period!=InpSignalTF)
    {
-      Print("Attach observer to the H1 chart of the observed symbol.");
+      Print("Attach observer to the configured timeframe chart of the observed symbol.");
       return INIT_PARAMETERS_INCORRECT;
    }
    if(InpSTATRPeriod<1 || InpSTFactor<=0 || InpVolumeLookback<1 || InpScreenshotWidth<320 || InpScreenshotHeight<240)
