@@ -11,6 +11,7 @@ import { aiWorkerEnabled, runAiDecision } from './ai-worker.js';
 import { activatePlanCandidate, rejectPlanCandidate } from './plan-service.js';
 import { mergeBrokerState, brokerStateView, brokerPerformance } from './broker-state.js';
 import { buildOrderPreview } from './order-preview.js';
+import { registerSupertrendResearch } from './supertrend-research.js';
 
 const app = express();
 const port = Number(process.env.PORT || 3000);
@@ -54,6 +55,7 @@ app.get('/downloads/TradeviceObserver.mq5', (_req, res) => {
 
 app.all('/mcp', requireKey, mcpNodeHandler);
 app.use(express.json({ limit: '1mb' }));
+registerSupertrendResearch(app, requireKey);
 
 const Candle = z.object({
   timestamp: z.string(), open: z.number(), high: z.number(), low: z.number(), close: z.number(), tick_volume: z.number().optional()
