@@ -2,7 +2,7 @@
 import express from 'express';
 import pg from 'pg';
 const { Pool } = pg;
-const allowed = new Set('st_line st_direction st_atr adx14 di_plus di_minus atr14 atr_points ema50 ema_distance_atr rsi14 bb_width bb_width_atr tick_volume volume_mean20 volume_ratio open high low close candle_range_atr body_atr upper_wick_atr lower_wick_atr spread_points spread_atr distance_to_st_points h4_st_direction live_bid live_ask tick_time_msc forming_bar_tick_volume point_size broker_digits reference_price features_bar_shift'.split(' '));
+const allowed = new Set('st_line st_direction st_atr h1_st_direction adx14 di_plus di_minus atr14 atr_points ema50 ema_distance_atr rsi14 bb_width bb_width_atr tick_volume volume_mean20 volume_ratio open high low close candle_range_atr body_atr upper_wick_atr lower_wick_atr spread_points spread_atr distance_to_st_points h4_st_direction live_bid live_ask tick_time_msc forming_bar_tick_volume point_size broker_digits reference_price features_bar_shift'.split(' '));
 const validId = /^[A-Za-z0-9_.-]{5,180}$/;
 let pool, initialized;
 async function getDb() {
@@ -17,7 +17,14 @@ async function getDb() {
     received_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW());
     CREATE INDEX IF NOT EXISTS supertrend_research_epoch_idx
-    ON supertrend_research_observations(bar_open_epoch DESC);`).catch(e=>{initialized=null;throw e;});
+    ON supertrend_research_observations(bar_open_epoch DESC);
+    CREATE TABLE IF NOT EXISTS supertrend_research_candles (
+      symbol TEXT NOT NULL, timeframe TEXT NOT NULL, bar_open_epoch BIGINT NOT NULL,
+      record JSONB NOT NULL, observed_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      PRIMARY KEY(symbol,timeframe,bar_open_epoch)
+    );
+    CREATE INDEX IF NOT EXISTS supertrend_research_candles_epoch_idx
+      ON supertrend_research_candles(bar_open_epoch DESC);`).catch(e=>{initialized=null;throw e;});
   await initialized;
   return pool;
 }
@@ -62,6 +69,46 @@ export function registerSupertrendResearch(app,requireKey) {
     if (!process.env.TRADEVICE_API_KEY) return res.status(503).json({error:'research_auth_not_configured'});
     return requireKey(req,res,next);
   }
+  // Negative examples and sideways context are captured at every completed M1 bar,
+  // not only during directional flips. This prevents selection-on-signal bias.
+  app.post('/api/v1/research/supertrend/candles',auth,async(req,res)=>{
+    const c=req.body;
+    if(!c || c.record_type!=='CANDLE' || c.schema_version!==1 ||
+      c.timeframe!=='M1' || c.closed!==true ||
+      !/^[A-Za-z0-9_.-]{3,32}$/.test(String(c.symbol||'')) ||
+      !Number.isSafeInteger(c.bar_open_epoch) || c.bar_open_epoch<1600000000 ||
+      !c.features || typeof c.features!=='object' || Array.isArray(c.features))
+      return res.status(400).json({error:'invalid_research_candle'});
+    const features={};
+    for(const [k,v] of Object.entries(c.features)) {
+      if(allowed.has(k) && typeof v==='number' && Number.isFinite(v))
+        features[k]=v;
+    }
+    const clean={schema_version:1,record_type:'CANDLE',
+      symbol:c.symbol,timeframe:'M1',bar_open_epoch:c.bar_open_epoch,
+      closed:true,research_only:true,features};
+    try {
+      const db=await getDb();
+      await db.query(`INSERT INTO supertrend_research_candles
+        (symbol,timeframe,bar_open_epoch,record)
+        VALUES($1,$2,$3,$4::jsonb)
+        ON CONFLICT(symbol,timeframe,bar_open_epoch)
+        DO UPDATE SET record=EXCLUDED.record`,
+        [clean.symbol,'M1',clean.bar_open_epoch,JSON.stringify(clean)]);
+      res.json({stored:true,bar_open_epoch:clean.bar_open_epoch});
+    }catch(e){unavailable(res,e);}
+  });
+  app.get('/api/v1/research/supertrend/candles',auth,async(req,res)=>{
+    const limit=Math.max(1,Math.min(500,Number(req.query.limit)||100));
+    try {
+      const db=await getDb();
+      const {rows}=await db.query(`SELECT symbol,bar_open_epoch,record,observed_at
+        FROM supertrend_research_candles
+        ORDER BY bar_open_epoch DESC LIMIT $1`,[limit]);
+      res.set('Cache-Control','private, no-store');
+      res.json({mode:'OBSERVATION_ONLY',rows,generated_at:new Date().toISOString()});
+    }catch(e){unavailable(res,e);}
+  });
   app.post('/api/v1/research/supertrend/events',auth,async(req,res)=>{
     const e=req.body;
     if (!validEvent(e)) return res.status(400).json({error:'invalid_research_signal'});
