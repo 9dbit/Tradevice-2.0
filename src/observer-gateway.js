@@ -153,6 +153,23 @@ const handleRequest = async (req, res) => {
     const pathname = pathOnly(req);
     if (pathname === '/downloads/TradeviceObserver.mq5') return await preparedObserver(req, res);
     if (pathname === '/api/v1/analysis/live' && req.method === 'GET') return await liveAnalysis(res);
+    // Only evidence uploads (not dashboard reads) may use the existing observer key.
+    // Forward them using the protected internal API key, never expose that key.
+    const researchEvidenceWrite = req.method === 'POST' && (
+      ['/api/v1/research/supertrend/events','/api/v1/research/supertrend/candles',
+        '/api/v1/research/supertrend/outcomes'].includes(pathname) ||
+      /^\/api\/v1\/research\/supertrend\/images\/[A-Za-z0-9_.-]{5,180}$/.test(pathname)
+    );
+    if (researchEvidenceWrite) {
+      const auth = String(req.headers.authorization || '');
+      const observerAllowed = observerKey && auth === `Bearer ${observerKey}`;
+      const apiAllowed = apiKey && auth === `Bearer ${apiKey}`;
+      if (!observerAllowed && !apiAllowed) {
+        res.writeHead(401, { 'content-type': 'application/json' });
+        return res.end(JSON.stringify({ error: 'research_observer_unauthorized' }));
+      }
+      return proxy(req, res, { authorization: apiKey ? `Bearer ${apiKey}` : null });
+    }
     if (syncPaths.has(pathname)) {
       const auth = String(req.headers.authorization || '');
       const observerAllowed = observerKey && auth === `Bearer ${observerKey}`;
