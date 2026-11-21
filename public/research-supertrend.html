@@ -1,0 +1,152 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#090d12">
+<title>Tradevice · Supertrend Observation</title>
+<style>
+:root{color-scheme:dark;--bg:#090d12;--panel:#141b24;--text:#f2f5f8;--muted:#a8b6c7;--border:#293442;--green:#6ce3bc;--red:#ff8297}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);font:14px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:var(--text)}
+a{color:inherit;text-decoration:none}.wrap{max-width:1280px;margin:auto;padding:28px 18px 90px}
+header,.head,.toolbar{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+header{padding-bottom:20px;border-bottom:1px solid var(--border)}.back{color:var(--muted)}.wordmark{font-size:22px;font-weight:700;letter-spacing:-.06em}
+.small,.muted{font-size:12px;color:var(--muted)}h1{font-size:29px;letter-spacing:-.055em;margin:22px 0 4px}h2{font-size:17px;letter-spacing:-.02em;margin:0}
+.topnote{max-width:850px;color:var(--muted);margin:0 0 20px}
+.card,.stat,.observation{border:1px solid var(--border);border-radius:18px;background:var(--panel)}
+.card{padding:18px;margin:18px 0}.toolbar{justify-content:flex-start;align-items:center}
+input,select,button{min-height:40px;border-radius:11px;background:#1d2632;border:1px solid #415064;color:var(--text);padding:8px 12px;font:inherit}
+input{min-width:240px}button{cursor:pointer;font-weight:600}button:hover{border-color:#93a4b9}
+button.primary{background:#eff4f7;color:#0e151c;border:1px solid #eff4f7}
+button:disabled{opacity:.45;cursor:not-allowed}
+.grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}.stat{padding:16px}
+.stat strong{display:block;font-size:27px;letter-spacing:-.045em;font-variant-numeric:tabular-nums}.stat span{color:var(--muted);font-size:12px}
+.head{margin:0 0 13px}.section{margin-top:26px}.badge{display:inline-flex;border:1px solid #365046;border-radius:12px;color:var(--green);padding:3px 8px;font-size:11px;font-weight:600}
+.tableScroll{overflow:auto;border:1px solid var(--border);border-radius:16px}
+table{border-collapse:collapse;width:100%;font-variant-numeric:tabular-nums;white-space:nowrap}
+th{text-align:left;color:var(--muted);font-size:12px;font-weight:500;background:#17202b}
+td,th{padding:12px 14px;border-bottom:1px solid #27313b}tr:last-child td{border:0}
+.buy{color:var(--green)}.sell{color:var(--red)}.dim{color:var(--muted)}
+.dataGrid{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:12px}
+.observation{padding:15px}.observation strong{display:block;font-size:20px;font-variant-numeric:tabular-nums}
+#status{margin-top:12px;color:var(--muted);min-height:20px}#preview{display:none;margin-top:15px}
+#preview img{max-width:100%;height:auto;border-radius:12px;border:1px solid var(--border)}
+footer{padding-top:28px;margin-top:30px;border-top:1px solid var(--border);color:var(--muted)}
+@media(max-width:900px){.grid{grid-template-columns:repeat(2,minmax(0,1fr))}.dataGrid{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@media(max-width:540px){h1{font-size:25px}.dataGrid{grid-template-columns:repeat(2,minmax(0,1fr))}.wrap{padding:16px 12px 65px}input{width:100%}}
+</style>
+</head>
+<body>
+<div class="wrap">
+<header><a href="/" class="wordmark">TRADEVICE</a><a href="/" class="back">Back to dashboard</a></header>
+<div class="head"><div><h1>Supertrend · M1 Observation</h1><p class="topnote">Rekaman indikator per candle, sinyal break, screenshot chart, dan pengamatan 1/3/6 candle berikutnya. Seluruh hasil bersifat observasi, bukan transaksi atau profit aktual.</p></div><span class="badge">NO ORDER EXECUTION</span></div>
+<section class="card">
+<div class="toolbar"><label for="key">API access key</label><input id="key" type="password" autocomplete="off" placeholder="Enter Tradevice API key">
+<button class="primary" id="load" type="button">Load observations</button>
+<select id="side" aria-label="Direction"><option value="">All directions</option><option value="BUY">BUY</option><option value="SELL">SELL</option></select>
+<select id="type" aria-label="Signal type"><option value="">All breaks</option><option value="CONFIRMED_FLIP">Confirmed flip</option><option value="INTRABAR_BREAK">Intrabar break</option></select></div>
+<div id="status" role="status">Data requires a connected M1 observer and authorized database access. Keys stay in page memory and are not saved.</div>
+</section>
+<section class="grid" id="stats">
+<div class="stat"><span>Total break events</span><strong id="events">—</strong></div>
+<div class="stat"><span>Closed M1 candles in recent feed</span><strong id="candles">—</strong></div>
+<div class="stat"><span>1-candle favorable ≥1 ATR</span><strong id="score1">—</strong></div>
+<div class="stat"><span>6-candle favorable ≥1 ATR</span><strong id="score6">—</strong></div>
+</section>
+<section class="section"><div class="head"><h2>Latest completed M1 candle</h2><span class="small" id="barlabel">No data yet</span></div>
+<div class="dataGrid" id="readings"></div></section>
+<section class="section"><div class="head"><h2>Captured breaks</h2><span class="small" id="rowsLabel">No data yet</span></div>
+<div class="tableScroll"><table><thead><tr>
+<th>Server time</th><th>Signal</th><th>Direction</th><th>ST line</th>
+<th>ADX / +DI / −DI</th><th>ATR</th><th>Spread pts</th><th>Volume ratio</th>
+<th>RSI</th><th>H1 / H4</th><th>1m / 3m / 6m result</th><th>Chart</th>
+</tr></thead><tbody id="rows"><tr><td colspan="12" class="dim">Observer not connected.</td></tr></tbody></table></div>
+<div id="preview" class="card"><div class="head"><strong id="imageTitle">Chart capture</strong><button id="closePreview">Close image</button></div><img id="image" alt="Screenshot of MT5 Supertrend observation"></div>
+</section>
+<footer>Research data · A favorable excursion is only an OHLC observation. It is not a fill, win rate, execution approval, or strategy recommendation. Signal selection requires independent validation before any future automation.</footer>
+</div>
+<script>
+"use strict";
+const el=id=>document.getElementById(id);
+const state={key:"",events:[],candles:[],imageUrl:""};
+function fmt(v,n=2){return typeof v==="number" && Number.isFinite(v)?v.toLocaleString("en-US",{maximumFractionDigits:n,minimumFractionDigits:n}):"—";}
+function safe(s){return String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));}
+function side(v){return v==="BUY"?'<span class="buy">BUY</span>':'<span class="sell">SELL</span>';}
+function trend(v){return v===1?"↑":v===-1?"↓":"—";}
+function metric(title,value){return '<div class="observation"><span class="small">'+safe(title)+'</span><strong>'+safe(value)+'</strong></div>';}
+async function api(path,options={}){
+  const headers={"Authorization":"Bearer "+state.key,...(options.headers||{})};
+  const response=await fetch(path,{...options,headers,cache:"no-store"});
+  if(!response.ok){throw Error("Request "+response.status+" ("+path+")");}
+  return response;
+}
+function score(horizon){
+  const arr=state.events.map(x=>x.outcomes?.[String(horizon)]).filter(Boolean);
+  if(!arr.length)return "—";
+  const hits=arr.filter(x=>x.favorable_1atr_observed===true).length;
+  return fmt(hits/arr.length*100,1)+"% · "+arr.length;
+}
+function render(){
+  const dir=el("side").value,typ=el("type").value;
+  const rows=state.events.filter(x=>(!dir||x.record?.direction===dir)&&(!typ||x.record?.signal_type===typ));
+  el("events").textContent=String(state.events.length);
+  el("candles").textContent=String(state.candles.length)+" recent";
+  el("score1").textContent=score(1);
+  el("score6").textContent=score(6);
+  el("rowsLabel").textContent=rows.length+" captured signals";
+  el("rows").innerHTML=rows.map(x=>{
+    const e=x.record||{},f=e.features||{},out=x.outcomes||{};
+    const progress=[1,3,6].map(n=>out[String(n)]?fmt(out[String(n)].forward_points,0)+"pt":"—").join(" / ");
+    const picture=x.has_screenshot?'<button type="button" data-id="'+safe(x.event_id)+'">View</button>':"—";
+    return "<tr><td>"+safe(e.bar_server_time||"—")+"</td><td>"+safe((e.signal_type||"").replace("_"," "))+"</td>"+
+    "<td>"+side(e.direction)+"</td><td>"+fmt(f.st_line,3)+"</td><td>"+
+    [fmt(f.adx14,1),fmt(f.di_plus,1),fmt(f.di_minus,1)].join(" / ")+"</td><td>"+
+    fmt(f.atr14,3)+"</td><td>"+fmt(f.spread_points,0)+"</td><td>"+
+    fmt(f.volume_ratio,2)+"x</td><td>"+fmt(f.rsi14,1)+"</td><td>"+
+    trend(f.h1_st_direction)+" / "+trend(f.h4_st_direction)+"</td><td>"+safe(progress)+
+    "</td><td>"+picture+"</td></tr>";
+  }).join("")||'<tr><td class="dim" colspan="12">No matching events yet.</td></tr>';
+  const latest=state.candles[0]?.record;
+  const f=latest?.features||{};
+  el("barlabel").textContent=latest?String(latest.symbol)+" · broker epoch "+latest.bar_open_epoch:"No completed candle synced";
+  el("readings").innerHTML=[
+    ["ST Direction",trend(f.st_direction)],["Supertrend Line",fmt(f.st_line,3)],
+    ["ADX / +DI / -DI",[fmt(f.adx14,1),fmt(f.di_plus,1),fmt(f.di_minus,1)].join(" / ")],
+    ["ATR (price)",fmt(f.atr14,3)],["Relative volume",fmt(f.volume_ratio,2)+"x"],
+    ["Spread (points)",fmt(f.spread_points,0)],["RSI (14)",fmt(f.rsi14,1)],
+    ["EMA50",fmt(f.ema50,3)],["Bollinger width / ATR",fmt(f.bb_width_atr,2)],
+    ["Body / ATR",fmt(f.body_atr,2)],["H1 direction",trend(f.h1_st_direction)],
+    ["H4 direction",trend(f.h4_st_direction)]].map(x=>metric(...x)).join("");
+}
+async function load(){
+  const key=el("key").value.trim();
+  if(!key){el("status").textContent="Enter your Tradevice access key to load evidence.";return;}
+  state.key=key;
+  el("load").disabled=true;el("status").textContent="Reading stored research observations…";
+  try{
+    const [events,candles]=await Promise.all([
+      api("/api/v1/research/supertrend/events?limit=300").then(r=>r.json()),
+      api("/api/v1/research/supertrend/candles?limit=300").then(r=>r.json())]);
+    state.events=events.rows||[];state.candles=candles.rows||[];
+    render();
+    el("status").textContent="Read only · "+state.events.length+" events · "+state.candles.length+
+      " recent M1 candles · received "+new Date().toLocaleString("id-ID",{timeZone:"Asia/Jakarta"})+" WIB";
+  }catch(err){el("status").textContent=err.message+". Check observer sync, API credentials, and database availability.";}
+  finally{el("load").disabled=false;}
+}
+el("load").onclick=load;
+el("side").onchange=render;el("type").onchange=render;
+el("rows").addEventListener("click",async evt=>{
+  const id=evt.target.getAttribute("data-id");
+  if(!id)return;
+  try{
+    const blob=await api("/api/v1/research/supertrend/images/"+encodeURIComponent(id)).then(r=>r.blob());
+    if(state.imageUrl)URL.revokeObjectURL(state.imageUrl);
+    state.imageUrl=URL.createObjectURL(blob);
+    el("image").src=state.imageUrl;el("imageTitle").textContent="MT5 capture · "+id;
+    el("preview").style.display="block";el("preview").scrollIntoView({behavior:"smooth"});
+  }catch(err){el("status").textContent="Screenshot unavailable: "+err.message;}
+});
+el("closePreview").onclick=()=>{el("preview").style.display="none";el("image").src="";
+  if(state.imageUrl){URL.revokeObjectURL(state.imageUrl);state.imageUrl="";}};
+</script>
+</body></html>
